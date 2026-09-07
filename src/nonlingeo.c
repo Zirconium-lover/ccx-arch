@@ -8753,7 +8753,9 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           fflush(stdout);
           if(ctacc==0) ctbad=9;
         }
+#ifdef PARDISO
         pardiso_solve(damage_ct_y,&neq[0],&symmetryflag,&inputformat,&nrhs);
+#endif
 
         /* ---- the constraint at the current iterate ----
            delta_c is anchored HERE, at the first corrector iteration of each

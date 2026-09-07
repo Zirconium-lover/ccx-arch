@@ -17,3 +17,7 @@
 *.prt
 *.inp~
 *.log
+ccx_2.23
+ccx_2.23step
+*.vtu
+*.damage

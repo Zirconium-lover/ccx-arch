@@ -287,6 +287,17 @@ void *resultsmechmtstr(ITG *i){
   if((*i==num_cpus-1)&&(neb<*ne1)) neb=*ne1;
 
   list=0;
+  /* DE1.2 damage module arguments.  This routine is a sensitivity/output
+     path that never evolves damage, so every new argument is inert:
+     hasdamage=0 and de12tangent=0 gate all array accesses inside
+     resultsmech.f, which is why the array pointers may stay NULL. */
+
+  ITG hasdamage1=0,de12onepass1=0,de12tangent1=0,de12ndmat1=0,
+    *de12ndmcon1=NULL;
+  double *de12dmcon1=NULL,*de12dam1=NULL,*de12dambase1=NULL,
+    *de12damjac1=NULL,*de12damvisc1=NULL,*de12damviscini1=NULL,
+    de12visceta1=0.;
+
   FORTRAN(resultsmech,(co1,kon1,ipkon1,lakon1,ne1,v1,
 		       stx1,elcon1,nelcon1,rhcon1,nrhcon1,alcon1,nalcon1,
 		       alzero1,
@@ -309,7 +320,11 @@ void *resultsmechmtstr(ITG *i){
 		       kscale1,&list,ilist,smscale1,&mscalmethod1,
 		       &energysms1[indexnal],
 		       t0g1,t1g1,islavquadel1,aut1,irowt1,jqt1,
-		       &mortartrafoflag1,&intscheme1,physcon1));
+		       &mortartrafoflag1,&intscheme1,physcon1,
+		       de12dam1,&hasdamage1,&de12onepass1,&de12tangent1,
+		       &de12ndmat1,de12ndmcon1,de12dmcon1,de12dambase1,
+		       de12damjac1,de12damvisc1,de12damviscini1,
+		       &de12visceta1));
 
   return NULL;
 }

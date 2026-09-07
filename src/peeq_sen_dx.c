@@ -70,6 +70,17 @@ void peeq_sen_dx(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
   if(iperturb[1]==1){calcul_cauchy=1;}else{calcul_cauchy=0;}
   
   list=1;
+  /* DE1.2 damage module arguments.  This routine is a sensitivity/output
+     path that never evolves damage, so every new argument is inert:
+     hasdamage=0 and de12tangent=0 gate all array accesses inside
+     resultsmech.f, which is why the array pointers may stay NULL. */
+
+  ITG hasdamage=0,de12onepass=0,de12tangent=0,de12ndmat=0,
+    *de12ndmcon=NULL;
+  double *de12dmcon=NULL,*de12dam=NULL,*de12dambase=NULL,
+    *de12damjac=NULL,*de12damvisc=NULL,*de12damviscini=NULL,
+    de12visceta=0.;
+
   FORTRAN(resultsmech,(co,kon,ipkon,lakon,ne,vold,
 		       stx,elcon,nelcon,rhcon,nrhcon,alcon,nalcon,alzero,
 		       ielmat,ielorien,norien,orab,ntmat_,t0,t1,ithermal,prestr,
@@ -84,7 +95,11 @@ void peeq_sen_dx(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
 		       pslavsurf,pmastsurf,mortar,clearini,nea,neb,ielprop,
 		       prop,kscale,&list,ialdesi,smscale,&mscalmethod,
 		       &enerscal,t0g,t1g,islavquadel,aut,irowt,jqt,
-		       &mortartrafoflag,&intscheme,physcon));
+		       &mortartrafoflag,&intscheme,physcon,
+		       de12dam,&hasdamage,&de12onepass,&de12tangent,
+		       &de12ndmat,de12ndmcon,de12dmcon,de12dambase,
+		       de12damjac,de12damvisc,de12damviscini,
+		       &de12visceta));
 
   /* extrapolating the perturbed equivalent plastic strain */
 
