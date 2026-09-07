@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -253,7 +253,7 @@ c     Bernhardi end
      &        ihyper,istiff,elconloc,eth,kode,plicon,
      &        nplicon,plkcon,nplkcon,npmat_,
      &        plconloc,mi(1),dtime,kk,
-     &        xstiff,ncmat_)
+     &        xstiff,ncmat_,iperturb)
 !
 !
 !           initialisation for the body forces

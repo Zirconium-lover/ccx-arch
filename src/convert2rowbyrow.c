@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                   */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -38,8 +38,8 @@ void convert2rowbyrow(double *ad,double *au, ITG *icol,ITG *irow,
 
   /* the matrix is stored as full matrix, row by row, in aupardiso
      (needed for shock smoothing), the corresponding row numbers
-     are stored in pointers and the start of row i is stored in
-     icolpardiso(i) (FORTRAN convention); */
+     are stored in icolpardiso and the start of row i is stored in
+     pointers(i) (FORTRAN convention); */
 
   icolpardiso=*icolpardisop;aupardiso=*aupardisop;pointers=*pointersp;
 	

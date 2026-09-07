@@ -1,6 +1,6 @@
    !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -924,7 +924,7 @@ c         if((iperturb(1).ne.0).and.stiffness.and.(.not.buckling))
      &        ihyper,istiff,elconloc,eth,kode,plicon,
      &        nplicon,plkcon,nplkcon,npmat_,
      &        plconloc,mi(1),dtime,kk,
-     &        xstiff,ncmat_)
+     &        xstiff,ncmat_,iperturb)
          else
             idir=idesvar1-3*((idesvar1-1)/3)
             call materialdata_me(elcon,nelcon,rhcon,nrhcon,alcon,nalcon,
@@ -933,7 +933,7 @@ c         if((iperturb(1).ne.0).and.stiffness.and.(.not.buckling))
      &        ihyper,istiff,elconloc,eth,kode,plicon,
      &        nplicon,plkcon,nplkcon,npmat_,
      &        plconloc,mi(1),dtime,kk,
-     &        dxstiff(1,1,1,idir),ncmat_)
+     &        dxstiff(1,1,1,idir),ncmat_,iperturb)
          endif
 !
          if(mattyp.eq.1) then

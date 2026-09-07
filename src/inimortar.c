@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -133,7 +133,7 @@ void inimortar(double **enerp,ITG *mi,ITG *ne ,ITG *nslavs,ITG *nk,ITG *nener,
   NNEW(gap,double,*nslavs);
   NNEW(cdisp,double,6**nslavs);
   
-  /* allocation of temperary fields: stores the structure
+  /* allocation of temporary fields: stores the structure
      of the stiffness matrix without mortar contact */
   
   NNEW(cstress,double,mt**nslavs);

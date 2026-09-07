@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -148,7 +148,7 @@
 !        case 1: element type not supported
 !            
          if(itypflag.eq.0) then
-            write(*,*) '*WARINING in estimator: Elements of node',
+            write(*,*) '*WARNING in estimator: Elements of node',
      &           nodebase,' cannot be used for error estimation.'
             do j=1,6
                scpav(j,nodebase)=stn(j,nodebase)

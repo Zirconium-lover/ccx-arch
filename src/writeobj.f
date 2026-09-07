@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -19,7 +19,7 @@
       subroutine writeobj(objectset,iobject,g0,dgdxglob,nobject,
      &   ndesi,nodedesi,nk,nobjectstart)
 !
-!     writes the results design repsonse information in the .dat file
+!     writes the results design response information in the .dat file
 !
       implicit none
 !
@@ -49,13 +49,13 @@
          write(5,*)
       endif
 !
-!     write design repsonse in .dat file
+!     write design response in .dat file
 !
       i=iobject+1
       dd=0.d0
       do j=1,ndesi
          inode=nodedesi(j)
-         dd=dd+dgdxglob(1,inode,i)**2
+         dd=dd+dgdxglob(1,INT(inode),i)**2
       enddo
       dd=dsqrt(dd)
       write(5,'(3x,a16,e14.7,3x,e16.7,3x,a80)') objectset(1,i),g0(i),

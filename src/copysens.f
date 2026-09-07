@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -27,8 +27,8 @@
 !     
       real*8 rhs(*),dgdxglob(2,nk,*)
 !  
-!     icopy=0: copy unfiltered sensitivites to dgdxglob
-!     icopy=1: copy filtered sensitivites to dgdxglob
+!     icopy=0: copy unfiltered sensitivities to dgdxglob
+!     icopy=1: copy filtered sensitivities to dgdxglob
 !
 !     FORTRAN convention for iobject
 !

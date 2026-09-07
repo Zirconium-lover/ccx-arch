@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -22,15 +22,13 @@
 !
       subroutine getnumberofnodes(nelem,jface,lakon,nope,nopes,mint2d)
 !      
-!     autor: Saskia Sitzmann
+!     author: Saskia Sitzmann
 !      
       implicit none
 !     
       character*8 lakon(*)
 !     
       integer  nopes,nope,nelem,jface,mint2d
-!
-!
 !     
       if(lakon(nelem)(4:5).eq.'8R') then
          mint2d=1

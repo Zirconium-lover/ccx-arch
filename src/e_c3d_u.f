@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
      &     ipompc,nodempc,coefmpc,nmpc,ikmpc,ilmpc,veold,
      &     ne0,ipkon,thicke,
      &     integerglob,doubleglob,tieset,istartset,iendset,ialset,ntie,
-     &     nasym,ielprop,prop,nope)
+     &     nasym,ielprop,prop,xstateini,nstate_,nope)
 !     
 !     computation of the element matrix and rhs for the user element
 !     of type u1
@@ -61,7 +61,7 @@
      &     ncmat_,intscheme,istep,iinc,iflag,ipompc(*),nodempc(3,*),
      &     nmpc,ikmpc(*),ilmpc(*),ne0,ndof,istartset(*),iendset(*),
      &     ialset(*),ntie,integerglob(*),nasym,nplicon(0:ntmat_,*),
-     &     nplkcon(0:ntmat_,*),npmat_
+     &     nplkcon(0:ntmat_,*),npmat_,nstate_
 !     
       real*8 co(3,*),xl(3,20),veold(0:mi(2),*),rho,s(60,60),bodyfx(3),
      &     ff(60),elconloc(ncmat_),coords(3),p1(3),
@@ -72,10 +72,15 @@
      &     thicke(mi(3),*),doubleglob(*),dl,
      &     plicon(0:2*npmat_,ntmat_,*),plkcon(0:2*npmat_,ntmat_,*),
      &     xstiff(27,mi(1),*),plconloc(802),dtime,ttime,time,
+     &     xstateini(nstate_,mi(1),*),
      &     a,xi11,xi12,xi22,xk,e1(3),offset1,offset2,y1,y2,y3,z1,z2,z3,
      &     elcon(0:ncmat_,ntmat_,*)
 !     
-      if(lakonl(2:2).eq.'1') then
+      if(lakonl(2:3).eq.'C6') then
+        call e_c3d_uc6(co,kon,ipkon,s,sm,ff,nelem,vold,mi,
+     &       ielprop,prop,dtime,xstateini,nstate_,mass,stiffness,
+     &       rhsi,nmethod)
+      elseif(lakonl(2:2).eq.'1') then
         call e_c3d_u1(co,kon,lakonl,p1,p2,omx,bodyfx,nbody,s,sm,
      &       ff,nelem,nmethod,elcon,nelcon,rhcon,nrhcon,alcon,nalcon,
      &       alzero,ielmat,ielorien,norien,orab,ntmat_,

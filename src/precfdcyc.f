@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -22,7 +22,7 @@
      &  inoelfree,nef,co,ipompc,nodempc,ikmpc,ilmpc,nmpc,set,istartset,
      &  iendset,ialset,nset,iturbulent)
 !
-!     cyclic update for cfd applicatons:
+!     cyclic update for cfd applications:
 !     - determining the external faces of the mesh and storing
 !       them in fields nelemface and sideface
 !     - determining the fluid elements belonging to a given node

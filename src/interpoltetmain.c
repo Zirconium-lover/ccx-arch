@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -28,13 +28,13 @@ static ITG num_cpus,*nx1,*ny1,*nz1,*ifatet1,*netet1,*kontet1,*konl1,*nkf1,
 /* y1 had to be replaced by yy1, else the following compiler error
    popped up: 
 
-interpoltetmain.c:28:20: error: ‘y1’ redeclared as different kind of symbol
+interpoltetmain.c:28:20: error: 'y1' redeclared as different kind of symbol
  static double *x1,*y1,*z1,*xo1,*yo1,*zo1,*planfa1,*cotet1,*ratio1,*co1;
                     ^~
 In file included from /usr/include/features.h:423:0,
                  from /usr/include/unistd.h:25,
                  from interpoltetmain.c:18:
-/usr/include/bits/mathcalls.h:227:1: note: previous declaration of ‘y1’ was here
+/usr/include/bits/mathcalls.h:227:1: note: previous declaration of 'y1' was here
 __MATHCALL (y1,, (_Mdouble_)); */
 
 static double *x1,*yy1,*z1,*xo1,*yo1,*zo1,*planfa1,*cotet1,*ratio1,*co1;

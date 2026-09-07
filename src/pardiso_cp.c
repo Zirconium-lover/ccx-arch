@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                   */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -346,7 +346,7 @@ void pardiso_solve_cp(double *b, ITG *neq,ITG *symmetryflag,ITG *inputformat,
   }
   iparmcp[1]=3;
   
-  /* pardiso_factor_cp has been called befor, MKL_NUM_THREADS=mthread_mkl_cp is set*/
+  /* pardiso_factor_cp has been called before, MKL_NUM_THREADS=mthread_mkl_cp is set*/
 
   //printf(" number of threads =% d\n\n",mthread_mkl_cp);
 

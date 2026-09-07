@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -37,9 +37,9 @@
          feasdir(1,inode)=gradproj(3,inode)
       enddo
 !
-!     Explicit filter matrix A consitst fo the following matrices:
+!     Explicit filter matrix A consitst of the following matrices:
 !     A = V^(-1) * W * M
-!     V = weighting matrix to normailze the filter functions stored in 
+!     V = weighting matrix to normalize the filter functions stored in 
 !         the field weighting(*)
 !     W = filter matrix 
 !     M = mass matrix

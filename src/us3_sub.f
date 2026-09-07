@@ -1,5 +1,5 @@
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -875,7 +875,7 @@
       !
       Kb = matmul(matmul(L,Qin),transpose(L))/V
       !
-      ! trasformation hierachical rotations
+      ! transformation hierachical rotations
       !
       T0(1,1) = x32/A4
       T0(1,2) = y32/A4      
@@ -1076,7 +1076,7 @@
       L(9,3) = h2*(x23*y32-x31*y13)*2.d0*ab 
       !
       !
-      ! trasformation hierachical rotations
+      ! transformation hierachical rotations
       !
       T0(1,1) = x32/A4
       T0(1,2) = y32/A4      

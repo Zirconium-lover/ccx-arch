@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -61,7 +61,7 @@
       endif
 !      
 !     if rotating orifice with Mac Greehan & Scotch
-!     The decription of the method can be found in :
+!     The description of the method can be found in :
 !     "Flow characteristics of long orifices with rotation and 
 !     corner radiusing" ASME 87-GT-16
 !

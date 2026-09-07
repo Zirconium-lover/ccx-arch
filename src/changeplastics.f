@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -49,11 +49,12 @@
       endif
 !
       if((nelcon(1,imat).ne.-51).and.
-     &   (nelcon(1,imat).ne.-52)) then
+     &   (nelcon(1,imat).ne.-52).and.
+     &   (nelcon(1,imat).ne.-54)) then
          write(*,*) '*ERROR reading *CHANGE PLASTIC: *CHANGE PLASTIC'
          write(*,*) '       can only be used to change the plastic'
          write(*,*) '       definition of an elastically isotropic'
-         write(*,*) '       material with *PLASTIC data'
+         write(*,*) '       or orthotropic material with *PLASTIC data'
          ier=1
          return
       endif

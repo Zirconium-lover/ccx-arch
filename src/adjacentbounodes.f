@@ -1,6 +1,6 @@
 !      
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -154,7 +154,7 @@ c            write(*,*) node
 !     to the structure)
 !
 !     if subsurface crack:
-!     node is an arbitary node belonging to the crack front
+!     node is an arbitrary node belonging to the crack front
 !     
 !     finding the relative node number
 !     

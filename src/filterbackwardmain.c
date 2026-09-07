@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                     */
+/*              Copyright (C) 1998-2025 Guido Dhondt                     */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -423,7 +423,7 @@ void filterbackwardmain(double *co, double *dgdxglob, ITG *nobject,
   
   }else{
 
-    printf(" Scaling of sensitivties with mass matrix\n\n");
+    printf(" Scaling of sensitivities with mass matrix\n\n");
     
     /* Solve the system of equations */
      

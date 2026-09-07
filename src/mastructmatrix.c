@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -28,7 +28,8 @@
 void mastructmatrix(ITG *ipompc,ITG *nodempc,ITG *nmpc,ITG *nactdof,
 		    ITG *jq,ITG **mast1p,ITG *neq,ITG *ipointer, ITG *nzs_, 
 		    ITG *nmethod,ITG *iperturb,ITG *mi,ITG **nextp,
-		    ITG *node1,ITG *k,ITG *node2,ITG *m,ITG *ifree){
+		    ITG *node1,ITG *k,ITG *node2,ITG *m,ITG *ifree,
+		    ITG *icalcnactdof){
 
   /* determines the structure of the thermo-mechanical matrices;
      (i.e. the location of the nonzeros */
@@ -40,6 +41,12 @@ void mastructmatrix(ITG *ipompc,ITG *nodempc,ITG *nmpc,ITG *nactdof,
 
   /* caveat: k and m take values 1..3 for dof in x,y,z
      (FORTRAN convention) */
+
+  if(*icalcnactdof==1){
+    nactdof[mt*(*node1-1)+(*k)]=1;
+    nactdof[mt*(*node2-1)+(*m)]=1;
+    return;
+  }
   
   jdof1=nactdof[mt*(*node1-1)+(*k)];
   jdof2=nactdof[mt*(*node2-1)+(*m)];

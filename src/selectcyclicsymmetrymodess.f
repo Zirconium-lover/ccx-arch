@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -38,7 +38,7 @@
      &  mpc,iline,ipol,inl,ipoinp(2,*),inp(3,*),mcs,lprev,ij,nmethod
 !
       real*8 coefmpc(*),csab(7),x1(2),x2(2),x3,x4,x5,dd,xn,yn,zn,
-     &  cs(17,*)
+     &  cs(18,*)
 !
 !     irepeat indicates whether the step was preceded by another
 !     cyclic symmetry step (irepeat=1) or not (irepeat=0)

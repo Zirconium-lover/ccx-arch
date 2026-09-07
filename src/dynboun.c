@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                   */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -103,7 +103,7 @@ void dynboun(double *amta,ITG *namta,ITG *nam,double *ampli, double *time,
   NNEW(b2,double,neq[1]);
 
   /* check whether boundary conditions changed 
-     comparision of min with prev */
+     comparison of min with prev */
 
   if(*init==1){
     for(i=0;i<*nboun;i++){
@@ -141,7 +141,7 @@ void dynboun(double *amta,ITG *namta,ITG *nam,double *ampli, double *time,
   }
 
   /* check whether boundary conditions changed 
-     comparision of act with min */
+     comparison of act with min */
   
   idiff[1]=0;
   for(i=0;i<*nboun;i++){
@@ -186,7 +186,7 @@ void dynboun(double *amta,ITG *namta,ITG *nam,double *ampli, double *time,
   }
 
   /* check whether boundary conditions changed 
-     comparision of plus with act */
+     comparison of plus with act */
   
   idiff[2]=0;
   for(i=0;i<*nboun;i++){

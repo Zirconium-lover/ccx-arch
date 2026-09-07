@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -23,7 +23,7 @@
      &     istartset,iendset,ialset,nset,iturbulent,inomat,ielmat,
      &     ipface,nknew)
 !     
-!     preliminary calculations for cfd applicatons:
+!     preliminary calculations for cfd applications:
 !     - determining the external faces of the mesh and storing
 !     them in fields nelemface and sideface
 !     - determining the nodes belonging to solid surfaces and
@@ -502,7 +502,7 @@
         call nident(nelemface,i,nface,ipface(i))
       enddo
 !     
-!     filling inomat: asigns a material to fluid nodes. 
+!     filling inomat: assigns a material to fluid nodes. 
 !     (a fluid nodes is not assumed to be part of two
 !     different fluids)
 !     

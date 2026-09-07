@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -39,7 +39,7 @@ void frd(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne0,
 	 double *eenmax,double *fnr,double *fni,double *emn,
 	 double *thicke,char *jobnamec,char *output,double *qfx,
          double *cdn,ITG *mortar,double *cdnr,double *cdni,ITG *nmat,
-         ITG *ielprop,double *prop,double *sti){
+         ITG *ielprop,double *prop,double *sti,double *damn,double **errnp){
 
   /* stores the results in frd format
 
@@ -87,6 +87,8 @@ void frd(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne0,
   float fl;
 
   double pi,oner,*errn=NULL,*ethn=NULL;
+
+  errn=*errnp;
 
   strcpy2(fneig,jobnamec,132);
   strcat(fneig,".frd");
@@ -199,8 +201,8 @@ void frd(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne0,
     fprintf(f1,"%5sUTIME              %8s                                        \n",p1,newclock);
     fprintf(f1,"%5sUHOST                                                              \n",p1);
     fprintf(f1,"%5sUPGM               CalculiX                                        \n",p1);
-    fprintf(f1,"%5sUVERSION           Version 2.22                             \n",p1);
-    fprintf(f1,"%5sUCOMPILETIME       Mon Aug  5 19:15:25 CEST 2024                    \n",p1);
+    fprintf(f1,"%5sUVERSION           Version 2.23                             \n",p1);
+    fprintf(f1,"%5sUCOMPILETIME       Thu Aug 20 17:18:08 MSK 2026                    \n",p1);
     fprintf(f1,"%5sUDIR                                                               \n",p1);
     fprintf(f1,"%5sUDBN                                                               \n",p1);
     
@@ -296,9 +298,11 @@ void frd(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne0,
 
 	}else if(strcmp1(&lakon[8*i],"U")==0){
 
-	/* only user elements of type US3 and US45 are stored */
+	/* only user elements with an FRD topology mapping are stored */
 	
-	  if((strcmp1(&lakon[8*i],"US3")!=0)&&(strcmp1(&lakon[8*i],"US45")!=0)){
+	  if((strcmp1(&lakon[8*i],"US3")!=0)&&
+	     (strcmp1(&lakon[8*i],"US45")!=0)&&
+	     (strcmp1(&lakon[8*i],"UC6")!=0)){
 	    continue;
 	  }
 	}
@@ -344,9 +348,11 @@ void frd(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne0,
 	continue;
       }else if(strcmp1(&lakon[8*i],"U")==0){
 
-	/* only user elements of type US3 and US45 are stored */
+	/* only user elements with an FRD topology mapping are stored */
 	
-	if((strcmp1(&lakon[8*i],"US3")!=0)&&(strcmp1(&lakon[8*i],"US45")!=0)){
+	if((strcmp1(&lakon[8*i],"US3")!=0)&&
+	   (strcmp1(&lakon[8*i],"US45")!=0)&&
+	   (strcmp1(&lakon[8*i],"UC6")!=0)){
 	  continue;
 	}
 	indexe=ipkon[i];
@@ -354,7 +360,26 @@ void frd(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne0,
 	indexe=ipkon[i];
       }
       imat=ielmat[i*mi[2]];
-      if(strcmp1(&lakon[8*i+3],"2")==0){
+      if(strcmp1(&lakon[8*i],"UC6")==0){
+
+	/* six-node zero-thickness triangular cohesive element;
+	   stored as a (possibly degenerate) six-node wedge */
+
+	if(strcmp1(output,"asc")==0){
+	  fprintf(f1,"%3s%10" ITGFORMAT "%5s%5s%5" ITGFORMAT "\n%3s",
+		  m1,i+1,p2,p0,imat,m2);
+	  for(j=0;j<6;j++)fprintf(f1,"%10" ITGFORMAT "",kon[indexe+j]);
+	  fprintf(f1,"\n");
+	}else{
+	  iw=(int)(i+1);fwrite(&iw,sizeof(int),1,f1);
+	  iw=(int)ip2;fwrite(&iw,sizeof(int),1,f1);
+	  iw=(int)ip0;fwrite(&iw,sizeof(int),1,f1);
+	  iw=(int)imat;fwrite(&iw,sizeof(int),1,f1);
+	  for(j=0;j<6;j++){
+	    iw=(int)kon[indexe+j];fwrite(&iw,sizeof(int),1,f1);
+	  }
+	}
+      }else if(strcmp1(&lakon[8*i+3],"2")==0){
 
 	/* 20-node brick element */
 
@@ -1584,6 +1609,27 @@ void frd(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne0,
 
   }
 
+  /* storing the ductile damage initiation in the nodes */
+  
+  if((strcmp1(&filab[4785],"DUCT")==0)&&(*ithermal!=2)){
+    iselect=1;
+    
+    frdset(&filab[4785],set,&iset,istartset,iendset,ialset,
+	   inum,&noutloc,&nout,nset,&noutmin,&noutplus,&iselect,
+	   ngraph);
+    
+    frdheader(&icounter,&oner,time,&pi,noddiam,cs,&null,mode,
+	      &noutloc,description,kode,nmethod,f1,output,istep,iinc);
+
+    fprintf(f1," -4  DUCT        1    1\n");
+    fprintf(f1," -5  DUCT        1    1    0    0\n");
+
+    frdselect(damn,damn,&iset,&nkcoords,inum,m1,istartset,iendset,
+	      ialset,ngraph,&ncompscalar,ifieldscalar,icompscalar,
+	      nfieldscalar,&iselect,m2,f1,output,m3);
+
+  }
+
   /* storing the energy in the nodes */
   
   if((*nmethod!=5)||(*mode==-1)){
@@ -2218,19 +2264,24 @@ void frd(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne0,
 
   /* mesh refinement */
   
-  if(strcmp1(&filab[4089],"RM")==0){
+  /*  if(strcmp1(&filab[4089],"RM")==0){
     refinemesh(nk,ne,co,ipkon,kon,v,veold,stn,een,emn,epn,enern,
 	       qfn,errn,filab,mi,lakon,jobnamec,istartset,iendset,
-	       ialset,set,nset,matname,ithermal,output,nmat);
-  }
+	       ialset,set,nset,matname,ithermal,output,nmat,
+	       nelemload,nload,sideload,nodeforc,
+	       nforc,nodeboun,nboun,nodempc,ipompc,nmpc);
+	       }*/
 
-  /* remove auxiliary field for the error estimator at the nodes */  
+  /* remove auxiliary field for the error estimator at the nodes
+     if no mesh refinement was requested */  
 
-  if((*nmethod!=5)||(*mode==-1)){
-    if((strcmp1(&filab[1044],"ERR")==0)&&(*ithermal!=2)){
-      SFREE(errn);
-    }
-  }
+  if((strcmp1(&filab[4089],"RM")!=0)&&
+     ((*nmethod!=5)||(*mode==-1))&&
+     ((strcmp1(&filab[1044],"ERR")==0)&&(*ithermal!=2))){
+    SFREE(errn);
+  }else{*errnp=errn;}
+
+  //  if(((*nmethod!=5)||(*mode==-1)&&((strcmp1(&filab[1044],"ERR")==0)&&(*ithermal!=2))) SFREE(errn);
 
   /*  the remaining lines only apply to frequency calculations
       with cyclic symmetry, complex frequency and steady state calculations */
@@ -2499,6 +2550,7 @@ void frd(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne0,
   }
   
   fclose(f1);
+  
   return;
   
 }

@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -86,11 +86,11 @@
 !     using Couette-Poiseuille formula
 !     the form factor for non round section can be found in works such as
 !     Bohl,W
-!     "Technische Strömungslehre Stoffeigenschaften von Flüssigkeiten und
-!     Gasen, hydrostatik,aerostatik,incompressible Strömungen,
-!     Strömungsmesstechnik
-!     Vogel Würzburg Verlag 1980
-!     
+!     "Technische Stroemungslehre Stoffeigenschaften von Fluessigkeiten und
+!     Gasen, Hydrostatik, Aerostatik, kompressible/inkompressible
+!     Stroemungen, Stroemungsmesstechnik"
+!     Vogel Wuerzburg Verlag 1980
+!
       elseif(reynolds.lt.rey_lam_max) then
          lambda=64.d0/reynolds
          lambda=form_fact*lambda

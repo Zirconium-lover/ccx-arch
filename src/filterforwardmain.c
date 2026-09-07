@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                     */
+/*              Copyright (C) 1998-2025 Guido Dhondt                     */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -58,7 +58,7 @@ static double *au1=NULL,*ad1=NULL,*aub1=NULL,*adb1=NULL,*co1,*area1=NULL;
 /* y1 had to be replaced by yy1, else the following compiler error
    popped up: 
 
-   filterforwardmain.c:42: error: ‘y1’ redeclared as different kind of symbol */
+   filterforwardmain.c:42: error: 'y1' redeclared as different kind of symbol */
 
 void filterforwardmain(double *co,double *gradproj,ITG *nk,
                 ITG *nodedesi,ITG *ndesi,char *objectset,double *xdesi,

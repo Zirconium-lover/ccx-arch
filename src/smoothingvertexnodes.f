@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -146,6 +146,7 @@
 !        
         loop2: do i=1,nktet
           if(iponn(i).eq.0) cycle
+          if(jfix(i).eq.1) cycle
           if(iexternnode(i).eq.0) cycle
           indexe=ipoeln(i)
 !     

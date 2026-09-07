@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -207,7 +207,7 @@
 !     usually specify the mass flow for the complete cross section
 !
 !     in CalculiX, axisymmetric elements are expanded into 3D
-!     using a sector of 360°/iaxial. Therefore, the mass flow and
+!     using a sector of 360 degrees/iaxial. Therefore, the mass flow and
 !     the derivative of f w.r.t. the mass flow have to be adjusted
 !     appropriately.     
 !

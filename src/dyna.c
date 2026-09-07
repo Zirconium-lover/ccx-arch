@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                   */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
 /*     published by the Free Software Foundation(version 2);    */
@@ -95,9 +95,9 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
     *nslavnode=NULL,mortar=0,*imddof=NULL,nmddof,kchdep=0,
     *ikactmech=NULL,nactmech,iabsload=0,iprev=1,inonlinmpc=0,ielem,
     *imdnode=NULL,nmdnode,*imdboun=NULL,nmdboun,*imdmpc=NULL,
-    nmdmpc,intpointvar,*izdof=NULL,
-    nzdof,iload,iforc,*iponoel=NULL,*inoel=NULL,*imdelem=NULL,nmdelem,
-    nasym=0,*nshcon=NULL,nherm,icfd=0,*inomat=NULL,
+    nmdmpc,intpointvar,*izdof=NULL,*iponoelt=NULL,*inoelt=NULL,
+    nzdof,iload,iforc,*iponoeln=NULL,*inoeln=NULL,*imdelem=NULL,nmdelem,
+    nasym=0,*nshcon=NULL,nherm,icfd=0,*inomat=NULL,*iponoel=NULL,
     network=0,iperturbsav,mscalmethod=0,
     *islavquadel=NULL,*irowt=NULL,*jqt=NULL,mortartrafoflag=0;
 
@@ -118,8 +118,8 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
     *bact=NULL,*bmin=NULL,*co=NULL,*xboun=NULL,*xbounold=NULL,*vold=NULL,
     *eme=NULL,*ener=NULL,*coefmpc=NULL,*fmpc=NULL,*coefmpcold,*veold=NULL,
     *xini=NULL,*rwork=NULL,*adc=NULL,*auc=NULL,*zc=NULL,*rpar=NULL,
-    setnull,deltmx,fextmax,dd,dtheta,dthetaref,
-    theta,*vini=NULL,*bcont=NULL,*vr=NULL,*vi=NULL,
+    setnull,deltmx,fextmax,dd,dtheta,dthetaref,*dam=NULL,*damn=NULL,
+    theta,*vini=NULL,*bcont=NULL,*vr=NULL,*vi=NULL,*errn=NULL,
     *stnr=NULL,*stni=NULL,*vmax=NULL,*stnmax=NULL,precision,resultmaxprev,
     resultmax,func,funcp,fexp,fexm,fcos,fsin,sump,*bp=NULL,h14,
     *bv=NULL,*cstr=NULL,*aube=NULL,*adbe=NULL,*sti=*stip,time0=0.0,
@@ -161,6 +161,12 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
   vold=*voldp;eme=*emep;ener=*enerp;ipompc=*ipompcp;nodempc=*nodempcp;
   coefmpc=*coefmpcp;labmpc=*labmpcp;ikmpc=*ikmpcp;ilmpc=*ilmpcp;
   fmpc=*fmpcp;veold=*veoldp;iamt1=*iamt1p;t0=*t0p;t1=*t1p;t1old=*t1oldp;
+
+  /* determining whether a node belongs to at least one element
+     (needed in resultsforc.c) */
+  
+  NNEW(iponoel,ITG,*nk);
+  FORTRAN(nodebelongstoel,(iponoel,lakon,ipkon,kon,ne));
   
   for(k=0;k<3;k++){
     strcpy1(&jobnamef[k*132],&jobnamec[k*132],132);
@@ -321,9 +327,9 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
 	  
     /* determining the elements belonging to a given node */
       
-    NNEW(iponoel,ITG,*nk);
-    NNEW(inoel,ITG,2**nkon);
-    FORTRAN(elementpernode,(iponoel,inoel,lakon,ipkon,kon,ne));
+    NNEW(iponoelt,ITG,*nk);
+    NNEW(inoelt,ITG,2**nkon);
+    FORTRAN(elementpernode,(iponoelt,inoelt,lakon,ipkon,kon,ne));
     NNEW(imdelem,ITG,*ne);
 
     /* storing the elements in which integration point results
@@ -334,12 +340,12 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
 			  ikmpc,ilmpc,ipompc,nodempc,nmpc,imddof,&nmddof,
 			  nactdof,mi,imdmpc,&nmdmpc,imdboun,&nmdboun,
 			  ikboun,nboun,ilboun,ithermal,imdelem,&nmdelem,
-			  iponoel,inoel,prlab,prset,nprint,lakon,set,nset,
+			  iponoelt,inoelt,prlab,prset,nprint,lakon,set,nset,
 			  ialset,ipkon,kon,istartset,iendset,nforc,
 			  ikforc,ilforc));
 
     RENEW(imdelem,ITG,nmdelem);
-    SFREE(iponoel);SFREE(inoel);
+    SFREE(iponoelt);SFREE(inoelt);
   }
 
   /* if results are requested in too many nodes, it is faster to 
@@ -545,14 +551,14 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
     /* determining the maximum amount of segments */
 
     for(i=0;i<*mcs;i++){
-      //	  if(cs[17*i]>nsectors) nsectors=cs[17*i];
-      if(cs[17*i]>nsectors) nsectors=(ITG)(cs[17*i]+0.5);
+      //	  if(cs[18*i]>nsectors) nsectors=cs[18*i];
+      if(cs[18*i]>nsectors) nsectors=(ITG)(cs[18*i]+0.5);
     }
 
     /* determining the maximum number of sectors to be plotted */
 
     for(j=0;j<*mcs;j++){
-      if(cs[17*j+4]>ngraph) ngraph=(ITG)cs[17*j+4];
+      if(cs[18*j+4]>ngraph) ngraph=(ITG)cs[18*j+4];
     }
     nkg=*nk*ngraph;
     neg=*ne*ngraph;
@@ -560,6 +566,7 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
     /* allocating field for the expanded structure */
 
     RENEW(co,double,3**nk*nsectors);
+    RENEW(iponoel,ITG,*nk*nsectors);
 
     /* next line is necessary for multiple cyclic symmetry
        conditions */
@@ -691,7 +698,8 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
 	   &icole,&jqe,&irowe,isolver,nzse,&adbe,&aube,iexpl,
 	   ibody,xbody,nbody,cocon,ncocon,tieset,ntie,imddof,&nmddof,
 	   imdnode,&nmdnode,imdboun,&nmdboun,imdmpc,&nmdmpc,&izdof,&nzdof,
-	   &nherm,xmr,xmi,typeboun,ielprop,prop,orname,itiefac,t0g,t1g);
+	   &nherm,xmr,xmi,typeboun,ielprop,prop,orname,itiefac,t0g,t1g,
+	   iponoel);
 
     RENEW(imddof,ITG,nmddof);
     RENEW(imdnode,ITG,nmdnode);
@@ -1051,7 +1059,7 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
 			&iabsload,
 			&iprescribedboundary,ntrans,trab,inotr,veold,nactdof,
 			bcont,
-			fn,ipobody,iponoel,inoel,ipkon,kon,lakon,ielprop,prop,
+			fn,ipobody,iponoeln,inoeln,ipkon,kon,lakon,ielprop,prop,
 			ielmat,
 			shcon,nshcon,rhcon,nrhcon,ntmat_,cocon,ncocon));
 
@@ -1083,7 +1091,7 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
     }
 
     if(*idrct!=1){
-      printf(" *ERROR in dyna: variable increment length is not allwed in combination with prescribed boundaries\n");
+      printf(" *ERROR in dyna: variable increment length is not allowed in combination with prescribed boundaries\n");
       FORTRAN(stop,());
     }
       
@@ -1300,7 +1308,7 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
 			  nelemload,sideload,mi,
 			  xforcdiff,xloaddiff,xbodydiff,t1diff,xboundiff,&iabsload,
 			  &iprescribedboundary,ntrans,trab,inotr,veold,nactdof,bcont,
-			  fn,ipobody,iponoel,inoel,ipkon,kon,lakon,ielprop,prop,ielmat,
+			  fn,ipobody,iponoeln,inoeln,ipkon,kon,lakon,ielprop,prop,ielmat,
 			  shcon,nshcon,rhcon,nrhcon,ntmat_,cocon,ncocon));
 	      
     /* calculating the instantaneous loading vector */
@@ -1419,7 +1427,7 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
 			      nelemload,sideload,mi,
 			      xforcdiff,xloaddiff,xbodydiff,t1diff,xboundiff,&iabsload,
 			      &iprescribedboundary,ntrans,trab,inotr,veold,nactdof,bcont,
-			      fn,ipobody,iponoel,inoel,ipkon,kon,lakon,ielprop,prop,ielmat,
+			      fn,ipobody,iponoeln,inoeln,ipkon,kon,lakon,ielprop,prop,ielmat,
 			      shcon,nshcon,rhcon,nrhcon,ntmat_,cocon,ncocon));
 	      
 	/* calculating the instantaneous loading vector */
@@ -1770,11 +1778,11 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
 	      thicke,shcon,nshcon,
 	      sideload,xload,xloadold,&icfd,inomat,pslavsurf,pmastsurf,
 	      &mortar,islavact,cdn,islavnode,nslavnode,ntie,clearini,
-	      islavsurf,ielprop,prop,energyini,energy,&iit,iponoel,
-	      inoel,nener,orname,&network,ipobody,xbodyact,ibody,typeboun,
+	      islavsurf,ielprop,prop,energyini,energy,&iit,iponoeln,
+	      inoeln,nener,orname,&network,ipobody,xbodyact,ibody,typeboun,
 	      itiefac,tieset,smscale,&mscalmethod,nbody,t0g,t1g,
 	      islavquadel,aut,irowt,jqt,&mortartrafoflag,
-	      &intscheme,physcon);
+	      &intscheme,physcon,dam,damn,iponoel);
 
       /* restoring */
 
@@ -1807,7 +1815,7 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
 	  mi,stx,vr,vi,stnr,stni,vmax,stnmax,&ngraph,veold,ener,ne,
 	  cs,set,nset,istartset,iendset,ialset,eenmax,fnr,fni,emn,
 	  thicke,jobnamec,output,qfx,cdn,&mortar,cdnr,cdni,nmat,ielprop,
-	  prop,sti);
+	  prop,sti,damn,&errn);
 	
       if(strcmp1(&filab[1044],"ZZS")==0){SFREE(ipneigh);SFREE(neigh);}
     }
@@ -1973,7 +1981,7 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
 
     RENEW(ialset,ITG,nalset_);
 
-    /* restore the infomration in istartset and iendset */
+    /* restore the information in istartset and iendset */
 
     for(j=0; j<*nset; j++){
       istartset[j]=istartset_[j];
@@ -2081,6 +2089,8 @@ void dyna(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,ITG *ne,
 
   (*ttime)+=(*tper);
 
+  SFREE(iponoel);
+  
   return;
 }
 

@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -36,10 +36,10 @@
 !                       checkconvergence.
 !     cstate        : vector containing contact data
 !     temax            : max. natural period of oscillation 
-!     icase         : flag to print debug informations
+!     icase         : flag to print debug information
 !     emax          : maximum energy of the system over the ti-
 !                       me history
-!     r         : energy residual before contact (or re-
+!     r             : energy residual before contact (or re-
 !                       adapted)
 !     delta         : eneres normalized
 !     fact          : factor to set sizemaxinc according to the  

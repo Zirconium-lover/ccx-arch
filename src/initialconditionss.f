@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -76,7 +76,7 @@
      &             "*INITIAL CONDITIONS%",ier)
               return
             endif
-            temperature=1.d-6*int(1.d6*temperature+0.5d0)
+c            temperature=1.d-6*int(1.d6*temperature+0.5d0)
 !     
             if((inoelfree.ne.0).or.(nuel_.gt.0)) then
               tempgrad1=0.d0

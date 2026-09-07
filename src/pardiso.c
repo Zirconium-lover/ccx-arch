@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                   */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include "CalculiX.h"
 #include "pardiso.h"
 
@@ -34,6 +35,126 @@ double *aupardiso=NULL;
 ITG mthread_mkl=0;
 char envMKL[32];
 
+/* Optional symbolic-analysis cache for the symmetric nonlinear path.
+   CalculiX normally calls PARDISO phase 12 and phase -1 for every Newton
+   iteration even when the equation graph is unchanged.  With the opt-in
+   environment setting below, retain PARDISO's symbolic state and execute
+   phase 22 for subsequent numerical factorizations.  A hash of the actual
+   sparse graph invalidates the cache after remastruct or any other structure
+   change.  Unsymmetric storage remains on the untouched stock path. */
+static ITG pardiso_reuse_mode=-1,pardiso_cache_valid=0,
+  pardiso_cache_neq=0,pardiso_cache_nzs=0,
+  pardiso_cache_symmetry=0,pardiso_cache_inputformat=0;
+static unsigned long long pardiso_cache_hash=0;
+
+static ITG pardiso_symbolic_reuse_requested(void)
+{
+  char *env;
+
+  if(pardiso_reuse_mode>=0) return pardiso_reuse_mode;
+  pardiso_reuse_mode=0;
+  env=getenv("CCX_PARDISO_REUSE_SYMBOLIC");
+  if((env!=NULL)&&
+     ((strcmp(env,"1")==0)||(strcmp(env,"ON")==0)||
+      (strcmp(env,"on")==0)||(strcmp(env,"YES")==0)||
+      (strcmp(env,"yes")==0))) pardiso_reuse_mode=1;
+  return pardiso_reuse_mode;
+}
+
+/* CCX_PARDISO_CGS=<L>: solve with preconditioned CGS using the LU that is
+   already in the cache, instead of refactorising.  MKL does this inside a
+   combined phase=23 call and falls back to a full numerical factorisation by
+   itself when the Krylov iteration fails, so the downside is bounded by one
+   wasted attempt.  L is the stopping tolerance exponent, 10^-L.
+
+   E-101 removed the gate that kept the SYMBOLIC factorisation from being
+   reused; on 84 000 elements that was worth only 2.3%, because the analysis
+   is a nearly fixed cost while the NUMERICAL factorisation grows as ~N^1.5.
+   This attacks the numerical phase instead, which is the part that dominates
+   at the sizes the true-scale models need.  Measured justification: Newton
+   here contracts the residual by a median 0.52-0.60 per iteration with only
+   8-16% of steps quadratic, so the exact tangent is not buying quadratic
+   convergence and a slightly stale operator should cost little. */
+
+static ITG pardiso_cgs_mode=-1;
+static double *pardiso_cgs_rhs=NULL;
+static ITG pardiso_cgs_nrhs=1,pardiso_cgs_done=0;
+static ITG pardiso_cgs_ok=0,pardiso_cgs_fail=0,pardiso_cgs_iter=0;
+
+static ITG pardiso_cgs_level(void)
+{
+  char *env;
+  ITG v;
+
+  if(pardiso_cgs_mode>=0) return pardiso_cgs_mode;
+  pardiso_cgs_mode=0;
+  env=getenv("CCX_PARDISO_CGS");
+  if(env!=NULL){
+    v=atoi(env);
+    if((v>0)&&(v<10)) pardiso_cgs_mode=v;
+  }
+  return pardiso_cgs_mode;
+}
+
+static void pardiso_cgs_report(ITG force)
+{
+  ITG n=pardiso_cgs_ok+pardiso_cgs_fail;
+
+  if(n<=0) return;
+  if((!force)&&(n%100!=0)) return;
+  printf("[PARDISO CGS] %" ITGFORMAT " of %" ITGFORMAT " solves reused the LU "
+         "(%.1f%%), mean %.1f CGS iterations; %" ITGFORMAT " fell back to a "
+         "full factorisation\n",
+         pardiso_cgs_ok,n,100.0*pardiso_cgs_ok/n,
+         pardiso_cgs_ok>0?(double)pardiso_cgs_iter/pardiso_cgs_ok:0.0,
+         pardiso_cgs_fail);
+  fflush(stdout);
+}
+
+static ITG pardiso_reuse_eligible(ITG symmetryflag,ITG inputformat)
+{
+  /* Which matrix types may reuse the cached symbolic factorisation.
+
+     The cache is keyed on neq, nzs and a hash of (icol,irow) - the
+     lower-triangular pattern.  That describes the structure completely for
+     the symmetric type (mtype=-2) and for the structurally symmetric,
+     numerically asymmetric type (mtype=1).  mtype=1 is what the damage
+     rank-1 tangent produces: mafilldamas writes into the pattern mafillsm
+     has already built and the upper half mirrors it, so losing symmetry
+     does not change the sparsity.  Until 2026-08-28 the gate here was
+     (symmetryflag==0), so every run of the fracture branch - which is
+     always CCX_DAMAGE_TANGENT=UNSYM, symmetryflag=2 - recomputed the
+     ordering for every factorisation.
+
+     inputformat==3 (mtype=11, structurally asymmetric - the contact path)
+     builds its pattern from jq and nzs3, which the hash does NOT cover, so
+     it stays excluded. */
+
+  if(!pardiso_symbolic_reuse_requested()) return 0;
+  if(symmetryflag==0) return 1;
+  return (inputformat!=3);
+}
+
+static unsigned long long pardiso_structure_hash(const ITG *icol,
+                                                 const ITG *irow,
+                                                 ITG neq,ITG nzs)
+{
+  ITG i;
+  unsigned long long h=1469598103934665603ULL;
+
+  h^=(unsigned long long)neq;h*=1099511628211ULL;
+  h^=(unsigned long long)nzs;h*=1099511628211ULL;
+  for(i=0;i<neq;i++){
+    h^=(unsigned long long)(unsigned int)icol[i];
+    h*=1099511628211ULL;
+  }
+  for(i=0;i<nzs;i++){
+    h^=(unsigned long long)(unsigned int)irow[i];
+    h*=1099511628211ULL;
+  }
+  return h;
+}
+
 void pardiso_factor(double *ad, double *au, double *adb, double *aub, 
 		    double *sigma,ITG *icol, ITG *irow, 
 		    ITG *neq, ITG *nzs, ITG *symmetryflag, ITG *inputformat,
@@ -43,9 +164,36 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
   /*  char env1[32]; */
   ITG i,j,k,l,maxfct=1,mnum=1,phase=12,nrhs=1,*perm=NULL,mtype,
     msglvl=0,error=0,*irowpardiso=NULL,kflag,kstart,n,ifortran,
-    lfortran,index,id,k2;
+    lfortran,index,id,k2,reuse_requested=0,reuse_current=0,cgs_active=0;
   ITG ndim,nthread,nthread_v;
   double *b=NULL,*x=NULL;
+  unsigned long long structure_hash=0;
+
+  reuse_requested=pardiso_reuse_eligible(*symmetryflag,*inputformat);
+  if(reuse_requested){
+    structure_hash=pardiso_structure_hash(icol,irow,*neq,*nzs);
+    if((pardiso_cache_valid)&&
+       (pardiso_cache_neq==*neq)&&(pardiso_cache_nzs==*nzs)&&
+       (pardiso_cache_symmetry==*symmetryflag)&&
+       (pardiso_cache_inputformat==*inputformat)&&
+       (pardiso_cache_hash==structure_hash)) reuse_current=1;
+  }
+
+  if((pardiso_cache_valid)&&(!reuse_current)){
+    ITG cache_neq=pardiso_cache_neq;
+    ITG cache_symmetry=pardiso_cache_symmetry;
+    ITG cache_inputformat=pardiso_cache_inputformat;
+    pardiso_cleanup(&cache_neq,&cache_symmetry,&cache_inputformat);
+  }
+
+  if(reuse_current) phase=22;
+
+  /* A cached LU plus a RHS handed in by pardiso_main is everything the
+     combined factorise-and-solve phase needs. */
+  if((pardiso_cgs_level()>0)&&(reuse_current)&&(pardiso_cgs_rhs!=NULL)){
+    cgs_active=1;
+    phase=23;
+  }
 
   if(*symmetryflag==0){
     printf(" Factoring the system of equations using the symmetric pardiso solver\n");
@@ -55,6 +203,16 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
 
   iparm[0]=0;
   iparm[1]=3;
+  iparm[3]=0;
+  if(cgs_active){
+    /* iparm[0]=0 tells PARDISO to OVERWRITE iparm[1..63] with its defaults,
+       so anything set here would be lost - which is also why the iparm[1]=3
+       above has never taken effect.  After the first full call the array
+       already holds those defaults, so switching to iparm[0]=1 preserves
+       them and lets exactly one entry be changed. */
+    iparm[0]=1;
+    iparm[3]=10*pardiso_cgs_level()+1;
+  }
   /* set MKL_NUM_THREADS to min(CCX_NPROC_EQUATION_SOLVER,OMP_NUM_THREADS)
      must be done once  */
   if (mthread_mkl == 0) {
@@ -79,7 +237,9 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
     
   printf(" number of threads =% d\n\n",mthread_mkl);
 
-  for(i=0;i<64;i++){pt[i]=0;}
+  if(!reuse_current){
+    for(i=0;i<64;i++){pt[i]=0;}
+  }
 
   if(*symmetryflag==0){
 
@@ -90,10 +250,12 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
     mtype=-2;
       
     ndim=*neq+*nzs;
-      
-    NNEW(pointers,ITG,*neq+1);
-    NNEW(icolpardiso,ITG,ndim);
-    NNEW(aupardiso,double,ndim);
+
+    if(!reuse_current){
+      NNEW(pointers,ITG,*neq+1);
+      NNEW(icolpardiso,ITG,ndim);
+      NNEW(aupardiso,double,ndim);
+    }
       
     k=ndim;
     l=*nzs;
@@ -102,11 +264,13 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
       pointers[*neq]=ndim+1;
       for(i=*neq-1;i>=0;--i){
 	for(j=0;j<icol[i];++j){
-	  icolpardiso[--k]=irow[--l];
+	  --k;--l;
+	  if(!reuse_current) icolpardiso[k]=irow[l];
 	  aupardiso[k]=au[l];
 	}
-	pointers[i]=k--;
-	icolpardiso[k]=i+1;
+	if(!reuse_current) pointers[i]=k;
+	k--;
+	if(!reuse_current) icolpardiso[k]=i+1;
 	aupardiso[k]=ad[i];
       }
     }
@@ -114,11 +278,13 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
       pointers[*neq]=ndim+1;
       for(i=*neq-1;i>=0;--i){
 	for(j=0;j<icol[i];++j){
-	  icolpardiso[--k]=irow[--l];
+	  --k;--l;
+	  if(!reuse_current) icolpardiso[k]=irow[l];
 	  aupardiso[k]=au[l]-*sigma*aub[l];
 	}
-	pointers[i]=k--;
-	icolpardiso[k]=i+1;
+	if(!reuse_current) pointers[i]=k;
+	k--;
+	if(!reuse_current) icolpardiso[k]=i+1;
 	aupardiso[k]=ad[i]-*sigma*adb[i];
       }
     }
@@ -210,6 +376,31 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
 	
       /* reordering lower triangular matrix */
 
+      /* THIS BRANCH REBUILDS ITS CSC SCRATCH ON EVERY CALL, unlike the
+         symmetric branch above, which guards the allocation with
+         !reuse_current.  It cannot be guarded the same way: the buffers are
+         allocated at nzs, filled, sorted, and only then RENEWed to
+         neq+2*nzs, so the construction is multi-stage.
+
+         Until E-101 that did not matter, because reuse was never eligible
+         here and pardiso_cleanup - the only place that frees these three -
+         ran after every solve.  Opening the cache to mtype=1 removed that
+         cleanup and left the allocation, so EVERY factorisation leaked
+         (neq+1)+nzs ITG plus nzs doubles.  Measured on a 190 000-equation
+         model: ~120 MB per call, 4.75 GB after ninety seconds, 20.75 GB
+         after forty minutes, against a flat 2.8 GB with the cache off.
+
+         Freeing here costs nothing that matters - PARDISO's own symbolic
+         state lives in pt and is untouched, which is where the reuse
+         benefit actually is. */
+
+      SFREE(pointers);
+      SFREE(icolpardiso);
+      SFREE(aupardiso);
+      pointers=NULL;
+      icolpardiso=NULL;
+      aupardiso=NULL;
+
       ndim=*nzs;
       NNEW(pointers,ITG,*neq+1);
       NNEW(irowpardiso,ITG,ndim);
@@ -300,10 +491,52 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
 /* next line is for the simulateous use of PARDISO and PaStiX */
 
   mkl_domain_set_num_threads(mthread_mkl,MKL_DOMAIN_PARDISO);
-  
+
+  if(cgs_active){
+    b=pardiso_cgs_rhs;
+    nrhs=pardiso_cgs_nrhs;
+    NNEW(x,double,nrhs**neq);
+  }
+
   FORTRAN(pardiso,(pt,&maxfct,&mnum,&mtype,&phase,neq,aupardiso,
 		   pointers,icolpardiso,perm,&nrhs,iparm,&msglvl,
                    b,x,&error));
+
+  if(cgs_active){
+    if(error==0){
+      for(i=0;i<nrhs**neq;i++){pardiso_cgs_rhs[i]=x[i];}
+      pardiso_cgs_done=1;
+      /* iparm[19]>0 is the number of CGS iterations that converged;
+         <0 means the Krylov iteration failed and PARDISO refactorised. */
+      if(iparm[19]>0){
+        pardiso_cgs_ok++;
+        pardiso_cgs_iter+=iparm[19];
+      }else{
+        pardiso_cgs_fail++;
+      }
+      pardiso_cgs_report(0);
+    }
+    SFREE(x);
+    x=NULL;
+  }
+
+  if(reuse_requested){
+    if(error==0){
+      if(!reuse_current){
+        printf("[PARDISO CACHE] symbolic analysis retained "
+               "(neq=%" ITGFORMAT " nzs=%" ITGFORMAT ")\n",
+               *neq,*nzs);
+      }
+      pardiso_cache_valid=1;
+      pardiso_cache_neq=*neq;
+      pardiso_cache_nzs=*nzs;
+      pardiso_cache_symmetry=*symmetryflag;
+      pardiso_cache_inputformat=*inputformat;
+      pardiso_cache_hash=structure_hash;
+    }else{
+      pardiso_cache_valid=0;
+    }
+  }
 
   return;
 }
@@ -332,7 +565,7 @@ void pardiso_solve(double *b, ITG *neq,ITG *symmetryflag,ITG *inputformat,
   }
   iparm[1]=3;
   
-  /* pardiso_factor has been called befor, MKL_NUM_THREADS=mthread_mkl is set*/
+  /* pardiso_factor has been called before, MKL_NUM_THREADS=mthread_mkl is set*/
 
   //  printf(" number of threads =% d\n\n",mthread_mkl);
 
@@ -371,6 +604,13 @@ void pardiso_cleanup(ITG *neq,ITG *symmetryflag,ITG *inputformat){
   SFREE(icolpardiso);
   SFREE(aupardiso);
   SFREE(pointers);
+  icolpardiso=NULL;
+  aupardiso=NULL;
+  pointers=NULL;
+  pardiso_cache_valid=0;
+  pardiso_cache_hash=0;
+  pardiso_cgs_report(1);
+  pardiso_cgs_ok=0;pardiso_cgs_fail=0;pardiso_cgs_iter=0;
 
   return;
 }
@@ -382,15 +622,26 @@ void pardiso_main(double *ad, double *au, double *adb, double *aub,
 
   if(*neq==0) return;
 
-  pardiso_factor(ad,au,adb,aub,sigma,icol,irow, 
+  /* Offer the RHS to pardiso_factor: if a cached LU is usable it will run the
+     combined phase 23 and solve there, and pardiso_cgs_done says so. */
+  pardiso_cgs_rhs=b;
+  pardiso_cgs_nrhs=*nrhs;
+  pardiso_cgs_done=0;
+
+  pardiso_factor(ad,au,adb,aub,sigma,icol,irow,
 		 neq,nzs,symmetryflag,inputformat,jq,nzs3);
 
-  pardiso_solve(b,neq,symmetryflag,inputformat,nrhs);
+  pardiso_cgs_rhs=NULL;
 
-  pardiso_cleanup(neq,symmetryflag,inputformat);
+  if(!pardiso_cgs_done){
+    pardiso_solve(b,neq,symmetryflag,inputformat,nrhs);
+  }
+
+  if(!pardiso_reuse_eligible(*symmetryflag,*inputformat)){
+    pardiso_cleanup(neq,symmetryflag,inputformat);
+  }
 
   return;
 }
 
 #endif
-

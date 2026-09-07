@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -232,7 +232,7 @@
 !
 !     if any of the compressibility coefficients is zero (incompressible
 !     material), it is replaced. The lowest order coefficient is replaced
-!     such that it corresponds to a Poisson coeffient of 0.475, the 
+!     such that it corresponds to a Poisson coefficient of 0.475, the 
 !     following ones are replaced by a power of the first one
 !
       do j=1,ntmat

@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -18,10 +18,14 @@
 !
       subroutine allocont(ncont,ntie,tieset,nset,set,istartset,
      &  iendset,ialset,lakon,ncone,tietol,ismallsliding,kind1,kind2,
-     &  mortar,istep)
+     &  mortar,istep,ipkon)
 !
 !     counting the number of triangles needed for the 
-!     triangulation of the contact master surfaces
+!     triangulation of the contact master surfaces,
+!     all contact pairs are taken into account (no matter
+!     whether deactivated or not), however, only faces of 
+!     existing elements (in particular non-deactivated) are
+!     considered.
 !
 !     ismallsliding = 0: large sliding
 !                   = 1: small sliding
@@ -36,7 +40,7 @@
 !
       integer ncont,ntie,i,j,k,nset,istartset(*),iendset(*),ialset(*),
      &  imast,nelem,jface,ncone,islav,ismallsliding,ipos,mortar,istep,
-     &  kflag,idummy,jact,id
+     &  kflag,idummy,jact,id,ipkon(*)
 !
       real*8 tietol(4,*)
 !
@@ -64,9 +68,6 @@
 !
 !           determining the master surface
 !
-c            do j=1,nset
-c               if(set(j).eq.mastset) exit
-c            enddo
             call cident81(set,mastset,nset,id)
             j=nset+1
             if(id.gt.0) then
@@ -103,7 +104,8 @@ c            enddo
 !
             do j=istartset(imast),iendset(imast)
 !     
-               nelem=int(ialset(j)/10.d0)
+              nelem=int(ialset(j)/10.d0)
+              if(ipkon(nelem).lt.0) cycle
                jface=ialset(j)-10*nelem
 !     
                if(lakon(nelem)(4:5).eq.'20') then

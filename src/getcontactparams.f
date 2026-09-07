@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -78,7 +78,7 @@
           p0=0.0
           beta=0.0
 !     
-!     piecewiese linear regularization
+!     piecewise linear regularization
 !     
         elseif(int(elcon(3,1,imat)).eq.3) then
           regmode=2

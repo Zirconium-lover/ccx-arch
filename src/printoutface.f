@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -162,12 +162,12 @@
                   mint2d=1
                elseif((lakonl(4:4).eq.'8').or.(lakonl(4:6).eq.'20R')) 
      &             then
-                  if((lakonl(7:7).eq.'A').or.(lakonl(7:7).eq.'S').or.
-     &                 (lakonl(7:7).eq.'E')) then
-                     mint2d=2
-                  else
+c                  if((lakonl(7:7).eq.'A').or.(lakonl(7:7).eq.'S').or.
+c     &                 (lakonl(7:7).eq.'E')) then
+c                     mint2d=2
+c                  else
                      mint2d=4
-                  endif
+c                  endif
                elseif(lakonl(4:4).eq.'2') then
                   mint2d=9
                elseif(lakonl(4:5).eq.'10') then

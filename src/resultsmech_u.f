@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -55,7 +55,14 @@
      &     xstateini(nstate_,mi(1),*),reltime,thicke(mi(3),*),
      &     emeini(6,mi(1),*)
 !
-      if(lakon(nelem)(2:2).eq.'1') then
+      if(lakon(nelem)(2:3).eq.'C6') then
+!
+!     six-node zero-thickness triangular cohesive element
+!
+         call resultsmech_uc6(co,kon,ipkon,ne,v,stx,xstateini,
+     &        xstate,mi,nstate_,fn,qa,nal,calcul_fn,calcul_qa,iout,
+     &        eei,dtime,nelem,ielprop,prop)
+      elseif(lakon(nelem)(2:2).eq.'1') then
 !
 !     user element u1 timoshenko beam
 !

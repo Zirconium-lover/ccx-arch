@@ -57,6 +57,7 @@ boundarymesh.f \
 boundarys.f \
 bsort.f \
 buckles.f \
+calcdamage.f \
 calcdatarget.f \
 calcdev.f \
 calcdhds.f \
@@ -160,6 +161,7 @@ clonesensitivities.f \
 closefile.f \
 closefilefluid.f \
 cmatrix.f \
+cohesive_uc6.f \
 combilcfhcf.f \
 compdt.f \
 complexfrequencys.f \
@@ -210,9 +212,16 @@ cubic.f \
 cubtri.f \
 cyclichardenings.f \
 cyclicsymmetrymodels.f \
+damageinitiations.f \
 dampings.f \
 dashdamp.f \
 dashpots.f \
+damconnect.f \
+damnonlocal.f \
+damconnectsets.f \
+damdangle.f \
+damfloat.f \
+damsnapcheck.f \
 dattime.f \
 ddeabm.f \
 ddebdf.f \
@@ -272,6 +281,7 @@ e_c3d_rhs.f \
 e_c3d_rhs_th.f \
 e_c3d_se.f \
 e_c3d_th.f \
+e_c3d_uc6.f \
 e_c3d_u1.f \
 e_c3d_us3.f \
 e_c3d_us45.f \
@@ -315,9 +325,11 @@ extrapolateshell_us3.f \
 extrapolateshell_us45.f \
 extrapolate_se.f \
 extrapolate_u.f \
+extrapolate_uc6.f \
 extrapolate_u1.f \
 extrapolate_us3.f \
 extrapolate_us45.f \
+extsurface.f \
 faceinfo.f \
 fcrit.f \
 feasibledirections.f \
@@ -488,6 +500,7 @@ localaxes.f \
 lump.f \
 machpi.f \
 mafillcorio.f \
+mafilldamas.f \
 mafilldm.f \
 mafilldmss.f \
 mafillem.f \
@@ -548,10 +561,12 @@ modaldynamics.f \
 modelchanges.f \
 modf.f \
 modifympc.f \
+modifystressstiff.f \
 moehring.f \
 mohrcoulomb.f \
 mohrcoulombhardenings.f \
 mohrcoulombs.f \
+move.f \
 mpcadd.f \
 mpcrem.f \
 mpcs.f \
@@ -584,6 +599,7 @@ nidentll.f \
 nmatrix.f \
 noanalysiss.f \
 nodalthicknesss.f \
+nodebelongstoel.f \
 nodeprints.f \
 nodes.f \
 nodestiedface.f \
@@ -591,8 +607,6 @@ noelfiles.f \
 noelsets.f \
 nonlinmpc.f \
 normals.f \
-writeinputdeck.f \
-writeinputdeck2.f \
 normalsoninterface.f \
 normalsonsurface_robust.f \
 normalsonsurface_se.f \
@@ -725,6 +739,7 @@ reinit_refine.f \
 relaxval_al.f \
 relaxval_alfull.f \
 remlagrangemult.f \
+removeface.f \
 removesliver.f \
 removetet_refine.f \
 removetet_sliver.f \
@@ -745,6 +760,7 @@ resultsk.f \
 resultsmech.f \
 resultsmech_matrix.f \
 resultsmech_se.f \
+resultsmech_uc6.f \
 resultsmech_u1.f \
 resultsmech_us3.f \
 resultsmech_us45.f \
@@ -808,6 +824,7 @@ smoothbadvertex.f \
 smoothingmidnodes.f \
 smoothingvertexnodes.f \
 smoothshock.f \
+smoothshockappend.f \
 solidsections.f \
 sortev.f \
 spcmatch.f \
@@ -919,6 +936,7 @@ updatecontpen.f \
 updategeodata.f \
 us3_sub.f \
 us4_sub.f \
+userefinedmeshs.f \
 userelements.f \
 usermaterials.f \
 usermpc.f \
@@ -949,6 +967,8 @@ writeev.f \
 writehe.f \
 writeim.f \
 writeinput.f \
+writeinputdeck.f \
+writeinputdeck2.f \
 writelm.f \
 writemaccs.f \
 writemac.f \
@@ -986,7 +1006,7 @@ buildtquad.c \
 calcresidual.c \
 calcresidual_em.c \
 calcshapef.c \
-ccx_2.22step.c \
+ccx_2.23step.c \
 call_external_umat.c \
 call_external_umat_user.c \
 cascade.c \

@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                     */
+/*              Copyright (C) 1998-2025 Guido Dhondt                     */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -30,7 +30,7 @@ static ITG *nobject1,*nk1,*nodedesi1,*ndesi1,*nx1,*ny1,*nz1,
 /* y1 had to be replaced by yy1, else the following compiler error
    popped up: 
 
-   transitionmain.c:42: error: ‘y1’ redeclared as different kind of symbol */
+   transitionmain.c:42: error: 'y1' redeclared as different kind of symbol */
 
 static double *feasdir1,*xo1,*yo1,*zo1,*x1,*yy1,*z1,*co1;
 

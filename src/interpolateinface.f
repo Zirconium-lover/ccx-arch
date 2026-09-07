@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -203,7 +203,7 @@ c     write(*,*) '**regular solution'
 !     triangle
 !     
 !     calculating the distance from each edge of the triangle
-!     dis(i) is the distance of the new integration point fromt
+!     dis(i) is the distance of the new integration point from
 !     the edge opposite to local node i of the triangle itri
 !     
         do l=1,3

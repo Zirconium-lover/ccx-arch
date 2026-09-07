@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -15,7 +15,7 @@
 !     along with this program; if not, write to the Free Software
 !     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 !
-!     This subroutines enables to caclulate a correction term linked to with the radius 
+!     This subroutines enables to calculate a correction term linked to with the radius 
 !     of the spike as a function of r/s (radius/gap)
 !     the parameter Hst ( height of the step ) enable to select either the table for a
 !     straight labyrinth (Hst=0) or for a stepped labyrinth

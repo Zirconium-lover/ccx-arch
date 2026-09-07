@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -822,17 +822,6 @@ c
             ikfree=ikfree+8
           enddo
         endif
-!     
-!     check whether the user has specified rotational degrees
-!     of freedom (in that case rig(i)=-1 was assigned in 
-!     subroutine gen3delem); if so, a rigid MPC must be defined
-!     
-c     if(rig(i).ne.0) then
-c     rig(i)=0
-c     if(nexp.le.1) then
-c     nexp=2
-c     endif
-c     endif
 !     
 !     storing the expanded nodes
 !     

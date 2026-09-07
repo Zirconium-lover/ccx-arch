@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -185,16 +185,17 @@
             irefnode=node
             nk=nk+1
             if(nk.gt.nk_) then
-              write(*,*) '*ERROR in rigidbodies: increase nk_'
+              write(*,*) '*ERROR in gen3dboun: increase nk_'
               call exit(201)
             endif
             irotnode=nk
             rig(node)=irotnode
+            if(ntrans.gt.0) inotr(1,irotnode)=inotr(1,node)
             write(27,*) 'a KNOT was generated in node ',node
             write(27,*)
             nk=nk+1
             if(nk.gt.nk_) then
-              write(*,*) '*ERROR in rigidbodies: increase nk_'
+              write(*,*) '*ERROR in gen3dboun: increase nk_'
               call exit(201)
             endif
             iexpnode=nk

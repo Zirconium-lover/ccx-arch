@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -27,7 +27,7 @@
 !     
       real*8 vold(0:mi(2),*),xload(2,*)
 !
-!     updating the boudary conditions in a mechanical
+!     updating the boundary conditions in a mechanical
 !     calculation coming from a previous thermal calculation
 !     
 !     updating the pressure boundary conditions

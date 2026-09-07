@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -46,7 +46,7 @@
 !
       data n11 /11/
 !
-!     determination of cd with the caracteristics by interpolation
+!     determination of cd with the characteristics by interpolation
 !
       real*8 ps2,pt1,ps2vpt1,cd      
 !

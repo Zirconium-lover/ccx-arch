@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -41,7 +41,7 @@
      &  iline,ipol,inl,ipoinp(2,*),inp(3,*),mcs,iaxial,ipoinpc(0:*),
      &  ier,numnod
 !
-      real*8 thicke(mi(3),*),thickness,pi,cs(17,*),xn(3),co(3,*),p(3),
+      real*8 thicke(mi(3),*),thickness,pi,cs(18,*),xn(3),co(3,*),p(3),
      &     dd,xnor(*),orab(7,*)
 !
       if((istep.gt.0).and.(irstrt(1).ge.0)) then

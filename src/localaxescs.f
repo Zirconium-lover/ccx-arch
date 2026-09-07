@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -25,7 +25,7 @@
 !
       integer mcs,i,imax
 !
-      real*8 cs(17,*),xn(3),e1(3),e2(3),xmax,dd
+      real*8 cs(18,*),xn(3),e1(3),e2(3),xmax,dd
 !
 !     xn: axis direction; first cyclic symmetry definition is taken
 !

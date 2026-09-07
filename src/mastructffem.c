@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -126,7 +126,7 @@ void mastructffem(ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
       nactdoh[i]=*neqp;
     }
   }
-  printf("neqppp=%d\n",*neqp);
+  printf("neqppp=%" ITGFORMAT "\n",*neqp);
   
   /* generic mass (temperature/velocity/compressible pressure/turbulent) entries*/
 
@@ -184,9 +184,9 @@ void mastructffem(ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
     /* summary */
       
     printf(" number of generic mass equations\n");
-    printf(" %d\n",*nk);
+    printf(" %" ITGFORMAT "\n",*nk);
     printf(" number of nonzero generic mass matrix elements\n");
-    printf(" %d\n",nmast);
+    printf(" %" ITGFORMAT "\n",nmast);
     printf("\n");
       
     /* changing the meaning of icolv,jqv,mast1,irowv:
@@ -407,9 +407,9 @@ void mastructffem(ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
   /* summary */
   
   printf(" number of pressure equations\n");
-  printf(" %d\n",*neqp);
+  printf(" %" ITGFORMAT "\n",*neqp);
   printf(" number of nonzero pressure matrix elements\n");
-  printf(" %d\n",nmast);
+  printf(" %" ITGFORMAT "\n",nmast);
   printf("\n");
   
   /* changing the meaning of icolp,jqp,mast1,irowp:

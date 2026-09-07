@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -265,7 +265,7 @@ c            iaxial=nint(prop(index+3))
             call cd_lab_radius(rad,s,Hst,cd_radius)
          endif
 !     
-!     carry over factor (only for straight throught labyrinth)
+!     carry over factor (only for straight through labyrinth)
 !     
          if((n.ge.2).and.(hst.eq.0.d0)) then
             cst=n/(n-1.d0)
@@ -492,7 +492,7 @@ c            iaxial=nint(prop(index+3))
             cd_radius=1
          endif
 !     
-!     carry over factor (only for straight throught labyrinth)
+!     carry over factor (only for straight through labyrinth)
 !     
          if((n.gt.1).and.(hst.eq.0.d0)) then
             cst=n/(n-1.d0)

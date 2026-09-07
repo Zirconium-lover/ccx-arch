@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -18,7 +18,7 @@
 !
       subroutine transformatrix(xab,p,a)
 !
-!     determines the transformation matrix a in a point p for a carthesian 
+!     determines the transformation matrix a in a point p for a cartesian 
 !     (xab(7)>0) or cylindrical transformation (xab(7)<0)
 !
 !     the matrix a(i,j) corresponds to matrix T, p. 100 in 
@@ -33,7 +33,7 @@
 !
       if(xab(7).gt.0) then
 !
-!        carthesian transformation
+!        cartesian transformation
 !
          e1(1)=xab(1)
          e1(2)=xab(2)

@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -488,7 +488,7 @@
         endif
         pt1pt2=pt1/pt2
 !     
-!     Mach number caclulation
+!     Mach number calculation
 !     
         M1=dsqrt(2d0/km1*(Tt1/T1-1.d0))
         if((1.d0-M1).le.1.d-6) then

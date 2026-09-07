@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -50,7 +50,7 @@
 !     
       data iflag /2/
 !     
-!     new added data for the local coodinates for nodes
+!     new added data for the local coordinates for nodes
 !     
       data xquad /-1,-1,
      &     1,-1,

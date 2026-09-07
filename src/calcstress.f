@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -200,7 +200,7 @@
             p(3)=p_(1)
           endif
         else
-          write(*,*) 'ERROR: calcualtion of principal stresses as'
+          write(*,*) 'ERROR: calculation of principal stresses as'
           write(*,*) '       input for the KS-function failed'
           call exit(201)
         endif

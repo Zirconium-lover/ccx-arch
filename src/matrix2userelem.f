@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -177,7 +177,7 @@ c      mi(2)=max(mi(2),3)
       return
  2    write(*,*)
       write(*,*) '*ERROR in stiffness matrix file ',filename
-      write(*,*) '       uncorrect format'
+      write(*,*) '       incorrect format'
       call exit(201)
  3    write(*,*)
       write(*,*) '*ERROR reading stiffness matrix file: ',filename

@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -16,7 +16,7 @@
 !     along with this program; if not, write to the Free Software
 !     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 !
-!     function to evaluate shape funciton for quad-lin mortar method
+!     function to evaluate shape function for quad-lin mortar method
 !     \f$ shape(\xi,\eta) \f$
 !     see phd-thesis Sitzmann Chapter 4.1.
 !      

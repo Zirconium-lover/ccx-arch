@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -33,8 +33,6 @@
       real*8 v(0:mi(2),*),veold(0:mi(2),*),stn(6,*),een(6,*),emn(6,*),
      &     epn(*),enern(*),qfn(3,*),errn(6,*),h(*),targetsize,size,d(*),
      &     dmin,cotet(3,*)
-!     
-!     
 !     
       label(1:4)=filab(48)(3:6)
 !     
@@ -108,6 +106,11 @@
         elseif(label.eq.'USER') then
 c     call ucalculateh(v,veold,stn,een,emn,epn,enern,qfn,
 c     &           errn,size,mi)
+        else
+!
+!         smoothing only
+!
+          size=targetsize
         endif
 !     
         if(size/targetsize.gt.1.d0) then

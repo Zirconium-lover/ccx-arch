@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -23,10 +23,10 @@
      &     matname,inomat,mi,ithermal,dhel,jyy,ifreesurface,
      &     nbody,ipobody,ibody,xbody,depth,nodfreesurf,dgravity,xg)
 !     
-!     initial calculations for cfd applicatons:
+!     initial calculations for cfd applications:
 !     - determine the distance from the nearest solid surface
 !     (stored in yy and corresponding wall node in jyy)
-!     - determing the distance from the nearest in-flow node
+!     - determining the distance from the nearest in-flow node
 !     for solid surface nodes (stored in xsolidsurf)
 !     - determine the adjacent element height for each node 
 !     (stored in field dh)

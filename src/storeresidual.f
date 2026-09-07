@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -43,7 +43,7 @@
 !
       mt=mi(2)+1
 !
-      nlabel=55
+      nlabel=56
 !
 !     storing the residual forces in field fn
 !
@@ -109,8 +109,10 @@
          nfield=mt
          cflag=filab(1)(5:5)
          iforce=0
-         call map3dto1d2d(vold,ipkon,inum,kon,lakon,nfield,nk,
-     &        ne,cflag,co,vold,iforce,mi,ielprop,prop)
+c         call map3dto1d2d(vold,ipkon,inum,kon,lakon,nfield,nk,
+c     &        ne,cflag,co,vold,iforce,mi,ielprop,prop)
+         call map3dto1d2d_v(vold,ipkon,inum,kon,lakon,nfield,nk,
+     &        ne,nactdof)
       endif
 !
 !     marking gas nodes by multiplying inum by -1

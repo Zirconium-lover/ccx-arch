@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                     */
+/*              Copyright (C) 1998-2025 Guido Dhondt                     */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -272,7 +272,7 @@ void gradientprojection(ITG *nobject,char *objectset,double *dgdxglob,
         
   }
   
-  /* calculation of final feasable direction */
+  /* calculation of final feasible direction */
        
   FORTRAN(calcfeasibledirection_gp,(ndesi,nodedesi,dgdxglob,nactive,nobject,nk,
 				    gradproj));

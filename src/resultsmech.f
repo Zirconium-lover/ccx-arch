@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -28,7 +28,9 @@
      &     pmastsurf,mortar,clearini,nea,neb,ielprop,prop,kscale,
      &     list,ilist,smscale,mscalmethod,enerscal,t0g,t1g,
      &     islavquadel,aut,irowt,jqt,mortartrafoflag,
-     &     intscheme,physcon)
+     &     intscheme,physcon,dam,hasdamage,de12onepass,de12tangent,
+     &     ndmat_,ndmcon,dmcon,dambase,damjac,damvisc,damviscini,
+     &     damvisceta)
 !     
 !     calculates stresses and the material tangent at the integration
 !     points and the internal forces at the nodes
@@ -49,7 +51,9 @@
      &     calcul_cauchy,calcul_qa,nopered,mortar,jfaces,igauss,
      &     istrainfree,nlgeom_undo,list,ilist(*),m,j1,mscalmethod,
      &     irowt(*),jqt(*),jqte(21),irowte(96),icmdcpy,length,id,
-     &     islavquadel(*),node1,node2,j2,ii,mortartrafoflag
+     &     islavquadel(*),node1,node2,j2,ii,mortartrafoflag,
+     &     hasdamage,de12onepass,de12tangent,ndmat_,ndmcon(2,*),
+     &     ivmap(21),jvmap(21),mattypp,ielasp,nlgeom_undop,de12fdskip
 !     
       real*8 co(3,*),v(0:mi(2),*),shp(4,20),stiini(6,mi(1),*),
      &     stx(6,mi(1),*),xl(3,20),vl(0:mi(2),20),stre(6),prop(*),
@@ -72,9 +76,82 @@
      &     thicke(mi(3),*),emeini(6,mi(1),*),clearini(3,9,*),
      &     pslavsurf(3,*),pmastsurf(6,*),smscale(*),sum1,sum2,
      &     scal,enerscal,elineng(6),t0g(2,*),t1g(2,*),aut(*),
-     &     aute(96),shptil(4,20)
+     &     aute(96),shptil(4,20),xthi(3,3),vthj,
+     &     dam(mi(1),*),damageD,damageg,damjac(12,mi(1),*),
+     &     damvisc(mi(1),*),damviscini(mi(1),*),damvisceta,
+     &     damvbeta,damvphys,damvbase,damvtrial,
+     &     dmcon(0:ndmat_,ntmat_,*),dambase(mi(1),*),
+     &     strebase(6),strep(6),stiffp(21),emecp(6),betap(6),
+     &     damageq(6),damtrial0,damageDtrial,damageDp,damageh,
+     &     depviscp,pnewdtp,vjp
+      real*8, allocatable :: xstatesav(:)
+!
+!     residual stiffness floor, settable through CCX_DAMAGE_GMIN
+!
+      character*32 damgenv
+      character*32 fdskipenv
+      real*8 damggmin,spmean,damcbulk,damcmu,damcden,damcnumax
+      real*8 damtanhi
+      integer damgmintan,damcompress
+      integer damginit
+      save damggmin,damginit,damgmintan,damcompress,damcnumax
+      save damtanhi
+      data damginit /0/
+      data ivmap /1,1,2,1,2,3,1,2,3,4,1,2,3,4,5,1,2,3,4,5,6/
+      data jvmap /1,2,2,3,3,3,4,4,4,4,5,5,5,5,5,6,6,6,6,6,6/
 !     
       include "gauss.f"
+!
+      if(damginit.eq.0) then
+        damginit=1
+        damggmin=1.d-4
+        damgmintan=1
+        damcompress=0
+        call getenv('CCX_DAMAGE_COMPRESSION',damgenv)
+        if(damgenv(1:1).eq.'1') damcompress=1
+!
+!       Preserving the bulk modulus while the shear modulus vanishes drives
+!       nu' -> 0.5, and a linear tetrahedron LOCKS there.  The cap bounds how
+!       incompressible a fully damaged element may become; it is the price of
+!       using C3D4 and is settable so the trade can be measured.
+!
+        damcnumax=0.45d0
+        call getenv('CCX_DAMAGE_COMPRESSION_NUMAX',damgenv)
+        if(damgenv(1:1).ne.' ') then
+          read(damgenv,*,err=7200,end=7200) damcnumax
+          if((damcnumax.lt.0.d0).or.(damcnumax.gt.0.4999d0))
+     &         damcnumax=0.45d0
+        endif
+ 7200   continue
+        call getenv('CCX_DAMAGE_GMIN_TANGENT',damgenv)
+        if(damgenv(1:1).eq.'0') damgmintan=0
+        call getenv('CCX_DAMAGE_GMIN',damgenv)
+        if(damgenv(1:1).ne.' ') then
+          read(damgenv,*,err=7100,end=7100) damggmin
+          if((damggmin.lt.1.d-6).or.(damggmin.gt.0.2d0)) damggmin=1.d-4
+        endif
+ 7100   continue
+!
+!       Upper cut-off of the consistent tangent.  1.999 is D<0.999, the
+!       SAME number as the terminal-deletion threshold - two thresholds
+!       that mean different things were given one value.  Deletion is
+!       batched (64 per pass) and transactional, so an element can sit
+!       at D>=0.999 for whole increments carrying g*C_ep alone, and
+!       g*C_ep is measured at rho=3443 with the wrong sign on the
+!       dominant entry already at D=0.994 (benchmarks/mpfd).
+!
+!       With the flag the cut-off moves to the RESIDUAL-STIFFNESS FLOOR,
+!       which is the boundary that actually matters: on the floor g is
+!       pinned at gmin, dg/dD=0 and the rank-1 term genuinely vanishes;
+!       below it, it does not.
+!
+!       THIS CHANGES THE OPERATOR AND THEREFORE THE ANSWER.  Default off
+!       = bit-identical.
+!
+        damtanhi=1.999d0
+        call getenv('CCX_DAMAGE_TANGENT_FULL',damgenv)
+        if(damgenv(1:1).eq.'1') damtanhi=2.d0-damggmin
+      endif
 !
       iflag=3
       null=0
@@ -84,6 +161,23 @@
       qa(3)=-1.d0
       qa(4)=0.d0
       enerscal=0.d0
+      if(((de12tangent.eq.1).or.(de12tangent.eq.2)).and.
+     &     (nstate_.gt.0)) then
+        allocate(xstatesav(nstate_))
+      endif
+!
+!     CCX_DAMAGE_FD_SKIP=1 - DIAGNOSTIC ONLY.  Skips the forward-difference
+!     construction of dD/d(eps), leaving damageq at zero.  The rank-1 term
+!     then vanishes, which is the same matrix CCX_DAMAGE_UNSYM_SCALE=0
+!     produces - so running the two together gives an IDENTICAL Newton path
+!     and the wall-time difference is exactly the cost of the six extra
+!     mechmodel calls per actively softening integration point.  It is a
+!     measurement of the prize an analytic derivative could win, not a
+!     usable mode: with it on, the tangent is the secant one.
+!
+      de12fdskip=0
+      call getenv('CCX_DAMAGE_FD_SKIP',fdskipenv)
+      if(fdskipenv(1:1).eq.'1') de12fdskip=1
 !     
       do m=nea,neb
 !     
@@ -182,7 +276,6 @@
           do k=1,4
             dlayer(k)=0.d0
           enddo
-!     
 !     
 !     S6 - composite element
 !     
@@ -768,28 +861,6 @@ c     Bernhardi end
             vj=xkl(1,1)*(xkl(2,2)*xkl(3,3)-xkl(2,3)*xkl(3,2))
      &           -xkl(1,2)*(xkl(2,1)*xkl(3,3)-xkl(2,3)*xkl(3,1))
      &           +xkl(1,3)*(xkl(2,1)*xkl(3,2)-xkl(2,2)*xkl(3,1))
-c!     
-c!     inversion of the deformation gradient (only for
-c!     deformation plasticity)
-c!     
-c            if(kode.eq.-50) then
-c!     
-c              ckl(1,1)=(xkl(2,2)*xkl(3,3)-xkl(2,3)*xkl(3,2))/vj
-c              ckl(2,2)=(xkl(1,1)*xkl(3,3)-xkl(1,3)*xkl(3,1))/vj
-c              ckl(3,3)=(xkl(1,1)*xkl(2,2)-xkl(1,2)*xkl(2,1))/vj
-c              ckl(1,2)=(xkl(1,3)*xkl(3,2)-xkl(1,2)*xkl(3,3))/vj
-c              ckl(1,3)=(xkl(1,2)*xkl(2,3)-xkl(2,2)*xkl(1,3))/vj
-c              ckl(2,3)=(xkl(2,1)*xkl(1,3)-xkl(1,1)*xkl(2,3))/vj
-c              ckl(2,1)=(xkl(3,1)*xkl(2,3)-xkl(2,1)*xkl(3,3))/vj
-c              ckl(3,1)=(xkl(2,1)*xkl(3,2)-xkl(2,2)*xkl(3,1))/vj
-c              ckl(3,2)=(xkl(3,1)*xkl(1,2)-xkl(1,1)*xkl(3,2))/vj
-c!     
-c!     converting the Lagrangian strain into Eulerian
-c!     strain (only for deformation plasticity)
-c!     
-c              cauchy=0
-c              call str2mat(eloc,ckl,vj,cauchy)
-c            endif
 !     
           endif
 !     
@@ -935,17 +1006,19 @@ c            endif
      &         stiff,rho,i,ithermal,alzero,mattyp,t0l,t1l,ihyper,
      &         istiff,elconloc,eth,kode,plicon,nplicon,
      &         plkcon,nplkcon,npmat_,plconloc,mi(1),dtime,jj,
-     &         xstiff,ncmat_)
+     &         xstiff,ncmat_,iperturb)
 !     
 !     determining the mechanical strain
 !     
           if(ithermal(1).ne.0) then
-            call calcmechstrain(vkl,vokl,emec,eth,iperturb)
+            call calcmechstrain(vkl,vokl,emec,eth,iperturb,nalcon,imat,
+     &           xthi,vthj)
           else
             do m1=1,6
               emec(m1)=eloc(m1)
             enddo
           endif
+c          write(*,*) 'resultsmech1 ',i,jj,(emec(m1),m1=1,6)
           if(kode.le.-100) then
             do m1=1,6
               emec0(m1)=emeini(m1,jj,i)
@@ -978,7 +1051,321 @@ c            endif
      &         amat,t1l,dtime,time,ttime,i,jj,nstate_,mi(1),
      &         iorien,pgauss,orab,eloc,mattyp,qa(3),istep,iinc,
      &         ipkon,nmethod,iperturb,qa(4),nlgeom_undo,physcon,
-     &         ncmat_)
+     &         ncmat_,nalcon,imat)
+c          write(*,*) 'resultsmech2 ',i,jj,(stre(m1),m1=1,6)
+c          write(*,*) 'resultsmech3 ',i,jj,(stiff(m1),m1=1,21)
+!
+!     modifying the stress and stiffness for a multiplicative
+!     decomposition of the deformation gradient in a mechanical and
+!     a thermal part
+!
+          if((ithermal(1).ne.0).and.(iperturb(2).eq.1)) then
+            call modifystressstiff(stre,stiff,mattyp,eth,nalcon,imat,
+     &     xthi,vthj)
+          endif
+c          write(*,*) 'resultsmech4 ',i,jj,(stre(m1),m1=1,6)
+!
+!         BK1 one-pass progressive-damage update.  stre is still the
+!         effective constitutive stress here.  damageupdatepoint rebuilds
+!         dam(jj,i) from dambase and the trial PEEQ generated by mechmodel.
+!
+          if(de12onepass.ne.0) then
+            call damageupdatepoint(i,jj,ipkon,lakon,kon,co,mi,
+     &           ielmat,ne0,ndmat_,ntmat_,ndmcon,dmcon,dam,dambase,
+     &           stre,xstate,xstateini,nstate_)
+          endif
+!
+!         BK2 tangent experiment.  Only the scalar derivative dD/d(emec)
+!         is evaluated by forward differences; the verified incplas
+!         algorithmic tangent remains the effective-stress Jacobian.  The
+!         exact outer product is generally nonsymmetric.  xstiff/e_c3d can
+!         currently carry only 21 constitutive entries, so this opt-in stage
+!         uses its symmetric part.  All point state and damage are restored
+!         after every perturbation.
+!
+          do m1=1,6
+            strebase(m1)=stre(m1)
+            damageq(m1)=0.d0
+          enddo
+          damtrial0=0.d0
+          if((hasdamage.ne.0).and.(i.le.ne0)) then
+            damtrial0=dam(jj,i)
+          endif
+!
+!         UNSYM stage 2.  damjac carries, per integration point, the
+!         effective stress and dD/d(strain) that the asymmetric second
+!         assembly pass turns into the rank-1 correction
+!
+!             C = g*C_ep - sigma_eff (x) dD/d(eps)
+!
+!         It must be cleared whenever the point is not actively
+!         softening, because it survives between Newton iterations.
+!
+          if((de12tangent.eq.2).and.(i.le.ne0)) then
+            do m1=1,12
+              damjac(m1,jj,i)=0.d0
+            enddo
+          endif
+          if(((de12tangent.eq.1).or.(de12tangent.eq.2)).and.
+     &       (de12fdskip.eq.0).and.
+     &       (de12onepass.ne.0).and.
+     &       (icmd.ne.3).and.(nstate_.gt.0).and.
+     &       (mattyp.eq.3).and.(damtrial0.gt.1.d0+1.d-12).and.
+     &       (damtrial0.lt.damtanhi).and.
+     &       (damtrial0-dambase(jj,i).gt.1.d-14)) then
+            damageDtrial=damtrial0-1.d0
+            do m1=1,nstate_
+              xstatesav(m1)=xstate(m1,jj,i)
+            enddo
+            do k=1,6
+              do m1=1,6
+                emecp(m1)=emec(m1)
+                betap(m1)=beta(m1)
+              enddo
+              damageh=1.d-7*dmax1(1.d0,dabs(emec(k)))
+              emecp(k)=emecp(k)+damageh
+              do m1=1,nstate_
+                xstate(m1,jj,i)=xstateini(m1,jj,i)
+              enddo
+              mattypp=mattyp
+              ielasp=ielas
+              nlgeom_undop=0
+              depviscp=qa(3)
+              pnewdtp=qa(4)
+              vjp=vj
+              call mechmodel(elconloc,stiffp,emecp,kode,emec0,
+     &             ithermal,icmd,betap,strep,xkl,ckl,vjp,xikl,vij,
+     &             plconloc,xstate,xstateini,ielasp,amat,t1l,dtime,
+     &             time,ttime,i,jj,nstate_,mi(1),iorien,pgauss,orab,
+     &             eloc,mattypp,depviscp,istep,iinc,ipkon,nmethod,
+     &             iperturb,pnewdtp,nlgeom_undop,physcon,ncmat_,
+     &             nalcon,imat)
+              if((ithermal(1).ne.0).and.(iperturb(2).eq.1)) then
+                call modifystressstiff(strep,stiffp,mattypp,eth,
+     &               nalcon,imat,xthi,vthj)
+              endif
+              call damageupdatepoint(i,jj,ipkon,lakon,kon,co,mi,
+     &             ielmat,ne0,ndmat_,ntmat_,ndmcon,dmcon,dam,
+     &             dambase,strep,xstate,xstateini,nstate_)
+              damageDp=dam(jj,i)-1.d0
+              if(damageDp.lt.0.d0) damageDp=0.d0
+              if(damageDp.gt.1.d0) damageDp=1.d0
+              damageq(k)=(damageDp-damageDtrial)/damageh
+            enddo
+            do m1=1,nstate_
+              xstate(m1,jj,i)=xstatesav(m1)
+            enddo
+            dam(jj,i)=damtrial0
+!
+!           Store sigma_eff and dD/d(eps) for the asymmetric pass.
+!           damageq holds dD/d(emec).  incplas builds the right
+!           Cauchy-Green tensor as c(4)=2*emec(4), so emec(4:6) are
+!           TENSOR shears while the constitutive matrix that e_c3d
+!           consumes is expressed in ENGINEERING shear.  The shear
+!           components therefore need the factor 1/2 to live in the
+!           same convention as the 21-entry tangent.
+!
+!           With viscous regularisation the degradation follows Dvis, so
+!           the consistent tangent needs d(Dvis)/d(eps) = beta*dD/d(eps).
+!
+            if((de12tangent.eq.2).and.(i.le.ne0)) then
+              damvbeta=1.d0
+              if((damvisceta.gt.0.d0).and.(dtime.gt.0.d0)) then
+                damvbeta=dtime/(damvisceta+dtime)
+              endif
+              do m1=1,6
+                damjac(m1,jj,i)=strebase(m1)
+              enddo
+              do m1=1,3
+                damjac(6+m1,jj,i)=damvbeta*damageq(m1)
+              enddo
+              do m1=4,6
+                damjac(6+m1,jj,i)=0.5d0*damvbeta*damageq(m1)
+              enddo
+            endif
+          endif
+!
+!         DE1 scalar stiffness/stress degradation.  dam is a combined
+!         state coordinate: omega_D before initiation and 1+D after
+!         initiation.  Keeping this operation outside mechmodel/incplas
+!         leaves the stock plastic return mapping untouched.
+!
+!         The tangent used in DE1 is deliberately the symmetric secant-like
+!         approximation g(D)*Cep.  The full damage-consistent derivative is
+!         deferred to a later patch so the symmetric PARDISO path remains
+!         available for this first implementation.
+!
+!         R4 viscous regularisation.  A brittle phase failing inside a
+!         ductile one snaps through at a structural limit point, which no
+!         tangent and no convergence criterion can follow: grip
+!         displacement control does not control the local event because
+!         the surrounding matrix acts as a soft spring in series.
+!
+!         Relaxing the degradation variable
+!
+!             Dvis = Dvis_committed + beta*(D - Dvis_committed)
+!             beta = dtime/(eta+dtime)
+!
+!         makes the softening rate dependent, which removes the limit
+!         point.  D itself keeps evolving from the committed baseline at
+!         the physical rate, so the evolution law and the dissipated
+!         fracture energy are untouched; only the stiffness the assembly
+!         sees is delayed.  eta=0 reproduces the inviscid branch exactly.
+!
+!         Dvis is monotone: it can never fall below its committed value,
+!         so unloading cannot heal a point.
+!
+          damvbeta=1.d0
+          if((damvisceta.gt.0.d0).and.(dtime.gt.0.d0)) then
+            damvbeta=dtime/(damvisceta+dtime)
+          endif
+          if((hasdamage.ne.0).and.(i.le.ne0).and.
+     &         (damvisceta.gt.0.d0)) then
+            damvphys=dam(jj,i)-1.d0
+            if(damvphys.lt.0.d0) damvphys=0.d0
+            if(damvphys.gt.1.d0) damvphys=1.d0
+            damvbase=damviscini(jj,i)
+            if(damvbase.lt.0.d0) damvbase=0.d0
+            if(damvbase.gt.1.d0) damvbase=1.d0
+            damvtrial=damvbase+damvbeta*(damvphys-damvbase)
+            if(damvtrial.lt.damvbase) damvtrial=damvbase
+            if(damvtrial.gt.1.d0) damvtrial=1.d0
+            damvisc(jj,i)=damvtrial
+          endif
+!
+          if((hasdamage.ne.0).and.(i.le.ne0)) then
+            if(dam(jj,i).gt.1.d0) then
+              damageD=dam(jj,i)-1.d0
+              if(damageD.lt.0.d0) damageD=0.d0
+              if(damageD.gt.1.d0) damageD=1.d0
+              if(damvisceta.gt.0.d0) damageD=damvisc(jj,i)
+              damageg=1.d0-damageD
+!
+!             Residual stiffness floor.  A fully damaged element keeps
+!             gmin of its tangent until the terminal scan removes it.  At
+!             1e-4 a few such elements are harmless, but a notch process
+!             zone holds thousands of them at once and the operator
+!             becomes badly scaled: that is the regime where the DHC runs
+!             stall.  Raising the floor trades a small unreleased load for
+!             conditioning; the element is deleted at D>=0.999 either way,
+!             so the floor only acts transiently.
+!
+              if(damageg.lt.damggmin) then
+                damageg=damggmin
+!
+!               On the floor g is constant in D, so d(sigma)/d(eps)
+!               is gmin*Cep and the -sigma_eff (x) dD/d(eps) term is
+!               identically zero.  damjac is written earlier, before
+!               it is known whether the floor will engage, so leaving
+!               it populated makes mafilldamas assemble a rank-1
+!               correction that does not exist.
+!
+!               Found with the structural FD probe: at SP1 increment
+!               95 one node of the probed element carried a relative
+!               Jacobian error of 9.4e-3 while its three element-mates
+!               sat at 4e-6, and the error was identical to seven
+!               digits over h from 1e-8 to 1e-6, so it was not finite
+!               difference truncation.  That node is the one that also
+!               touches a floored element.
+!
+                if((de12tangent.eq.2).and.(i.le.ne0).and.
+     &               (damgmintan.eq.1)) then
+                  do m1=1,12
+                    damjac(m1,jj,i)=0.d0
+                  enddo
+                endif
+              endif
+!             Compression is not degraded (CCX_DAMAGE_COMPRESSION=1).
+!
+!             Abaqus Verification Guide 2.2.21-V states the reference
+!             behaviour of ductile damage: the deviatoric and the TENSILE
+!             hydrostatic response degrade, the COMPRESSIVE hydrostatic
+!             response does not, because a cracked element still carries
+!             compression once the crack closes.  cohesive_uc6.f:236 already
+!             does exactly this at the facet - "compression retains the full
+!             normal penalty" - and the bulk did not, which made the two
+!             laws in this tree inconsistent with each other (E-92).
+!
+!             The tangent is split to match.  For isotropic elasticity
+!             C = K*(1(x)1) + 2*mu*Idev, so degrading only the deviator
+!             means K' = K and mu' = g*mu, which in (E,nu) form is
+!                 E'  = 9*K*g*mu/(3*K+g*mu)
+!                 nu' = (3*K-2*g*mu)/(2*(3*K+g*mu))
+!             At g=1 this returns (E,nu) identically.  As g->0 it tends to
+!             an incompressible solid with no shear stiffness, which is the
+!             physically right limit but ill-conditioned in (E,nu) form, so
+!             nu' is capped.  Only mattyp=1 is split; anisotropic cards keep
+!             the uniform scaling, because the deviatoric projector is not
+!             expressible by scaling their constants.
+!
+              if(damcompress.eq.1) then
+                spmean=(stre(1)+stre(2)+stre(3))/3.d0
+              else
+                spmean=1.d0
+              endif
+              if((damcompress.eq.1).and.(spmean.lt.0.d0)) then
+                do m1=1,3
+                  stre(m1)=damageg*(stre(m1)-spmean)+spmean
+                enddo
+                do m1=4,6
+                  stre(m1)=damageg*stre(m1)
+                enddo
+                if(mattyp.eq.1) then
+                  damcbulk=stiff(1)/(3.d0*(1.d0-2.d0*stiff(2)))
+                  damcmu=damageg*stiff(1)/(2.d0*(1.d0+stiff(2)))
+                  damcden=3.d0*damcbulk+damcmu
+                  if(damcden.gt.1.d-30) then
+                    stiff(1)=9.d0*damcbulk*damcmu/damcden
+                    stiff(2)=(3.d0*damcbulk-2.d0*damcmu)/(2.d0*damcden)
+                    if(stiff(2).gt.damcnumax) stiff(2)=damcnumax
+                    if(stiff(2).lt.-1.d0) stiff(2)=-1.d0
+                  else
+                    stiff(1)=damageg*stiff(1)
+                  endif
+                elseif(mattyp.eq.2) then
+                  do m1=1,9
+                    stiff(m1)=damageg*stiff(m1)
+                  enddo
+                else
+                  do m1=1,21
+                    stiff(m1)=damageg*stiff(m1)
+                  enddo
+                  if(de12tangent.eq.1) then
+                    do m1=1,21
+                      stiff(m1)=stiff(m1)-0.5d0*
+     &                     (strebase(ivmap(m1))*damageq(jvmap(m1))+
+     &                      strebase(jvmap(m1))*damageq(ivmap(m1)))
+                    enddo
+                  endif
+                endif
+              else
+              do m1=1,6
+                stre(m1)=damageg*stre(m1)
+              enddo
+              if(mattyp.eq.1) then
+!               isotropic elastic representation: stiff(1)=E,
+!               stiff(2)=nu.  Scale E only; Poisson's ratio is not a
+!               stiffness magnitude.
+                stiff(1)=damageg*stiff(1)
+              elseif(mattyp.eq.2) then
+                do m1=1,9
+                  stiff(m1)=damageg*stiff(m1)
+                enddo
+              else
+                do m1=1,21
+                  stiff(m1)=damageg*stiff(m1)
+                enddo
+                if(de12tangent.eq.1) then
+                  do m1=1,21
+                    stiff(m1)=stiff(m1)-0.5d0*
+     &                   (strebase(ivmap(m1))*damageq(jvmap(m1))+
+     &                    strebase(jvmap(m1))*damageq(ivmap(m1)))
+                  enddo
+                endif
+              endif
+              endif
+            endif
+          endif
 !     
           if(((nmethod.ne.4).or.(iperturb(1).ne.0)).and.
      &         (nmethod.ne.5).and.(icmd.ne.3)) then
@@ -1298,5 +1685,6 @@ c     Bernhardi end
       enddo
 !     
 c          if(j.ne.-1) stop
+      if(allocated(xstatesav)) deallocate(xstatesav)
       return
       end

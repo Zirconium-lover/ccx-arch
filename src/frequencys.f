@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -234,6 +234,10 @@ c     iperturb(2)=0
         else
           mei(1)=0
         endif
+!
+!       zero value for selective mass scaling
+!
+        fei(4)=tmin
 !     
         if(.not.cycmpcactive) then
 !     

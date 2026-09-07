@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -22,6 +22,12 @@
 #include <pthread.h>
 #include "CalculiX.h"
 
+/* AUTOSPC mask, owned by nonlingeo.c.  NULL when the feature is off, which is
+   the default, so this file is byte-identical in behaviour unless
+   CCX_DAMAGE_AUTOSPC is set. */
+extern ITG *damage_spc_mask;
+extern ITG damage_spc_nk;
+
 void resultsini(ITG *nk,double *v,ITG *ithermal,char *filab,ITG *iperturb,
 		double *f,double *fn,ITG *nactdof,ITG *iout,double *qa,
 		double *vold,double *b,ITG *nodeboun,ITG *ndirboun,
@@ -32,7 +38,7 @@ void resultsini(ITG *nk,double *v,ITG *ithermal,char *filab,ITG *iperturb,
 		ITG *nprint,char *prlab,ITG *intpointvarm,ITG *calcul_fn,
 		ITG *calcul_f,ITG *calcul_qa,ITG *calcul_cauchy,ITG *ikin,
 		ITG *intpointvart,char *typeboun,ITG *num_cpus,ITG *mortar,
-		ITG *nener,ITG *iponoel,ITG *network){
+		ITG *nener,ITG *iponoeln,ITG *network){
 
   ITG mt,i,j,node,ndir,ist,index,incrementalmpc;
 
@@ -57,6 +63,17 @@ void resultsini(ITG *nk,double *v,ITG *ithermal,char *filab,ITG *iperturb,
 	    /* FORTRAN(addshell,(nactdof,&i,b,mi,iperturb,
 	       nmethod,cam,v));*/
 	    if((iperturb[0]!=0)&&(abs(*nmethod)==1)){
+	      /* AUTOSPC (CCX_DAMAGE_AUTOSPC, default off).  The correction is
+		 applied to v either way; the node is only kept out of the
+		 cam[0] maximum, and so out of the displacement convergence
+		 test and out of uam[0], which is max(uam[0],cam[0]).  The
+		 force residual ram[0] never sees this mask, so a node that
+		 still carries load still blocks convergence.  See the block
+		 comment in nonlingeo.c. */
+	      if((damage_spc_mask!=NULL)&&(i<damage_spc_nk)&&
+		 (damage_spc_mask[i]!=0)){
+		continue;
+	      }
 	      if(fabs(bnac)>cam[0]){
 		cam[0]=fabs(bnac);
 		cam[3]=nactdof[mt*i+j]-0.5;
@@ -113,7 +130,7 @@ void resultsini(ITG *nk,double *v,ITG *ithermal,char *filab,ITG *iperturb,
 	  /* maximum change is not taken into account for network nodes */
 
 	  if(*network>0){
-	    if(iponoel[i]==0){
+	    if(iponoeln[i]==0){
 	      if(cam[2]<fabs(v[mt*i]-vini[mt*i])){
 		cam[2]=fabs(v[mt*i]-vini[mt*i]);
 	      }

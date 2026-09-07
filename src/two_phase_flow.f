@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -214,7 +214,7 @@
 !                "Proposed correlation of data for 
 !                 isothermal two-phase two-component
 !                 flow in pipes"
-!                 Chemical Engineering Progress vol.45, N°1
+!                 Chemical Engineering Progress vol.45, No1
 !
       elseif((lakon(nelem)(2:5).eq.'GAPF')
      &        .or.((lakon(nelem)(2:7).ne.'REBEMI')

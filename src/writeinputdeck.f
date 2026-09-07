@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -877,7 +877,7 @@ c     enddo
 !
 !             looking for a dependent component which is different
 !             from the dependent component (= inor(1)) for the condition in
-!             sensitivity direction (which is writting in routine
+!             sensitivity direction (which is writing in routine
 !             writeinputdeck2.f from the feasible direction procedure)
 !
               do j=1,3

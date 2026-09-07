@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -58,7 +58,7 @@ void tiedcontact(ITG *ntie, char *tieset, ITG *nset, char *set,
 
   FORTRAN(allocont,(&ncont,ntie,tieset,nset,set,istartset,iendset,
 	  ialset,lakon,&ncone,tietol,&ismallsliding,kind1,
-	  kind2,&mortar,istep));
+	  kind2,&mortar,istep,ipkon));
 
   if(ncont==0){
       SFREE(ifaceslave);return;

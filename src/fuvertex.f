@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -106,8 +106,8 @@
 !
         indexe=ieln(2,indexe)
       enddo
-      write(*,100) x(1),x(2),x(3),fuvertex
- 100  format('fuvertex ',4(1x,f15.8))
+c      write(*,100) x(1),x(2),x(3),fuvertex
+c 100  format('fuvertex ',4(1x,f15.8))
 !     
       return
       end

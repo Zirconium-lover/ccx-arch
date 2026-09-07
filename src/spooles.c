@@ -1,6 +1,6 @@
 
 /*     CalculiX - A 3-dimensional finite element program                   */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -335,7 +335,7 @@ void factor_MT(struct factorinfo *pfi, InpMtx *mtxA, int size, FILE *msgFile, in
 			DV_writeForHumanEye(cumopsDV, msgFile);
 			fflush(msgFile);
 		} else {
-			fprintf(msgFile, "\n\n Using %d threads\n",
+			fprintf(msgFile, "\n\n Using %" ITGFORMAT " threads\n",
 				pfi->nthread);
 		}
 		DV_free(cumopsDV);

@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -34,7 +34,10 @@
       real*8 yi(ndim,mi(1),*),yn(nfield,*),orab(7,*),co(3,*),prop(*),
      &  vold(0:mi(2),*),thicke(mi(3),*)
 !
-      if(lakon(i)(2:3).eq.'1 ') then
+      if(lakon(i)(2:3).eq.'C6') then
+         call extrapolate_uc6(yi,yn,ipkon,inum,kon,nfield,mi,ndim,
+     &        iorienloc,i)
+      elseif(lakon(i)(2:3).eq.'1 ') then
          call extrapolate_u1(yi,yn,ipkon,inum,kon,lakon,nfield,nk,
      &        ne,mi,ndim,orab,ielorien,co,iorienloc,cflag,
      &        vold,iforce,ielmat,thicke,ielprop,prop,i)

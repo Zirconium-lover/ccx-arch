@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -90,7 +90,7 @@ void interpolatestatemain(ITG *ne,ITG *ipkon,ITG *kon,char *lakon,ITG *ne0,
     if(strcmp1(&tieset[i*243+80],"C")!=0) continue;
 
     /* parallellizing the loop over the contact slave faces for each tie
-       - numstart is the location in islavsurf(old) befor the first
+       - numstart is the location in islavsurf(old) before the first
        face of the present contact tie
        - numfaces is the total number of contact faces in the present
        contact tie */

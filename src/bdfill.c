@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                     */
+/*              Copyright (C) 1998-2025 Guido Dhondt                     */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -96,7 +96,7 @@ void bdfill(ITG **irowbdp,ITG *jqbd,double **aubdp,ITG *nzsbd,
   irowdtil =*irowdtilp; Ddtil=*Ddtilp;
   irowbtil =*irowbtilp; Bdtil=*Bdtilp;
   ifree=1;
-  // position in the fieds FORTRAN condition
+  // position in the fields FORTRAN condition
   ifree1=1;ifree2=1;ifree3=1;
   
   NNEW(igap,ITG,nslavnode[*ntie]);
@@ -1044,9 +1044,9 @@ void bdfill(ITG **irowbdp,ITG *jqbd,double **aubdp,ITG *nzsbd,
 	  // mpc on master node
 	  
 	  if(imn<0){
-	    
-	    /* hier muss mpc2 rein,da Slavemittelknoten auf ind seite
-	       vorkommen können */
+
+	    /* mpc2 to be used, since slave middle nodes may occur on
+               the ind side */
 	      
 	    for(jj=nmastmpc[2*(-imn-1)];jj<nmastmpc[2*(-imn-1)+1];jj++){
 	      ist=imastmpc[jj];
@@ -1258,8 +1258,9 @@ void bdfill(ITG **irowbdp,ITG *jqbd,double **aubdp,ITG *nzsbd,
   RENEW(auddinv,double,nzsddinv);
   RENEW(irowddinv,ITG,nzsddinv);
   NNEW(mast1,ITG,nzsddinv);
-  
-  // gehe über alle Ties (ok, da kein aktiver slaveknoten in 2 Ties)
+
+  /* loop over all ties (ok, since there is no active slave nodes
+     in 2 ties at the same time */
   
   for( i=0; i<*ntie; i++){    
     if(tieset[i*(81*3)+80]=='C'){ 

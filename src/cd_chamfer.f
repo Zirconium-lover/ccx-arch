@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -20,7 +20,7 @@
 !
 !     calculates the discharge coefficient of holes with chamfered inlets 
 !     using N. Hay and A.Spencer 
-!     "Disharge coefficient of Cooling holes with radiused and chamfered 
+!     "Discharge coefficient of Cooling holes with radiused and chamfered 
 !     inlets" ASME 91-GT-269
 !     
 !     Nota:the radius correction is not used here due to the unreliability 

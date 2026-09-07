@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -48,7 +48,7 @@
       call dsort(y,ny,ndesi,kflag)
       call dsort(z,nz,ndesi,kflag)
 !
-!     assinging the filterradius
+!     assigning the filterradius
 !
       read(objectset(2,1)(21:40),'(f20.0)',iostat=istat) filterrad     
 !

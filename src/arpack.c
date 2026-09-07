@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                   */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -95,8 +95,8 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
     icfd=0,*inomat=NULL,*ipkon=NULL,*kon=NULL,*ielmat=NULL,*ielorien=NULL,
     *islavact=NULL,maxprevcontel,nslavs_prev_step,icutb=0,
     iflagact=0,*islavsurfold=NULL,ialeatoric=0,kscale=1,network=0,
-    *iponoel=NULL,*inoel=NULL,nrhs=1,igreen=0,node,idir,mscalmethod=0,
-    *jqw=NULL,*iroww=NULL,nzsw,
+    *iponoeln=NULL,*inoeln=NULL,nrhs=1,igreen=0,node,idir,mscalmethod=0,
+    *jqw=NULL,*iroww=NULL,nzsw,*iponoel=NULL,
     *islavquadel=NULL,*irowt=NULL,*jqt=NULL,mortartrafoflag=0;
 
   double *stn=NULL,*v=NULL,*resid=NULL,*z=NULL,*workd=NULL,dtset,
@@ -114,7 +114,7 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
     *au=NULL,*ad=NULL,*b=NULL,*aub=NULL,*adb=NULL,*pslavsurf=NULL,
     *pmastsurf=NULL,*cdn=NULL,*energyini=NULL,*energy=NULL,
     *cdnr=NULL,*cdni=NULL,*eme=NULL,alea=0.1,*smscale=NULL,*auw=NULL,
-    *aut=NULL,dtvol,wavespeed[*nmat];
+    *aut=NULL,dtvol,wavespeed[*nmat],*dam=NULL,*damn=NULL,*errn=NULL;
 
   FILE *f1;
 
@@ -130,6 +130,12 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
   kon=*konp;ielmat=*ielmatp;ielorien=*ielorienp;
 
   islavsurf=*islavsurfp;pslavsurf=*pslavsurfp;clearini=*clearinip;
+
+  /* determining whether a node belongs to at least one element
+     (needed in resultsforc.c) */
+  
+  NNEW(iponoel,ITG,*nk);
+  FORTRAN(nodebelongstoel,(iponoel,lakon,ipkon,kon,ne));
 
   if(*nmethod==13){
     *nmethod=2;
@@ -406,11 +412,11 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
 	    &reltime,&ne0,thicke,shcon,nshcon,
 	    sideload,xload,xloadold,&icfd,inomat,pslavsurf,pmastsurf,
 	    mortar,islavact,cdn,islavnode,nslavnode,ntie,clearini,
-	    islavsurf,ielprop,prop,energyini,energy,&kscale,iponoel,
-	    inoel,nener,orname,&network,ipobody,xbody,ibody,typeboun,
+	    islavsurf,ielprop,prop,energyini,energy,&kscale,iponoeln,
+	    inoeln,nener,orname,&network,ipobody,xbody,ibody,typeboun,
 	    itiefac,tieset,smscale,&mscalmethod,nbody,t0g,t1g,
 	    islavquadel,aut,irowt,jqt,&mortartrafoflag,
-	    &intscheme,physcon);
+	    &intscheme,physcon,dam,damn,iponoel);
   }else{
     results(co,nk,kon,ipkon,lakon,ne,v,stn,inum,stx,
 	    elcon,nelcon,rhcon,nrhcon,alcon,nalcon,alzero,ielmat,
@@ -428,11 +434,11 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
 	    &reltime,&ne0,thicke,shcon,nshcon,
 	    sideload,xload,xloadold,&icfd,inomat,pslavsurf,pmastsurf,
 	    mortar,islavact,cdn,islavnode,nslavnode,ntie,clearini,
-	    islavsurf,ielprop,prop,energyini,energy,&kscale,iponoel,
-	    inoel,nener,orname,&network,ipobody,xbody,ibody,typeboun,
+	    islavsurf,ielprop,prop,energyini,energy,&kscale,iponoeln,
+	    inoeln,nener,orname,&network,ipobody,xbody,ibody,typeboun,
 	    itiefac,tieset,smscale,&mscalmethod,nbody,t0g,t1g,
 	    islavquadel,aut,irowt,jqt,&mortartrafoflag,
-	    &intscheme,physcon);
+	    &intscheme,physcon,dam,damn,iponoel);
   }
   
   SFREE(eei);SFREE(stiini);SFREE(emeini);SFREE(vini);
@@ -468,7 +474,7 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
 				  xstiff,ncmat_,vold,ielmat,t0,t1,matname,
 				  lakon,wavespeed,nmat,ipkon,co,kon,&dtvol,
 				  alpha,smscale,&dtset,&mscalmethod,mortar,
-				  jobnamef));
+				  jobnamef,iperturb));
 
       printf(" Explicit time integration: Volumetric COURANT initial stable time increment:%e\n\n",dtvol);
       if(dtset<dtvol){dtset=dtvol;}
@@ -508,7 +514,7 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
 		 xstateini,xstate,thicke,integerglob,doubleglob,
 		 tieset,istartset,iendset,ialset,ntie,&nasym,pslavsurf,
 		 pmastsurf,mortar,clearini,ielprop,prop,&ne0,fnext,&kscale,
-		 iponoel,inoel,&network,ntrans,inotr,trab,smscale,&mscalmethod,
+		 iponoeln,inoeln,&network,ntrans,inotr,trab,smscale,&mscalmethod,
 		 set,nset,islavquadel,aut,irowt,jqt,&mortartrafoflag);
   }
   else{
@@ -528,7 +534,7 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
 		 xstateini,xstate,thicke,integerglob,doubleglob,
 		 tieset,istartset,iendset,ialset,ntie,&nasym,pslavsurf,
 		 pmastsurf,mortar,clearini,ielprop,prop,&ne0,fnext,&kscale,
-		 iponoel,inoel,&network,ntrans,inotr,trab,smscale,&mscalmethod,
+		 iponoeln,inoeln,&network,ntrans,inotr,trab,smscale,&mscalmethod,
 		 set,nset,islavquadel,aut,irowt,jqt,&mortartrafoflag);
 
     if(nasym==1){
@@ -554,7 +560,7 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
 		     xstateini,xstate,thicke,
 		     integerglob,doubleglob,tieset,istartset,iendset,
 		     ialset,ntie,&nasym,pslavsurf,pmastsurf,mortar,clearini,
-		     ielprop,prop,&ne0,&kscale,iponoel,inoel,&network,set,nset);
+		     ielprop,prop,&ne0,&kscale,iponoeln,inoeln,&network,set,nset);
     }
   }
 
@@ -583,7 +589,7 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
 	mi,sti,vr,vi,stnr,stni,vmax,stnmax,&ngraph,veold,ener,ne,
 	cs,set,nset,istartset,iendset,ialset,eenmax,fnr,fni,emn,
 	thicke,jobnamec,output,qfx,cdn,mortar,cdnr,cdni,nmat,
-	ielprop,prop,sti);
+	ielprop,prop,sti,damn,&errn);
     
     if(strcmp1(&filab[1044],"ZZS")==0){SFREE(ipneigh);SFREE(neigh);}
     SFREE(inum);FORTRAN(stop,());
@@ -695,7 +701,7 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
       
       if(nev+2>neq[1]){
 	printf(" *ERROR in arpack: too many eigenvalues requested\n");
-	printf("                   number is reduced to: %d\n\n",neq[1]-2);
+	printf("                   number is reduced to: %" ITGFORMAT "\n\n",neq[1]-2);
 	nev=neq[1]-2;
       }
       if(ncv<nev+2){
@@ -713,7 +719,7 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
       
       if(nev+1>neq[1]){
 	printf(" *ERROR in arpack: too many eigenvalues requested\n");
-	printf("                   number is reduced to: %d\n\n",neq[1]-1);
+	printf("                   number is reduced to: %" ITGFORMAT "\n\n",neq[1]-1);
 	nev=neq[1]-1;
       }
       if(ncv<nev+1){
@@ -884,7 +890,7 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
       }
       sum=0;
       for(k=0;k<neq[1];k++){sum+=z[kref+k]*temp_array[k];}
-      printf("U^T*M*U=%f for eigenmode %d\n",sum,j+1);
+      printf("U^T*M*U=%f for eigenmode %" ITGFORMAT "\n",sum,j+1);
       
       if(fabs(sum-1.)>1.e-5){
 	printf("sum=%e\n",sum);
@@ -1041,7 +1047,7 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
       /* check whether degree of freedom is active */
       
       if(nactdof[mt*(node-1)+idir]==0){
-	printf(" *ERROR in linstatic: degree of freedom corresponding to node %d \n and direction %d is not active: no unit force can be applied\n",node,idir);
+	printf(" *ERROR in linstatic: degree of freedom corresponding to node %" ITGFORMAT " \n and direction %" ITGFORMAT " is not active: no unit force can be applied\n",node,idir);
 	FORTRAN(stop,());
       }
       
@@ -1128,11 +1134,11 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
 	      &reltime,&ne0,thicke,shcon,nshcon,
 	      sideload,xload,xloadold,&icfd,inomat,pslavsurf,pmastsurf,
 	      mortar,islavact,cdn,islavnode,nslavnode,ntie,clearini,
-	      islavsurf,ielprop,prop,energyini,energy,&kscale,iponoel,
-              inoel,nener,orname,&network,ipobody,xbody,ibody,typeboun,
+	      islavsurf,ielprop,prop,energyini,energy,&kscale,iponoeln,
+              inoeln,nener,orname,&network,ipobody,xbody,ibody,typeboun,
 	      itiefac,tieset,smscale,&mscalmethod,nbody,t0g,t1g,
 	      islavquadel,aut,irowt,jqt,&mortartrafoflag,
-	      &intscheme,physcon);}
+	      &intscheme,physcon,dam,damn,iponoel);}
     else{
       results(co,nk,kon,ipkon,lakon,ne,v,stn,inum,
 	      stx,elcon,
@@ -1151,11 +1157,11 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
 	      &ne0,thicke,shcon,nshcon,
 	      sideload,xload,xloadold,&icfd,inomat,pslavsurf,pmastsurf,
 	      mortar,islavact,cdn,islavnode,nslavnode,ntie,clearini,
-	      islavsurf,ielprop,prop,energyini,energy,&kscale,iponoel,
-              inoel,nener,orname,&network,ipobody,xbody,ibody,typeboun,
+	      islavsurf,ielprop,prop,energyini,energy,&kscale,iponoeln,
+              inoeln,nener,orname,&network,ipobody,xbody,ibody,typeboun,
 	      itiefac,tieset,smscale,&mscalmethod,nbody,t0g,t1g,
 	      islavquadel,aut,irowt,jqt,&mortartrafoflag,
-	      &intscheme,physcon);
+	      &intscheme,physcon,dam,damn,iponoel);
     }
     SFREE(eei);SFREE(stiini);SFREE(emeini);SFREE(vini);
     if(*nener==1) SFREE(enerini);
@@ -1184,7 +1190,7 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
 	  mi,stx,vr,vi,stnr,stni,vmax,stnmax,&ngraph,veold,ener,ne,
 	  cs,set,nset,istartset,iendset,ialset,eenmax,fnr,fni,emn,
 	  thicke,jobnamec,output,qfx,cdn,mortar,cdnr,cdni,nmat,
-	  ielprop,prop,sti);
+	  ielprop,prop,sti,damn,&errn);
     }else{
       frd(co,nk,kon,ipkon,lakon,ne,v,stn,inum,nmethod,
 	  kode,filab,een,t1old,fn,&freq,epn,ielmat,matname,enern,xstaten,
@@ -1193,7 +1199,7 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
 	  mi,stx,vr,vi,stnr,stni,vmax,stnmax,&ngraph,veold,ener,ne,
 	  cs,set,nset,istartset,iendset,ialset,eenmax,fnr,fni,emn,
 	  thicke,jobnamec,output,qfx,cdn,mortar,cdnr,cdni,nmat,
-	  ielprop,prop,sti);
+	  ielprop,prop,sti,damn,&errn);
     }
 
     if(strcmp1(&filab[1044],"ZZS")==0){SFREE(ipneigh);SFREE(neigh);}
@@ -1302,6 +1308,8 @@ void arpack(double *co, ITG *nk, ITG **konp, ITG **ipkonp, char **lakonp,
 
   *islavsurfp=islavsurf;*pslavsurfp=pslavsurf;*clearinip=clearini;
 
+  SFREE(iponoel);
+  
   return;
 }
 

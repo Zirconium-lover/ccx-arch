@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -33,7 +33,7 @@
      &     mpc1,mpc2,index1,index2,node1,node2,i0,icomplex1,icomplex2,
      &     ij,ilength,inode,inode1,inode2,lprev,mcs,ner,ielcs(*),ics(*)
 !     
-      real*8 coefmpc(*),val,ad(*),au(*),value,walue,tr,ti,cs(17,*)
+      real*8 coefmpc(*),val,ad(*),au(*),value,walue,tr,ti,cs(18,*)
 !     
       if (mcs.gt.1)then
         if(ielcs(i).gt.0) then

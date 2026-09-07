@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -23,7 +23,7 @@
 !
 !     INPUT:
 !
-!     x(3,1..n)          Carthesian coordinates of the nodes in the
+!     x(3,1..n)          Cartesian coordinates of the nodes in the
 !                        user mpc.
 !     u(3,1..n)          Actual displacements of the nodes in the
 !                        user mpc.     

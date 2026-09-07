@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -505,7 +505,7 @@ c     if(nactdog(1,nodem).ne.0) v(1,nodem)=xflow/iaxial
             ee2=M2*(1.d0+bb*Z2)/(1.d0+bb*Z2*(1.d0+2.d0*cc))
             dfdM2=2.d0*(1.d0-kappa*Z2)/(kappa*M2**3)
 !     
-!     redidual
+!     residual
 !     
             f=(1.d0/Z1-1.d0/Z2)/kappa+dlog(Z1/Z2)-lld
 !     

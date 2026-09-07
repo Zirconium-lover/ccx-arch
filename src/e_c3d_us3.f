@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -345,7 +345,7 @@
      &       ihyper,istiff,elconloc,eth,kode,plicon,
      &       nplicon,plkcon,nplkcon,npmat_,
      &       plconloc,mi(1),dtime,jjj,
-     &       xstiff,ncmat_)
+     &       xstiff,ncmat_,iperturb)
 !
         e=stiff(1)
         un=stiff(2)
@@ -356,7 +356,7 @@
         Ds=Ds+Qs*gpthick(jjj,2)*dett 
       enddo   
 !
-!   stiffness matirx (6 dofs 3 nodes -> 18x18)  
+!   stiffness matrix (6 dofs 3 nodes -> 18x18)  
 !
       call us3_Kp(x,Db,Ds,Kp)   ! plate part (CS-DSG)   - in e0-frame
       call us3_Km(x,Km,Qin,h)   ! membrane part (ANDES) - in e0-frame

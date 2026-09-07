@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -24,7 +24,7 @@
 !  [in] bpfriction bound
 !  [in] atauinvinverse of tangential stiffness
 !  [out] resregevaluated regularization function
-!  [in] divmode indicates whether funtion (==0) or derivate (==1) should be called   
+!  [in] divmode indicates whether function (==0) or derivate (==1) should be called   
 !  [in] regmode        not used
 !  [in] islavact(i) indicates, if slave node i is active (=-3 no-slave-node, =-2 no-LM-node, =-1 no-gap-node, =0 inactive node, =1 sticky node, =2 slipping/active node) 
 !  [in] lambdatshear stress

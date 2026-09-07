@@ -1,6 +1,6 @@
 !
 !     CalculiX - A 3-dimensional finite element program
-!              Copyright (C) 1998-2024 Guido Dhondt
+!              Copyright (C) 1998-2025 Guido Dhondt
 !
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -349,7 +349,7 @@ c            endif
 !
 !                 dependent node of MPC should not have the same
 !                 sign as the corresponding dof of the translational
-!                 degrees of freedom: avoids the occurence of a
+!                 degrees of freedom: avoids the occurrence of a
 !                 zero coefficient of the dependent term if both
 !                 rotational and translational dofs are suppressed
 !

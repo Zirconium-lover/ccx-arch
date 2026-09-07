@@ -1,5 +1,5 @@
 /*     CalculiX - A 3-dimensional finite element program                 */
-/*              Copyright (C) 1998-2024 Guido Dhondt                          */
+/*              Copyright (C) 1998-2025 Guido Dhondt                          */
 
 /*     This program is free software; you can redistribute it and/or     */
 /*     modify it under the terms of the GNU General Public License as    */
@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 #include <pthread.h>
 #include "CalculiX.h"
 #include "mortar.h"
@@ -31,9 +32,21 @@ static ITG *kon1,*ipkon1,*ne1,*nelcon1,*nrhcon1,*nalcon1,*ielmat1,*ielorien1,
   *istep1,*iinc1,calcul_fn1,calcul_qa1,calcul_cauchy1,*nener1,ikin1,
   *nal=NULL,*ipompc1,*nodempc1,*nmpc1,*ncocon1,*ikmpc1,*ilmpc1,
   num_cpus,mt1,*nk1,*ne01,*nshcon1,*nelemload1,*nload1,*mortar1,
-  *ielprop1,*kscale1,*iponoel1,*inoel1,*network1,*ipobody1,*ibody1,
+  *ielprop1,*kscale1,*iponoeln1,*inoeln1,*network1,*ipobody1,*ibody1,
   *neapar=NULL,*nebpar=NULL,*mscalmethod1,*irowt1,*jqt1,*islavquadel1,
-  *mortartrafoflag1,*intscheme1;
+  *mortartrafoflag1,*intscheme1,hasdamage1;
+
+static ITG de12_enabled1=0,de12_onepass1=0,de12_tangent1=0,
+  de12_ndmat_dummy=0,
+  de12_ndmcon_dummy[2]={0,0},*de12_ndmat1_=&de12_ndmat_dummy,
+  *de12_ndmcon1=de12_ndmcon_dummy;
+static double de12_dmcon_dummy[1]={0.},de12_dambase_dummy[1]={0.},
+  de12_damjac_dummy[1]={0.},de12_damvisc_dummy[2]={0.,0.},
+  de12_visceta=0.,
+  *de12_dmcon1=de12_dmcon_dummy,*de12_dambase1=de12_dambase_dummy,
+  *de12_damjac1=de12_damjac_dummy,
+  *de12_damvisc1=de12_damvisc_dummy,
+  *de12_damviscini1=&de12_damvisc_dummy[1];
 
 static double *co1,*v1,*stx1,*elcon1,*rhcon1,*alcon1,*alzero1,*orab1,*t01,*t11,
   *prestr1,*eme1,*fn1=NULL,*qa1=NULL,*vold1,*veold1,*dtime1,*time1,
@@ -41,7 +54,32 @@ static double *co1,*v1,*stx1,*elcon1,*rhcon1,*alcon1,*alzero1,*orab1,*t01,*t11,
   *vini1,*ener1,*eei1,*enerini1,*springarea1,*reltime1,*coefmpc1,
   *cocon1,*qfx1,*thicke1,*emeini1,*shcon1,*xload1,*prop1,
   *xloadold1,*pslavsurf1,*pmastsurf1,*clearini1,*xbody1,*energy1=NULL,
-  *smscale1,*energysms1=NULL,*t0g1,*t1g1,*aut1,*physcon1;
+  *smscale1,*energysms1=NULL,*t0g1,*t1g1,*aut1,*physcon1,*dam1;
+
+void results_set_de12_context(ITG enabled,ITG tangentmode,ITG *ndmat_,
+                              ITG *ndmcon,double *dmcon,double *dambase,
+                              double *damjac,double *damvisc,
+                              double *damviscini,double visceta){
+  de12_enabled1=enabled;
+  de12_tangent1=tangentmode;
+  de12_ndmat1_=(ndmat_!=NULL)?ndmat_:&de12_ndmat_dummy;
+  de12_ndmcon1=(ndmcon!=NULL)?ndmcon:de12_ndmcon_dummy;
+  de12_dmcon1=(dmcon!=NULL)?dmcon:de12_dmcon_dummy;
+  de12_dambase1=(dambase!=NULL)?dambase:de12_dambase_dummy;
+  de12_damjac1=(damjac!=NULL)?damjac:de12_damjac_dummy;
+
+  /* tangent mode 2 needs a real damjac buffer; without one the
+     asymmetric pass would read the dummy scalar */
+
+  if((tangentmode==2)&&(damjac==NULL)) de12_tangent1=0;
+
+  /* R4: without a real relaxation buffer the viscosity must stay off,
+     otherwise resultsmech would relax against a dummy scalar */
+
+  de12_damvisc1=(damvisc!=NULL)?damvisc:de12_damvisc_dummy;
+  de12_damviscini1=(damviscini!=NULL)?damviscini:&de12_damvisc_dummy[1];
+  de12_visceta=((damvisc!=NULL)&&(damviscini!=NULL))?visceta:0.;
+}
 
 void results(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
 	     double *v,double *stn,ITG *inum,double *stx,double *elcon,
@@ -71,15 +109,16 @@ void results(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
 	     ITG *mortar,ITG *islavact,double *cdn,ITG *islavnode,
 	     ITG *nslavnode,ITG *ntie,double *clearini,ITG *islavsurf,
 	     ITG *ielprop,double *prop,double *energyini,double *energy,
-	     ITG *kscale,ITG *iponoel,ITG *inoel,ITG *nener,char *orname,
+	     ITG *kscale,ITG *iponoeln,ITG *inoeln,ITG *nener,char *orname,
 	     ITG *network,ITG *ipobody,double *xbody,ITG *ibody,char *typeboun,
 	     ITG *itiefac,char *tieset,double *smscale,ITG *mscalmethod,
 	     ITG *nbody,double *t0g,double *t1g,ITG *islavquadel,double *aut,
 	     ITG *irowt,ITG *jqt,ITG *mortartrafoflag,
-	     ITG *intscheme,double *physcon){
+	     ITG *intscheme,double *physcon,double *dam,double *damn,
+	     ITG *iponoel){
 
   ITG intpointvarm,calcul_fn,calcul_f,calcul_qa,calcul_cauchy,ikin,
-    intpointvart,mt=mi[1]+1,i,j;
+    intpointvart,mt=mi[1]+1,i,j,de12_thiscall=0;
 
   /*
 
@@ -160,6 +199,7 @@ void results(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
   // next line is to be inserted in a similar way for all other parallel parts
 
   if(*ne<num_cpus) num_cpus=*ne;
+
     
   pthread_t tid[num_cpus];
     
@@ -171,7 +211,7 @@ void results(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
 	     xboun,nboun,ipompc,nodempc,coefmpc,labmpc,nmpc,nmethod,cam,neq,
 	     veold,accold,bet,gam,dtime,mi,vini,nprint,prlab,
 	     &intpointvarm,&calcul_fn,&calcul_f,&calcul_qa,&calcul_cauchy,
-	     &ikin,&intpointvart,typeboun,&num_cpus,mortar,nener,iponoel,
+	     &ikin,&intpointvart,typeboun,&num_cpus,mortar,nener,iponoeln,
 	     network);
 
   /* next statement allows for storing the displacements in each
@@ -218,7 +258,26 @@ void results(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
     kscale1=kscale;smscale1=smscale;mscalmethod1=mscalmethod;t0g1=t0g;
     t1g1=t1g;islavquadel1=islavquadel;aut1=aut;jqt1=jqt;
     irowt1=irowt;mortartrafoflag1=mortartrafoflag;intscheme1=intscheme;
-    physcon1=physcon;
+    physcon1=physcon;dam1=dam;hasdamage1=(dam!=NULL)?1:0;
+
+    /* BK1: DE1.2 trial damage is rebuilt from the immutable committed
+       physical-increment baseline inside the same integration-point pass
+       which produces plastic stress and tangent.  Each element belongs to
+       exactly one results thread, so updating dam(jj,element) is race-free.
+       Legacy A3 damage is not touched by the point update. */
+    de12_thiscall=(de12_enabled1 && (dam!=NULL) &&
+                   (de12_dambase1!=NULL) && (de12_ndmat1_!=NULL) &&
+                   (de12_ndmcon1!=NULL) && (de12_dmcon1!=NULL) &&
+                   (*dtime>1.e-18) && (*nmethod!=4) && (*nmethod!=5));
+    if(de12_thiscall){
+      memcpy(dam,de12_dambase1,
+             sizeof(double)*(size_t)mi[0]*(size_t)(*ne0));
+      if((de12_visceta>0.)&&(de12_damvisc1!=de12_damvisc_dummy)){
+        memcpy(de12_damvisc1,de12_damviscini1,
+               sizeof(double)*(size_t)mi[0]*(size_t)(*ne0));
+      }
+    }
+    de12_onepass1=de12_thiscall;
 
     /* calculating the stresses */
 	
@@ -235,7 +294,7 @@ void results(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
     }
     for(i=0; i<num_cpus; i++)
       pthread_join(tid[i], NULL);
-	
+
     for(i=0;i<mt**nk;i++){
       fn[i]=fn1[i];
     }
@@ -338,8 +397,9 @@ void results(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
     sideload1=sideload;xload1=xload;xloadold1=xloadold;
     pslavsurf1=pslavsurf;pmastsurf1=pmastsurf;mortar1=mortar;
     clearini1=clearini;plicon1=plicon;nplicon1=nplicon;ne1=ne;
-    ielprop1=ielprop,prop1=prop;iponoel1=iponoel;inoel1=inoel;
+    ielprop1=ielprop,prop1=prop;iponoeln1=iponoeln;inoeln1=inoeln;
     network1=network;ipobody1=ipobody;ibody1=ibody;xbody1=xbody;
+    thicke1=thicke;
 
     /* calculating the heat flux */
 	
@@ -390,7 +450,7 @@ void results(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
 
   resultsforc(nk,f,fn,nactdof,ipompc,nodempc,
 	      coefmpc,labmpc,nmpc,mi,fmpc,&calcul_fn,&calcul_f,
-	      &num_cpus);
+	      &num_cpus,iponoel);
 
   /* calculating the total energy if
      - iout<=0 (no result output)
@@ -467,7 +527,7 @@ void results(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
 			  islavnode,nslavnode,ntie,islavsurf,time,ielprop,prop,
 			  veold,ne0,nmpc,ipompc,nodempc,labmpc,energyini,energy,
 			  orname,xload,itiefac,pmastsurf,springarea,tieset,
-			  ipobody,ibody,xbody,nbody,iinc));
+			  ipobody,ibody,xbody,nbody,iinc,dam,damn));
   }
   
   return;
@@ -502,7 +562,11 @@ void *resultsmechmt(ITG *i){
 		       &nea,&neb,ielprop1,prop1,kscale1,&list1,ilist1,smscale1,
 		       mscalmethod1,&energysms1[indexnal],t0g1,t1g1,
 		       islavquadel1,aut1,irowt1,jqt1,mortartrafoflag1,
-		       intscheme1,physcon1));
+		       intscheme1,physcon1,dam1,&hasdamage1,&de12_onepass1,
+		       &de12_tangent1,
+		       de12_ndmat1_,de12_ndmcon1,de12_dmcon1,
+		       de12_dambase1,de12_damjac1,de12_damvisc1,
+		       de12_damviscini1,&de12_visceta));
 
   return NULL;
 }
@@ -531,7 +595,8 @@ void *resultsthermmt(ITG *i){
 			&nea,&neb,ithermal1,nelemload1,nload1,nmethod1,
 			reltime1,sideload1,xload1,xloadold1,pslavsurf1,
 			pmastsurf1,mortar1,clearini1,plicon1,nplicon1,ielprop1,
-			prop1,iponoel1,inoel1,network1,ipobody1,xbody1,ibody1));
+			prop1,iponoeln1,inoeln1,network1,ipobody1,xbody1,ibody1,
+			thicke1));
 
   return NULL;
 }

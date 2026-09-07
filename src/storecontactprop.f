@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -30,12 +30,12 @@
 !     Main variables and meaning
 !     
 !     temax       : max. natural period of oscillation 
-!     stx      : vector containig results (from results.c)
-!     springmm : average mass of master surface
-!     springms : average mass of slave surface
-!     xk : spring stiffness between the surfaces
-!     xmacont : mass of the actual node of the element
-!     areaslav : area of the slave surface (stiffness comp)
+!     stx         : vector containing results (from results.c)
+!     springmm    : average mass of master surface
+!     springms    : average mass of slave surface
+!     xk          : spring stiffness between the surfaces
+!     xmacont     : mass of the actual node of the element
+!     areaslav    : area of the slave surface (stiffness comp)
 !     
 !     Proposed by Matteo Pacher
 !     

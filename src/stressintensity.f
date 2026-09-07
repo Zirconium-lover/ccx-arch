@@ -1,6 +1,6 @@
 !     
 !     CalculiX - A 3-dimensional finite element program
-!     Copyright (C) 1998-2024 Guido Dhondt
+!     Copyright (C) 1998-2025 Guido Dhondt
 !     
 !     This program is free software; you can redistribute it and/or
 !     modify it under the terms of the GNU General Public License as
@@ -77,7 +77,7 @@ c          write(*,*)
 !     
 !     calculating the equivalent K-factor, the deflection angle
 !     and twist angle (formulas by Hans Richard, University of Paderborn;
-!     slightly modified to accomodate negative dk1 as well)
+!     slightly modified to accommodate negative dk1 as well)
 !     
       do i=1,nfront
         do m=1,nstep
