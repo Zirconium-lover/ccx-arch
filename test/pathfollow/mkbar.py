@@ -61,7 +61,11 @@ import argparse
 E      = 200000.0   # Young's modulus
 NU     = 0.0        # keeps the elastic field a uniform uniaxial strain
 SIGY   = 400.0      # yield stress (elastic - perfectly plastic)
-EPS0   = 0.0005     # Rice-Tracey reference strain -> initiation at PEEQ~eps0
+EPS0   = 2.0e-5     # Rice-Tracey reference strain -> initiation at PEEQ~eps0.
+                    # Kept small on purpose: the Gutierrez constraint measures
+                    # TOTAL dissipation, so a long uniform plastic plateau ahead
+                    # of localisation would spend the increment budget on bulk
+                    # plasticity instead of on the branch of interest.
 UF     = 0.010      # DE1 failure plastic displacement
 HMOD   = 800.0      # plastic hardening modulus (keeps the pre-peak branch
                     # well defined; a perfectly plastic plateau is a neutral

@@ -4830,6 +4830,38 @@ void FORTRAN(spcmatch,(double *xboun,ITG *nodeboun,ITG *ndirboun,ITG *nboun,
 
 void FORTRAN(splitline,(char *text,char *textpart,ITG *n));
 
+/* dissipation-based path following; see pathfollow.c for the derivation
+   and for the numerical verification of both rows of the bordered system */
+
+double pathfollow_dg(double Pn,double lamn,double P,double lam);
+void pathfollow_dgrad(double lamn,double Pn,double fr,double ff,
+                      double *adur,double *aduf,double *bb);
+ITG pathfollow_dlam(double g,double lamn,double Pn,double fr,double ff,
+                    double dlmax,double *dlam,ITG *reason);
+ITG pathfollow_selftest(void);
+ITG pathfollow_legacycheck(void);
+ITG pathfollow_arm(double tau,ITG neq);
+void pathfollow_disarm(void);
+ITG pathfollow_armed(void);
+ITG pathfollow_predictor(double *dlam);
+double pathfollow_ff(void);
+void pathfollow_measure(const double *uf);
+double pathfollow_pdu(void);
+void pathfollow_settau(double tau);
+double pathfollow_gettau(void);
+double pathfollow_lamn(void);
+ITG pathfollow_refusals(void);
+void pathfollow_incstart(double dlampred,double *lam);
+ITG pathfollow_resize(ITG neq);
+void pathfollow_capture(const double *b,double dlampred,double *Pn);
+ITG pathfollow_have(void);
+const double *pathfollow_fhat(void);
+ITG pathfollow_step(double *b,const double *uf,double *lam,double dlmax,
+                    double *dgout,double *gout,double *dlamout,ITG *reason);
+void pathfollow_accum(const double *b);
+void pathfollow_commit(double lam,double *dgcommit);
+void pathfollow_rollback(double *lam);
+
 void spooles(double *ad,double *au,double *adb,double *aub,
              double *sigma,double *b,
              ITG *icol,ITG *irow,ITG *neq,ITG *nzs,ITG *symmtryflag,

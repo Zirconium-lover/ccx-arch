@@ -1108,6 +1108,7 @@ objectivemain_se.c \
 opmain.c \
 packagingmain.c \
 pardiso.c \
+pathfollow.c \
 pardiso_cp.c \
 pastix.c \
 pcgsolver.c \

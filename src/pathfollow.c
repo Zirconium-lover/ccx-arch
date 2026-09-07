@@ -512,3 +512,310 @@ ITG pathfollow_legacycheck(void){
          "not.  %" ITGFORMAT " failure(s) in the consistent row.\n",nbad);
   return nbad;
 }
+
+/* ------------------------------------------------------------------ */
+/* Stateful driver.                                                    */
+/*                                                                     */
+/* The state lives here rather than in nonlingeo.c so that the whole    */
+/* method is auditable in one file, and so that commit/rollback is one  */
+/* pair of calls instead of a rule spread over the Newton loop.         */
+/*                                                                     */
+/* Everything is transactional in the same sense as the rest of the     */
+/* damage module: pf_commit() is the ONLY writer of the committed       */
+/* state, and pf_rollback() restores the trial state from it, so a      */
+/* rejected corrector can never leave the constraint reference moved.   */
+/* ------------------------------------------------------------------ */
+
+static ITG     pf_on=0;          /* armed                                 */
+static ITG     pf_neq=0;
+static double  pf_tau=0.;        /* prescribed dissipation increment      */
+static double *pf_fh=NULL;       /* f_hat, fixed over one increment       */
+static double *pf_ue=NULL;       /* u accumulated in equation space,      */
+                                 /* COMMITTED value                       */
+static double *pf_du=NULL;       /* correction accumulated in the current */
+                                 /* increment (trial)                     */
+static double  pf_lamn=0.;       /* committed load factor                 */
+static double  pf_Pn=0.;         /* f_hat^T u at the committed state      */
+static double  pf_have=0;        /* f_hat captured for this increment     */
+static double  pf_fflast=0.;     /* f_hat^T K^-1 f_hat, last evaluation    */
+static ITG     pf_nref=0;        /* number of constraint refusals         */
+
+ITG pathfollow_arm(double tau,ITG neq){
+
+  if(!(tau>0.)||(neq<=0)) return 0;
+  pf_neq=neq;
+  pf_tau=tau;
+  pf_fh=(double *)calloc((size_t)neq,sizeof(double));
+  pf_ue=(double *)calloc((size_t)neq,sizeof(double));
+  pf_du=(double *)calloc((size_t)neq,sizeof(double));
+  if((pf_fh==NULL)||(pf_ue==NULL)||(pf_du==NULL)){
+    pathfollow_disarm();
+    return 0;
+  }
+  pf_lamn=0.;pf_Pn=0.;pf_have=0;pf_on=1;pf_nref=0;
+  return 1;
+}
+
+void pathfollow_disarm(void){
+
+  if(pf_fh!=NULL){free(pf_fh);pf_fh=NULL;}
+  if(pf_ue!=NULL){free(pf_ue);pf_ue=NULL;}
+  if(pf_du!=NULL){free(pf_du);pf_du=NULL;}
+  pf_on=0;pf_neq=0;pf_have=0;
+}
+
+ITG pathfollow_armed(void){return pf_on;}
+
+/* The dissipation increment is the step size of this method.  When an
+   attempt fails, cutting the STEP TIME achieves nothing - lambda is
+   decoupled from it, so the load step is unchanged and the retry is the
+   same problem.  What has to shrink is tau.  This is the path-following
+   analogue of the stock cutback and it is why the stock controller alone
+   could not recover an engaged increment. */
+
+void pathfollow_settau(double tau){
+
+  if(tau>0.) pf_tau=tau;
+}
+
+double pathfollow_gettau(void){return pf_tau;}
+
+double pathfollow_lamn(void){return pf_lamn;}
+
+ITG pathfollow_refusals(void){return pf_nref;}
+
+/* Tangent predictor.
+
+   THIS is what lets the method turn a limit point, and getting it wrong is
+   why the first integration stalled: a predictor that always steps lambda
+   FORWARD walks into the region where no equilibrium exists, and no amount
+   of shrinking it helps, because the direction is wrong rather than the
+   length.
+
+   Apply the constraint to the tangent step itself.  With no correction yet
+   the trial displacement is du = dlambda*du_F, so
+
+       dG = 1/2 ( lambda_n * f_hat^T du - dlambda * P_n )
+          = 1/2 * dlambda * ( lambda_n*ff - P_n )
+
+   and dG = tau gives
+
+       dlambda = 2*tau / ( lambda_n*ff - P_n ) .                        (7)
+
+   The sign is not imposed, it FALLS OUT: while the structure is stiff
+   lambda_n*ff exceeds P_n and the predictor steps forward; as the limit
+   point is approached ff collapses, the denominator changes sign, and the
+   predictor reverses on its own.  That is the whole mechanism of a
+   snap-back, and it is expressed in one line because f_hat is frozen.
+
+   ff is taken from the last evaluated iterate, so the predictor is one
+   iteration stale.  That is the usual arc-length practice and costs
+   nothing here: a bad predictor is corrected, a wrongly SIGNED one is not.
+
+   Returns 0 if the denominator is degenerate and leaves *dlam alone. */
+
+ITG pathfollow_predictor(double *dlam){
+
+  double den,d;
+
+  if(pf_on==0) return 0;
+  den=pf_lamn*pf_fflast-pf_Pn;
+  if(!(den==den)) return 0;
+  if(!(fabs(den)>1.e-30*(fabs(pf_lamn*pf_fflast)+fabs(pf_Pn)+1.))) return 0;
+  d=2.*pf_tau/den;
+  if(!(d==d)) return 0;
+  *dlam=d;
+  return 1;
+}
+
+double pathfollow_ff(void){return pf_fflast;}
+
+/* Record ff without touching anything.  Called on every iteration once
+   f_hat exists, INCLUDING before the constraint engages, so that the
+   tangent predictor has a stiffness to work with the moment it does. */
+
+/* f_hat^T (accumulated correction).  Exposed only so that the caller can
+   cross-check the accumulation against the displacement the model
+   actually holds; see CCX_PATHFOLLOW_ACCUMCHECK. */
+
+double pathfollow_pdu(void){
+
+  ITG k;
+  double p=0.;
+
+  if(pf_on==0) return 0.;
+  for(k=0;k<pf_neq;k++) p+=pf_fh[k]*pf_du[k];
+  return p;
+}
+
+void pathfollow_measure(const double *uf){
+
+  ITG k;
+  double ff=0.;
+
+  if((pf_on==0)||(pf_have==0)) return;
+  for(k=0;k<pf_neq;k++) ff+=pf_fh[k]*uf[k];
+  pf_fflast=ff;
+}
+
+/* Start of a physical increment.  Discards any trial state left by a
+   rejected attempt and returns the predictor load factor. */
+
+void pathfollow_incstart(double dlampred,double *lam){
+
+  ITG k;
+
+  if(pf_on==0) return;
+  for(k=0;k<pf_neq;k++) pf_du[k]=0.;
+  pf_have=0;
+  *lam=pf_lamn+dlampred;
+}
+
+/* Equation-space dimension changed (remastruct after element deletion).
+   The accumulated vector no longer refers to the same dofs, so the
+   constraint reference is restarted at the current state: lambda_n is
+   kept, P_n goes to zero.  The constraint is incremental, so restarting
+   its origin is legitimate; carrying a stale vector would not be. */
+
+ITG pathfollow_resize(ITG neq){
+
+  double *a,*b;
+
+  if(pf_on==0) return 0;
+  if(neq<=0){pathfollow_disarm();return 0;}
+  a=(double *)calloc((size_t)neq,sizeof(double));
+  b=(double *)calloc((size_t)neq,sizeof(double));
+  if((a==NULL)||(b==NULL)){
+    if(a!=NULL)free(a);
+    if(b!=NULL)free(b);
+    pathfollow_disarm();
+    return 0;
+  }
+  free(pf_ue);free(pf_du);
+  if(pf_fh!=NULL) free(pf_fh);
+  pf_fh=(double *)calloc((size_t)neq,sizeof(double));
+  if(pf_fh==NULL){free(a);free(b);pathfollow_disarm();return 0;}
+  pf_ue=a;pf_du=b;pf_neq=neq;pf_Pn=0.;pf_have=0;
+  return 1;
+}
+
+/* First Newton iteration of an increment, BEFORE the solve.
+
+   b holds fext-f = -R, and the only thing that moved since the committed
+   state is the prescribed pattern, by dlampred.  Hence
+
+       -R = f_hat * dlampred ,   f_hat := -dR/dlambda
+
+   which is the reference load vector conjugate to lambda, for free.
+   f_hat is then held FIXED for the rest of the increment, which is what
+   makes the constraint exactly differentiable.
+
+   P_n is recomputed here with the CURRENT f_hat, from the committed
+   displacement, so that dG and its derivative always refer to the same
+   functional. */
+
+void pathfollow_capture(const double *b,double dlampred,double *Pn){
+
+  ITG k;
+  double p=0.;
+
+  if(pf_on==0) return;
+  if(!(fabs(dlampred)>1.e-30)) return;
+
+  for(k=0;k<pf_neq;k++) pf_fh[k]=b[k]/dlampred;
+  for(k=0;k<pf_neq;k++) p+=pf_fh[k]*pf_ue[k];
+  pf_Pn=p;
+  pf_have=1;
+  if(Pn!=NULL) *Pn=pf_Pn;
+}
+
+ITG pathfollow_have(void){return (ITG)pf_have;}
+
+const double *pathfollow_fhat(void){return pf_fh;}
+
+/* After the solve.  b holds du_R and uf holds K^-1 f_hat.
+
+   Evaluates the constraint at the CURRENT iterate, computes the bordered
+   scalar row, applies dlambda*du_F to b and advances lambda.  b is left
+   as the FULL correction that the caller then hands to results(), so the
+   accumulation in pathfollow_accum stays exact.
+
+   Returns 1 when the constraint step was applied.  On refusal b and lam
+   are untouched, so the caller simply performs an ordinary Newton step. */
+
+ITG pathfollow_step(double *b,const double *uf,double *lam,double dlmax,
+                    double *dgout,double *gout,double *dlamout,ITG *reason){
+
+  ITG k,ok;
+  double fr=0.,ff=0.,P,dg,g,dlam=0.;
+
+  *reason=0;
+  if((pf_on==0)||(pf_have==0)) return 0;
+
+  for(k=0;k<pf_neq;k++){
+    fr+=pf_fh[k]*b[k];
+    ff+=pf_fh[k]*uf[k];
+  }
+  pf_fflast=ff;
+
+  /* P at the current iterate: committed displacement plus everything
+     already applied in this increment.  b is NOT included - it is the
+     correction the linearisation is about to account for. */
+
+  P=pf_Pn;
+  for(k=0;k<pf_neq;k++) P+=pf_fh[k]*pf_du[k];
+
+  dg=pathfollow_dg(pf_Pn,pf_lamn,P,*lam);
+  g=dg-pf_tau;
+
+  if(dgout!=NULL) *dgout=dg;
+  if(gout!=NULL) *gout=g;
+
+  ok=pathfollow_dlam(g,pf_lamn,pf_Pn,fr,ff,dlmax,&dlam,reason);
+  if(ok==0){pf_nref++;return 0;}
+
+  for(k=0;k<pf_neq;k++) b[k]+=dlam*uf[k];
+  *lam+=dlam;
+  if(dlamout!=NULL) *dlamout=dlam;
+  return 1;
+}
+
+/* Accumulate the correction actually applied to the model. */
+
+void pathfollow_accum(const double *b){
+
+  ITG k;
+
+  if(pf_on==0) return;
+  for(k=0;k<pf_neq;k++) pf_du[k]+=b[k];
+}
+
+/* Commit an accepted increment.  The only writer of the committed state. */
+
+void pathfollow_commit(double lam,double *dgcommit){
+
+  ITG k;
+  double P=pf_Pn;
+
+  if(pf_on==0) return;
+  for(k=0;k<pf_neq;k++) P+=pf_fh[k]*pf_du[k];
+  if(dgcommit!=NULL) *dgcommit=pathfollow_dg(pf_Pn,pf_lamn,P,lam);
+
+  for(k=0;k<pf_neq;k++) pf_ue[k]+=pf_du[k];
+  for(k=0;k<pf_neq;k++) pf_du[k]=0.;
+  pf_lamn=lam;
+  pf_Pn=P;
+  pf_have=0;
+}
+
+/* Discard the trial state of a rejected attempt. */
+
+void pathfollow_rollback(double *lam){
+
+  ITG k;
+
+  if(pf_on==0) return;
+  for(k=0;k<pf_neq;k++) pf_du[k]=0.;
+  pf_have=0;
+  if(lam!=NULL) *lam=pf_lamn;
+}

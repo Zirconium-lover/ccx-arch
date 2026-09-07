@@ -1896,6 +1896,18 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_spc_g=0.;
   char *damage_stab_env=NULL,*damage_deadsole_env=NULL,
     *damage_deadall_env=NULL;
+
+  /* ---- CCX_PATHFOLLOW: consistent dissipation path following ----------
+     Everything below is inert unless CCX_PATHFOLLOW is set to a positive
+     dissipation increment.  The state proper lives in pathfollow.c; these
+     are only the handles the Newton loop needs. */
+
+  char *pf_env=NULL;
+  ITG pf_on=0,pf_engaged=0,pf_pending=0,pf_reason=0,pf_applied=0,
+    pf_neqarm=0,pf_nstep=0,pf_icutbprev=0,pf_ncut=0;
+  double pf_lam=0.,pf_lamprev=0.,pf_dlampred=0.,pf_dlamjump=0.,pf_tauv=0.,
+    pf_dg=0.,pf_g=0.,pf_dlam=0.,pf_dgc=0.,pf_clip=0.05,pf_taucur=0.,
+    pf_dtheta_eng=1.e-3,*pf_uf=NULL,*pf_rhs0=NULL,*pf_y=NULL;
 	 
   FILE *f1,*fdamage=NULL;
 
@@ -3577,6 +3589,60 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                "dG=%.6e per increment; theta is advanced only on "
                "acceptance\n",damage_diss_target);
       }
+
+      /* ---- CCX_PATHFOLLOW ------------------------------------------
+         A self-contained dissipation path following, independent of the
+         CCX_DISSIPATION_CONTROL machinery above and of PARDISO.  It is
+         armed only inside a domain where the bordered system is exactly
+         the one pathfollow.c verifies, and it refuses to arm otherwise
+         rather than degrade silently. */
+
+      pf_env=getenv("CCX_PATHFOLLOW");
+      if(pf_env!=NULL){
+        pf_tauv=atof(pf_env);
+        if(!(pf_tauv>0.)){
+          printf("[PATHFOLLOW] *ERROR: CCX_PATHFOLLOW must be a positive "
+                 "dissipation increment; got \"%s\".  Not armed.\n",pf_env);
+        }else if(damage_diss_ctrl>=1){
+          printf("[PATHFOLLOW] *ERROR: CCX_PATHFOLLOW and "
+                 "CCX_DISSIPATION_CONTROL both drive the load factor; "
+                 "set only one.  Not armed.\n");
+        }else if((*nmethod!=1)||(*ithermal>=2)||(*mortar>1)||(ncont!=0)||
+                 (*iexpl>1)||(*nboun<=0)||
+                 ((*isolver!=0)&&(*isolver!=7))){
+          printf("[PATHFOLLOW] not armed: outside the verified domain "
+                 "(nmethod=%" ITGFORMAT " ithermal=%" ITGFORMAT " mortar=%"
+                 ITGFORMAT " ncont=%" ITGFORMAT " iexpl=%" ITGFORMAT
+                 " nboun=%" ITGFORMAT " isolver=%" ITGFORMAT
+                 "; needs static, ithermal<2, no contact, implicit, "
+                 "prescribed dofs, SPOOLES or PARDISO)\n",
+                 *nmethod,*ithermal,*mortar,ncont,*iexpl,*nboun,*isolver);
+        }else if(pathfollow_selftest()!=0){
+          printf("[PATHFOLLOW] *ERROR: the bordered-algebra self test "
+                 "failed; refusing to arm.\n");
+        }else if(pathfollow_arm(pf_tauv,neq[1])==0){
+          printf("[PATHFOLLOW] *ERROR: could not allocate; not armed.\n");
+        }else{
+          NNEW(pf_uf,double,neq[1]);
+          pf_neqarm=neq[1];
+          pf_taucur=pf_tauv;
+          pf_on=1;
+          if(getenv("CCX_PATHFOLLOW_CLIP")!=NULL)
+            pf_clip=atof(getenv("CCX_PATHFOLLOW_CLIP"));
+          if(!(pf_clip>0.)) pf_clip=0.05;
+          if(getenv("CCX_PATHFOLLOW_DTHETA")!=NULL)
+            pf_dtheta_eng=atof(getenv("CCX_PATHFOLLOW_DTHETA"));
+          if(!(pf_dtheta_eng>0.)) pf_dtheta_eng=1.e-3;
+          printf("[PATHFOLLOW] armed: tau=%.6e per increment, "
+                 "|dlambda| clipped at %.3e per iteration.\n",
+                 pf_tauv,pf_clip);
+          printf("[PATHFOLLOW] lambda is decoupled from the step time and "
+                 "MAY DECREASE; theta stays monotone so dtime>0.\n");
+          printf("[PATHFOLLOW] ordinary control until the measured "
+                 "dissipation of an accepted increment reaches 0.2*tau, "
+                 "then the constraint takes over.\n");
+        }
+      }
       /* Path following: give lambda an identity separate from theta.
 
          Everything in this file has so far identified the load factor WITH
@@ -4890,6 +4956,35 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
       isiz=mt**nk;cpypardou(vini,vold,&isiz,&num_cpus);
 	  
       isiz=*nboun;cpypardou(xbounini,xbounact,&isiz,&num_cpus);
+
+      /* ---- CCX_PATHFOLLOW: commit the increment just accepted --------
+         This block runs exactly once per accepted physical increment, so
+         it is the only place the constraint reference may move.  A
+         rejected attempt never reaches it, and the trial state it left
+         behind is discarded by pathfollow_incstart below. */
+
+      if((pf_on==1)&&(pf_pending==1)){
+        pathfollow_commit(pf_lam,&pf_dgc);
+        if(pf_engaged==1){
+          pf_taucur*=1.4;
+          if(pf_taucur>pf_tauv) pf_taucur=pf_tauv;
+          pathfollow_settau(pf_taucur);
+        }
+        pf_dlampred=pf_lam-pf_lamprev;
+        pf_lamprev=pf_lam;
+        if(!(fabs(pf_dlampred)>1.e-30)) pf_dlampred=dtheta;
+        if((pf_engaged==0)&&(pf_dgc>0.2*pf_tauv)){
+          pf_engaged=1;
+          printf("[PATHFOLLOW] engaged at inc=%" ITGFORMAT " lambda=%.8f: "
+                 "measured dG=%.6e has reached 0.2*tau=%.6e\n",
+                 iinc,pf_lam,pf_dgc,0.2*pf_tauv);
+        }
+        printf("[PATHFOLLOW] inc=%" ITGFORMAT " ACCEPTED lambda=%.8f "
+               "dG=%.6e engaged=%" ITGFORMAT " refusals=%" ITGFORMAT "\n",
+               iinc,pf_lam,pf_dgc,pf_engaged,pathfollow_refusals());
+        fflush(stdout);
+      }
+      pf_pending=pf_on;
       if((*ithermal==1)||(*ithermal>=3)){
 	isiz=*nk;cpypardou(t1ini,t1act,&isiz,&num_cpus);
       }
@@ -5018,7 +5113,26 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     }
 
     /* determining the actual loads at the end of the new increment*/
-      
+
+    /* Once the constraint drives lambda, theta is only a monotone counter
+       that keeps dtime positive and paces the output.  The stock
+       controller still sizes it, but it is capped here: theta reaching 1
+       ends the step, and an uncapped theta would end the run in the middle
+       of the snap-back while lambda still has most of the branch to go. */
+
+    /* SET, not cap.  theta is a counter once the constraint drives
+       lambda, so letting checkconvergence shrink it does not make the
+       retry any easier - it only walks theta down to tmin and aborts the
+       run with "increment size smaller than minimum" while the load step
+       is unchanged.  Measured: 2 accepted increments past engagement, then
+       dtheta 3.9e-6 -> 9.8e-7 and a hard stop.  The path-following cutback
+       is tau, which pathfollow_settau has already halved by this point. */
+
+    if((pf_on==1)&&(pf_engaged==1)){
+      dtheta=pf_dtheta_eng;
+      if(theta+dtheta>1.) dtheta=1.-theta;
+    }
+
     reltime=theta+dtheta;
     FORTRAN(uc6setinc,(&iinc));
 
@@ -5053,6 +5167,70 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     if(damage_arc==1){
       for(k=0;k<*nboun;k++){
         xbounact[k]=xbounold[k]+(xboun[k]-xbounold[k])*damage_diss_lamcur;
+      }
+    }
+
+    /* ---- CCX_PATHFOLLOW: predictor for this attempt -----------------
+       pathfollow_incstart discards whatever a rejected attempt left, so
+       a cutback re-enters here from the committed state.  Before the
+       constraint engages lambda simply follows the step time, which is
+       the ordinary control the stock solver would have run. */
+
+    if(pf_on==1){
+      if(neq[1]!=pf_neqarm){
+        if(pathfollow_resize(neq[1])==0){
+          printf("[PATHFOLLOW] disarmed: could not follow the equation "
+                 "count from %" ITGFORMAT " to %" ITGFORMAT "\n",
+                 pf_neqarm,neq[1]);
+          pf_on=0;
+        }else{
+          RENEW(pf_uf,double,neq[1]);
+          printf("[PATHFOLLOW] equation count %" ITGFORMAT " -> %" ITGFORMAT
+                 "; constraint origin restarted at the current state\n",
+                 pf_neqarm,neq[1]);
+          pf_neqarm=neq[1];
+        }
+      }
+    }
+    if(pf_on==1){
+
+      /* The dissipation increment IS the step size here.  A stock cutback
+         shrinks theta, but lambda no longer follows theta, so the retry
+         would be the identical problem.  Shrink tau instead - that is the
+         path-following cutback, and without it an engaged increment can
+         only fail down to the minimum step time. */
+
+      if((pf_engaged==1)&&(icutb>pf_icutbprev)){
+        pf_taucur*=0.5;
+        if(pf_taucur<1.e-6*pf_tauv) pf_taucur=1.e-6*pf_tauv;
+        pf_ncut++;
+        pathfollow_settau(pf_taucur);
+
+        /* the predictor is proportional to tau, so it rescales itself */
+
+        printf("[PATHFOLLOW] cutback %" ITGFORMAT ": tau -> %.6e\n",
+               pf_ncut,pf_taucur);
+        fflush(stdout);
+      }
+      pf_icutbprev=icutb;
+      pathfollow_incstart(0.,&pf_lam);
+      if(pf_engaged==0){
+        pf_lam=theta+dtheta;
+      }else{
+
+        /* Tangent predictor, equation (7) in pathfollow.c.  Its SIGN is
+           not chosen here: it comes out of lambda_n*ff-P_n, which changes
+           sign at the limit point.  That is what turns the branch. */
+
+        if(pathfollow_predictor(&pf_dlampred)==0){
+          printf("[PATHFOLLOW] predictor degenerate at inc=%" ITGFORMAT
+                 "; keeping dlambda=%+.4e\n",iinc,pf_dlampred);
+        }
+        pf_lam=pathfollow_lamn()+pf_dlampred;
+      }
+      pf_dlamjump=pf_lam-pathfollow_lamn();
+      for(k=0;k<*nboun;k++){
+        xbounact[k]=xbounold[k]+(xboun[k]-xbounold[k])*pf_lam;
       }
     }
 
@@ -7084,6 +7262,68 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	  }
 	}
 
+	/* ---- CCX_PATHFOLLOW_ACCUMCHECK ---------------------------------
+	   The whole constraint rests on one assumption: that summing the
+	   corrections handed to results() reproduces the displacement the
+	   model actually holds.  If any other code path re-solves, rescales
+	   or re-applies b, the sum silently stops matching and the
+	   constraint is then evaluated at a state that does not exist.
+	   This compares f_hat^T(sum of corrections) against
+	   f_hat^T(vold-vini) read straight out of the model, and is the
+	   first thing to run when the constraint converges but equilibrium
+	   does not.
+
+	   vold, not v: v is allocated and freed several times inside this
+	   routine and is a dangling pointer at this point, which is what the
+	   first version of this check actually measured (model=1.1e+09,
+	   -nan, -3.5e+107).  vold is the current Newton iterate and is live
+	   for the whole routine. */
+
+	if((pf_on==1)&&(pathfollow_have()==1)&&
+	   (getenv("CCX_PATHFOLLOW_ACCUMCHECK")!=NULL)){
+	  double pfdir=0.,pfacc,pfden;
+	  const double *pffh=pathfollow_fhat();
+	  ITG pfi,pfj,pfk;
+	  for(pfi=0;pfi<*nk;pfi++){
+	    for(pfj=1;pfj<mt;pfj++){   /* j=0 is thermal; resultsini skips it */
+	      pfk=nactdof[mt*pfi+pfj];
+	      if(pfk>0) pfdir+=pffh[pfk-1]*(vold[mt*pfi+pfj]-vini[mt*pfi+pfj]);
+	    }
+	  }
+	  pfacc=pathfollow_pdu();
+	  pfden=fabs(pfdir)+fabs(pfacc)+1.e-30;
+	  printf("[PF-ACCUM] it=%" ITGFORMAT " model=%.12e accum=%.12e "
+	         "reldiff=%.3e %s\n",iit,pfdir,pfacc,
+	         fabs(pfdir-pfacc)/pfden,
+	         (fabs(pfdir-pfacc)<1.e-9*pfden)?"ok":"MISMATCH");
+	  fflush(stdout);
+	}
+
+
+	/* ---- CCX_PATHFOLLOW_SOLVECHECK: keep the right-hand side -------
+	   The method issues a SECOND solve with the same operator.  That is
+	   only legitimate if the solver leaves ad/au intact and returns a
+	   true solution both times.  Saving the rhs here lets both solves be
+	   verified afterwards with one sparse mat-vec each. */
+
+	if((pf_on==1)&&(getenv("CCX_PATHFOLLOW_SOLVECHECK")!=NULL)){
+	  if(pf_rhs0==NULL){NNEW(pf_rhs0,double,neq[1]);NNEW(pf_y,double,neq[1]);}
+	  isiz=neq[1];cpypardou(pf_rhs0,b,&isiz,&num_cpus);
+	}
+
+	/* ---- CCX_PATHFOLLOW: capture f_hat -----------------------------
+	   b still holds fext-f = -R.  At the first iteration of an attempt
+	   the ONLY thing that moved since the committed state is the
+	   prescribed pattern, by pf_dlamjump, so -R = f_hat*pf_dlamjump and
+	   the reference load vector conjugate to lambda comes out of the
+	   iteration for free.  It is then frozen for the rest of the
+	   increment, which is what makes the constraint exactly
+	   differentiable. */
+
+	if((pf_on==1)&&(iit==1)){
+	  pathfollow_capture(b,pf_dlamjump,NULL);
+	}
+
 	/* Stabilisation of detached pieces.
 
 	   A piece that has come loose by FACE connectivity still touches the
@@ -7569,6 +7809,84 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	    }
 	  }
 	}
+
+	/* ---- CCX_PATHFOLLOW: close the bordered system -----------------
+	   b now holds du_R.  Solve once more with the SAME operator for
+	   du_F = K^-1 f_hat and close the second row.  The extra
+	   factorisation is the honest price of staying solver agnostic: the
+	   CalculiX solver wrappers factor and solve in one call, so a second
+	   right-hand side cannot reuse the first factorisation without
+	   changing them.  Correctness first; the cost is a constant factor
+	   and is reported at the end of the step. */
+
+	if((pf_on==1)&&(pathfollow_have()==1)&&(*ithermal<2)){
+	  const double *pf_fh=pathfollow_fhat();
+	  for(k=0;k<neq[1];k++) pf_uf[k]=pf_fh[k];
+	  if(*isolver==0){
+#ifdef SPOOLES
+	    spooles(ad,au,adb,aub,&sigma,pf_uf,icol,irow,&neq[0],&nzs[0],
+		    &symmetryflag,&inputformat,&nzs[2]);
+#endif
+	  }else if(*isolver==7){
+#ifdef PARDISO
+	    pardiso_main(ad,au,adb,aub,&sigma,pf_uf,icol,irow,&neq[0],&nzs[0],
+			 &symmetryflag,&inputformat,jq,&nzs[2],&nrhs);
+#endif
+	  }
+	  pf_nstep++;
+
+	  /* ff is recorded on every iterate, engaged or not, so that the
+	     tangent predictor has a stiffness the moment the constraint
+	     takes over.  Only the APPLICATION is gated on engagement. */
+
+	  if((pf_rhs0!=NULL)&&(getenv("CCX_PATHFOLLOW_SOLVECHECK")!=NULL)){
+	    double pfr1=0.,pfr2=0.,pfn1=0.,pfn2=0.,pft;
+	    ITG pfi,pfone=1;
+	    const double *pffh2=pathfollow_fhat();
+	    for(pfi=0;pfi<neq[1];pfi++) pf_y[pfi]=0.;
+	    FORTRAN(op,(b,pf_y,ad,au,jq,irow,&pfone,&neq[0]));
+	    for(pfi=0;pfi<neq[0];pfi++){
+	      pft=pf_y[pfi]-pf_rhs0[pfi];
+	      pfr1+=pft*pft;pfn1+=pf_rhs0[pfi]*pf_rhs0[pfi];
+	    }
+	    for(pfi=0;pfi<neq[1];pfi++) pf_y[pfi]=0.;
+	    FORTRAN(op,(pf_uf,pf_y,ad,au,jq,irow,&pfone,&neq[0]));
+	    for(pfi=0;pfi<neq[0];pfi++){
+	      pft=pf_y[pfi]-pffh2[pfi];
+	      pfr2+=pft*pft;pfn2+=pffh2[pfi]*pffh2[pfi];
+	    }
+	    printf("[PF-SOLVE] it=%" ITGFORMAT " |K*duR-rhs|/|rhs|=%.3e "
+	           "|K*duF-fhat|/|fhat|=%.3e\n",iit,
+	           sqrt(pfr1)/(sqrt(pfn1)+1.e-300),
+	           sqrt(pfr2)/(sqrt(pfn2)+1.e-300));
+	    fflush(stdout);
+	  }
+
+	  pathfollow_measure(pf_uf);
+	  pf_applied=0;
+	  if(pf_engaged==1)
+	    pf_applied=pathfollow_step(b,pf_uf,&pf_lam,pf_clip,
+	                               &pf_dg,&pf_g,&pf_dlam,&pf_reason);
+	  if(pf_applied==1){
+	    for(k=0;k<*nboun;k++){
+	      xbounact[k]=xbounold[k]+(xboun[k]-xbounold[k])*pf_lam;
+	    }
+	  }
+	  if(getenv("CCX_PATHFOLLOW_PROBE")!=NULL){
+	    printf("[PATHFOLLOW] it=%" ITGFORMAT " lambda=%.8f dlambda=%+.4e "
+	           "dG=%.6e g=%.4e applied=%" ITGFORMAT " reason=%" ITGFORMAT
+	           "\n",iit,pf_lam,pf_applied?pf_dlam:0.,pf_dg,pf_g,
+	           pf_applied,pf_reason);
+	    fflush(stdout);
+	  }
+	}
+
+	/* The correction actually handed to results() is what the committed
+	   displacement must accumulate, so this has to sit AFTER the
+	   constraint contribution has been added to b and before anything
+	   else can touch it. */
+
+	if(pf_on==1) pathfollow_accum(b);
 
 	/* Locate the softest mode of the assembled operator.
 
