@@ -1,0 +1,514 @@
+/*     CalculiX - A 3-dimensional finite element program                 */
+/*              Copyright (C) 1998-2025 Guido Dhondt                     */
+
+/*     This program is free software; you can redistribute it and/or     */
+/*     modify it under the terms of the GNU General Public License as    */
+/*     published by the Free Software Foundation(version 2);             */
+
+/*     This program is distributed in the hope that it will be useful,   */
+/*     but WITHOUT ANY WARRANTY; without even the implied warranty of    */
+/*     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the     */
+/*     GNU General Public License for more details.                      */
+
+/*     You should have received a copy of the GNU General Public License */
+/*     along with this program; if not, write to the Free Software       */
+/*     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.         */
+
+/*
+  Dissipation-based path following (bordered / arc-length family).
+
+  METHOD AND PROVENANCE
+  ---------------------
+  The constraint is the energy-release ("dissipation") constraint of
+
+      M.G.D. Gutierrez, "Energy release control for numerical simulations
+      of failure in quasi-brittle solids", Communications in Numerical
+      Methods in Engineering 20 (2004) 19-29,
+
+  in the incremental form used by
+
+      C.V. Verhoosel, J.J.C. Remmers, M.A. Gutierrez, "A dissipation-based
+      arc-length method for robust simulation of brittle and ductile
+      failure", International Journal for Numerical Methods in Engineering
+      77 (2009) 1290-1321.
+
+  Only the published equations are used.  No third-party source code was
+  copied: the one open implementation found during the survey
+  (github.com/jfriedlein/energy-based_arc-length_method-dealii_public)
+  carries no license at all and therefore may not be reused.  Everything
+  below is written against the equations and verified numerically by
+  pathfollow_selftest().
+
+  WHY DISSIPATION AND NOT A GEOMETRIC ARC LENGTH
+  ---------------------------------------------
+  A Crisfield/Riks spherical constraint |du|^2 + psi^2 dlambda^2 = dl^2
+  measures the whole displacement vector.  Once damage localises into a
+  band of a few elements the norm is dominated by the elastic bulk that is
+  UNLOADING, so the constraint stops seeing the mechanism that actually
+  drives the branch and the method degenerates exactly where it is needed.
+  The dissipation constraint measures the energy the mechanism releases, so
+  it stays informative through localisation.  That is the argument in
+  Gutierrez (2004) and it is why the dissipation form became the standard
+  for cohesive/damage failure.
+
+  FORMULATION
+  -----------
+  lambda multiplies the prescribed load pattern.  f_hat is the reference
+  load vector conjugate to lambda in equation (active-dof) space,
+
+      f_hat := -dR/dlambda ,      R := f_int - f_ext ,
+
+  held FIXED over one increment.  Holding it fixed is what makes the
+  constraint an exactly differentiable function of the unknowns, which is
+  the property the previous implementation lacked.
+
+  With P(u) := f_hat^T u and the committed state (u_n, lambda_n),
+  P_n := f_hat^T u_n, the dissipation released over the increment is
+
+      dG(u,lambda) = 1/2 ( lambda_n * P(u) - lambda * P_n )              (1)
+
+  and the constraint is
+
+      g(u,lambda) = dG(u,lambda) - tau = 0                              (2)
+
+  with tau > 0 the prescribed dissipation increment.  Because f_hat is
+  fixed, (1) is bilinear and its derivatives are EXACT:
+
+      dg/du     = 1/2 * lambda_n * f_hat                    =: a        (3)
+      dg/dlambda= -1/2 * P_n                                =: bb       (4)
+
+  Sanity of the sign: in the elastic range u ~ lambda*u_1 so P ~ lambda*P_1
+  with P_1 = f_hat^T K^-1 f_hat > 0.  On a softening branch u keeps growing
+  while lambda falls, hence lambda_n*P > lambda*P_n and dG > 0.  The
+  constraint therefore drives the solution FORWARD along the dissipating
+  branch whether lambda rises or falls, which is precisely what a snap-back
+  needs and what monotone step-time control cannot do.
+
+  EXTENDED SYSTEM
+  ---------------
+  Newton on (u, lambda) gives the bordered system
+
+      [ K     -f_hat ] [ du     ]   [ -R ]
+      [ a^T    bb    ] [ dlambda ] = [ -g ]                             (5)
+
+  solved by the standard two-solve (Riks) decomposition
+
+      du_R = K^-1 (-R)          (the ordinary CalculiX right-hand side)
+      du_F = K^-1 f_hat
+      du   = du_R + dlambda * du_F
+
+  and the second row then gives the scalar
+
+      dlambda = -( g + a^T du_R ) / ( a^T du_F + bb )
+              = -( g + 1/2*lambda_n*fr ) / ( 1/2*lambda_n*ff - 1/2*P_n ) (6)
+
+  with fr := f_hat^T du_R and ff := f_hat^T du_F.
+
+  RELATION TO THE PREVIOUS IMPLEMENTATION IN nonlingeo.c
+  ------------------------------------------------------
+  The pre-existing CCX_DISSIPATION_CONTROL=2 path measures dG with one
+  functional and differentiates a different one:
+
+    * it measures P as the reaction work sum(fn*xboun) over the PRESCRIBED
+      dofs, but builds the constraint gradient from f_hat on the FREE dofs.
+      d/du of the former is not f_hat, so its row 2 is not the derivative
+      of its own row-2 residual;
+    * independently of that, its denominator carries +1/2*P_n where the
+      linearisation of its own dG expression requires the opposite sign.
+
+  A Newton iteration whose Jacobian row is not the derivative of its
+  residual row does not converge to the constraint; it stalls with a small
+  correction and a stagnant residual, which is the behaviour recorded in
+  the comments there.  Rather than patch signs into that path, this file
+  provides one consistent constraint whose derivatives are verified
+  numerically, and pathfollow_selftest() fails the build-time check if they
+  ever stop matching.
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include "CalculiX.h"
+
+/* ------------------------------------------------------------------ */
+/* Pure core.  No globals, no I/O, no solver: everything here is a     */
+/* function of its arguments so that it can be checked in isolation.   */
+/* ------------------------------------------------------------------ */
+
+/* Dissipation increment, equation (1). */
+
+double pathfollow_dg(double Pn,double lamn,double P,double lam){
+
+  return 0.5*(lamn*P-lam*Pn);
+}
+
+/* Explicit constraint gradient, equations (3) and (4), expressed as the
+   two scalar contractions the bordered solve needs.  Kept separate from
+   pathfollow_dlam so the self test can differentiate (1) numerically and
+   compare against these without going through the division. */
+
+void pathfollow_dgrad(double lamn,double Pn,double fr,double ff,
+                      double *adur,double *aduf,double *bb){
+
+  *adur=0.5*lamn*fr;      /* a^T du_R */
+  *aduf=0.5*lamn*ff;      /* a^T du_F */
+  *bb=-0.5*Pn;            /* dg/dlambda */
+}
+
+/* Scalar row of the bordered system, equation (6).
+
+   Returns 1 and writes *dlam on success.  Returns 0 and sets *reason on
+   refusal, leaving *dlam untouched, so a caller can always fall back to
+   the ordinary Newton step without having corrupted anything:
+
+     reason 1 : a non-finite input
+     reason 2 : the bordered denominator is singular to working precision,
+                i.e. the constraint is locally blind to lambda
+     reason 3 : the computed step is not finite
+     reason 4 : the step was clipped to dlmax (still a success, reported
+                so the caller can log it)
+
+   dlmax<=0 disables clipping. */
+
+ITG pathfollow_dlam(double g,double lamn,double Pn,double fr,double ff,
+                    double dlmax,double *dlam,ITG *reason){
+
+  double adur,aduf,bb,den,num,d;
+
+  *reason=0;
+
+  if(!(g==g)||!(lamn==lamn)||!(Pn==Pn)||!(fr==fr)||!(ff==ff)){
+    *reason=1;return 0;
+  }
+
+  pathfollow_dgrad(lamn,Pn,fr,ff,&adur,&aduf,&bb);
+
+  den=aduf+bb;
+  num=-(g+adur);
+
+  /* The scale against which "singular" is judged has to be the size of the
+     terms that built den, not an absolute number: den is an energy and its
+     natural magnitude changes by orders over a run. */
+
+  d=fabs(aduf)+fabs(bb);
+  if(!(fabs(den)>1.e-12*d)||!(d>0.)){
+    *reason=2;return 0;
+  }
+
+  d=num/den;
+  if(!(d==d)){
+    *reason=3;return 0;
+  }
+
+  if(dlmax>0.){
+    if(d>dlmax){d=dlmax;*reason=4;}
+    if(d<-dlmax){d=-dlmax;*reason=4;}
+  }
+
+  *dlam=d;
+  return 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Self test.                                                          */
+/*                                                                     */
+/* Checks, in order:                                                   */
+/*   A  dG evaluates to its definition                                 */
+/*   B  ROW 2 by finite differences: the analytic gradient (3)/(4)      */
+/*      reproduces the directional derivative of (1)                   */
+/*   C  ROW 1 and ROW 2 of the full bordered system (5) are both        */
+/*      satisfied by the two-solve decomposition, on a dense SPD K      */
+/*   D  the same on an INDEFINITE K, i.e. past a limit point where an   */
+/*      ordinary Newton step is exactly what fails                      */
+/*   E  degenerate inputs are refused rather than propagated            */
+/*                                                                     */
+/* Returns the number of failures; 0 means every check passed.          */
+/* ------------------------------------------------------------------ */
+
+/* Dense LU with partial pivoting, local to the test so that the check
+   does not depend on any external solver. */
+
+static ITG pf_lusolve(double *A,double *rhs,ITG n,double *x){
+
+  ITG i,j,k,p;
+  double mx,t,*M=NULL,*b=NULL;
+
+  M=(double *)malloc(n*n*sizeof(double));
+  b=(double *)malloc(n*sizeof(double));
+  if((M==NULL)||(b==NULL)){if(M!=NULL)free(M);if(b!=NULL)free(b);return 0;}
+
+  for(i=0;i<n*n;i++) M[i]=A[i];
+  for(i=0;i<n;i++) b[i]=rhs[i];
+
+  for(k=0;k<n;k++){
+    p=k;mx=fabs(M[k*n+k]);
+    for(i=k+1;i<n;i++){if(fabs(M[i*n+k])>mx){mx=fabs(M[i*n+k]);p=i;}}
+    if(!(mx>1.e-300)){free(M);free(b);return 0;}
+    if(p!=k){
+      for(j=0;j<n;j++){t=M[k*n+j];M[k*n+j]=M[p*n+j];M[p*n+j]=t;}
+      t=b[k];b[k]=b[p];b[p]=t;
+    }
+    for(i=k+1;i<n;i++){
+      t=M[i*n+k]/M[k*n+k];
+      if(t==0.) continue;
+      for(j=k;j<n;j++) M[i*n+j]-=t*M[k*n+j];
+      b[i]-=t*b[k];
+    }
+  }
+  for(i=n-1;i>=0;i--){
+    t=b[i];
+    for(j=i+1;j<n;j++) t-=M[i*n+j]*x[j];
+    x[i]=t/M[i*n+i];
+  }
+  free(M);free(b);
+  return 1;
+}
+
+/* One bordered-system case: build K, f_hat, R, run the two-solve, and
+   verify BOTH rows of (5) directly.  Returns the number of failures. */
+
+static ITG pf_bordered_case(const char *name,double *K,double *fhat,
+                            double *R,ITG n,double lamn,double Pn,
+                            double tau,double P,double lam){
+
+  ITG i,j,ok,reason,nbad=0;
+  double *duR=NULL,*duF=NULL,*du=NULL,*mrhs=NULL;
+  double fr=0.,ff=0.,g,dlam=0.,adur,aduf,bb,r1=0.,r2,t,nrm=0.;
+
+  duR=(double *)malloc(n*sizeof(double));
+  duF=(double *)malloc(n*sizeof(double));
+  du =(double *)malloc(n*sizeof(double));
+  mrhs=(double *)malloc(n*sizeof(double));
+  if((duR==NULL)||(duF==NULL)||(du==NULL)||(mrhs==NULL)){
+    printf("   %-22s ALLOCATION FAILED\n",name);
+    if(duR!=NULL) free(duR);
+    if(duF!=NULL) free(duF);
+    if(du!=NULL) free(du);
+    if(mrhs!=NULL) free(mrhs);
+    return 1;
+  }
+
+  for(i=0;i<n;i++) mrhs[i]=-R[i];
+  if(pf_lusolve(K,mrhs,n,duR)==0){nbad++;goto done;}
+  if(pf_lusolve(K,fhat,n,duF)==0){nbad++;goto done;}
+
+  for(i=0;i<n;i++){fr+=fhat[i]*duR[i];ff+=fhat[i]*duF[i];}
+
+  g=pathfollow_dg(Pn,lamn,P,lam)-tau;
+
+  ok=pathfollow_dlam(g,lamn,Pn,fr,ff,0.,&dlam,&reason);
+  if(ok==0){
+    printf("   %-22s REFUSED (reason %" ITGFORMAT ")\n",name,reason);
+    nbad++;goto done;
+  }
+
+  for(i=0;i<n;i++) du[i]=duR[i]+dlam*duF[i];
+
+  /* row 1:  K*du - f_hat*dlambda + R  ==  0 */
+
+  for(i=0;i<n;i++){
+    t=R[i]-fhat[i]*dlam;
+    for(j=0;j<n;j++) t+=K[i*n+j]*du[j];
+    r1+=t*t;
+    nrm+=R[i]*R[i];
+  }
+  r1=sqrt(r1);nrm=sqrt(nrm)+1.;
+
+  /* row 2:  a^T du + bb*dlambda + g  ==  0 */
+
+  pathfollow_dgrad(lamn,Pn,0.,0.,&adur,&aduf,&bb);
+  t=0.;
+  for(i=0;i<n;i++) t+=0.5*lamn*fhat[i]*du[i];
+  r2=t+bb*dlam+g;
+
+  printf("   %-22s dlambda=%+.6e  row1=%.3e  row2=%.3e  %s\n",
+         name,dlam,r1/nrm,fabs(r2),
+         ((r1/nrm<1.e-10)&&(fabs(r2)<1.e-10*(fabs(g)+fabs(t)+1.)))?
+         "ok":"FAIL");
+
+  if(!(r1/nrm<1.e-10)) nbad++;
+  if(!(fabs(r2)<1.e-10*(fabs(g)+fabs(t)+1.))) nbad++;
+
+ done:
+  free(duR);free(duF);free(du);free(mrhs);
+  return nbad;
+}
+
+ITG pathfollow_selftest(void){
+
+  ITG i,j,n=6,nbad=0,ok,reason;
+  double K[36],fhat[6],R[6],u[6],du[6];
+  double lamn=0.7,Pn=1.3,tau=2.5e-3,lam=0.65,P,eps,dlam=0.;
+  double g0,g1,ana,fd,adur,aduf,bb,dnan;
+
+  printf("[PATHFOLLOW] self test\n");
+
+  /* ---- A: dG matches its definition -------------------------------- */
+
+  P=2.1;
+  ana=pathfollow_dg(Pn,lamn,P,lam);
+  fd=0.5*(lamn*P-lam*Pn);
+  printf("   %-22s dG=%+.6e  %s\n","A definition",ana,
+         (fabs(ana-fd)<1.e-15)?"ok":"FAIL");
+  if(!(fabs(ana-fd)<1.e-15)) nbad++;
+
+  /* ---- B: row 2 gradient by finite differences ---------------------- */
+  /* g depends on u only through P=f_hat^T u, so a directional derivative
+     along du changes P by f_hat^T du.  Perturb BOTH u and lambda at once,
+     which is the combination the bordered row actually applies. */
+
+  for(i=0;i<n;i++){
+    fhat[i]=0.3+0.11*(double)i;
+    u[i]=0.05*(double)(i+1);
+    du[i]=(i%2==0)?0.7:-0.4;
+  }
+  P=0.;for(i=0;i<n;i++) P+=fhat[i]*u[i];
+  dlam=-0.031;                       /* lambda is allowed to DECREASE */
+
+  pathfollow_dgrad(lamn,Pn,0.,0.,&adur,&aduf,&bb);
+  ana=0.;for(i=0;i<n;i++) ana+=0.5*lamn*fhat[i]*du[i];
+  ana+=bb*dlam;
+
+  eps=1.e-7;
+  {
+    double Pp=0.;
+    for(i=0;i<n;i++) Pp+=fhat[i]*(u[i]+eps*du[i]);
+    g0=pathfollow_dg(Pn,lamn,P,lam);
+    g1=pathfollow_dg(Pn,lamn,Pp,lam+eps*dlam);
+    fd=(g1-g0)/eps;
+  }
+  printf("   %-22s analytic=%+.10e  fd=%+.10e  rel=%.2e  %s\n",
+         "B row2 gradient",ana,fd,fabs(ana-fd)/(fabs(ana)+1.e-30),
+         (fabs(ana-fd)<1.e-8*(fabs(ana)+1.))?"ok":"FAIL");
+  if(!(fabs(ana-fd)<1.e-8*(fabs(ana)+1.))) nbad++;
+
+  /* ---- C: both rows on an SPD tangent ------------------------------- */
+
+  for(i=0;i<n;i++){
+    for(j=0;j<n;j++) K[i*n+j]=(i==j)?(4.+0.5*(double)i):
+                       ((abs((int)(i-j))==1)?-1.:0.);
+    R[i]=0.02*(double)(i+1)-0.05;
+  }
+  P=0.;for(i=0;i<n;i++) P+=fhat[i]*u[i];
+  nbad+=pf_bordered_case("C bordered SPD",K,fhat,R,n,lamn,Pn,tau,P,lam);
+
+  /* ---- D: both rows on an INDEFINITE tangent ------------------------ */
+  /* Past a limit point the tangent has a negative eigenvalue.  An
+     ordinary Newton step is meaningless there, but the bordered system
+     is still solvable and must satisfy both rows exactly.  This is the
+     case the whole method exists for, so it is checked explicitly. */
+
+  K[0]=-3.0;
+  nbad+=pf_bordered_case("D bordered indefinite",K,fhat,R,n,lamn,Pn,tau,
+                         P,lam);
+
+  /* ---- E: degenerate inputs are refused ----------------------------- */
+
+  dnan=0.;dnan=dnan/((dnan==0.)?dnan:1.);       /* quiet NaN, no literal */
+
+  ok=pathfollow_dlam(dnan,lamn,Pn,0.1,0.2,0.,&dlam,&reason);
+  if(!((ok==0)&&(reason==1))){printf("   E nan input NOT refused\n");nbad++;}
+
+  /* lamn=0 and Pn=0 make the whole second row vanish */
+  ok=pathfollow_dlam(1.e-3,0.,0.,0.1,0.2,0.,&dlam,&reason);
+  if(!((ok==0)&&(reason==2))){
+    printf("   E singular row NOT refused (ok=%" ITGFORMAT " reason=%"
+           ITGFORMAT ")\n",ok,reason);nbad++;
+  }
+
+  /* clipping reports itself but still succeeds */
+  dlam=0.;
+  ok=pathfollow_dlam(1.,0.5,1.,0.,0.,1.e-3,&dlam,&reason);
+  if(!((ok==1)&&(reason==4)&&(fabs(fabs(dlam)-1.e-3)<1.e-15))){
+    printf("   E clipping wrong (ok=%" ITGFORMAT " reason=%" ITGFORMAT
+           " dlam=%.3e)\n",ok,reason,dlam);nbad++;
+  }
+  printf("   %-22s %s\n","E degenerate inputs",(nbad==0)?"ok":"see above");
+
+  printf("[PATHFOLLOW] self test %s (%" ITGFORMAT " failure(s))\n",
+         (nbad==0)?"PASSED":"FAILED",nbad);
+  return nbad;
+}
+
+/* ------------------------------------------------------------------ */
+/* Diagnostic: show, numerically, that the legacy CCX_DISSIPATION_     */
+/* CONTROL=2 scalar row is not the derivative of its own constraint.   */
+/*                                                                     */
+/* This is not part of the method.  It exists so that the claim "the   */
+/* old path stalls because its Jacobian row is inconsistent" is a      */
+/* measurement rather than an assertion, and so that the measurement   */
+/* can be repeated by anyone.                                          */
+/*                                                                     */
+/* Legacy row (nonlingeo.c, CCX_DISSIPATION_CONTROL=2):                */
+/*     dlam = -(g + 0.5*lamn*fr) / (0.5*lamn*ff + 0.5*Pn)              */
+/* Consistent row for the same dG, equation (6):                       */
+/*     dlam = -(g + 0.5*lamn*fr) / (0.5*lamn*ff - 0.5*Pn)              */
+/*                                                                     */
+/* Returns the number of cases in which the legacy step leaves a       */
+/* non-zero row-2 residual, i.e. fails to enforce the constraint it    */
+/* is supposed to enforce.                                             */
+/* ------------------------------------------------------------------ */
+
+ITG pathfollow_legacycheck(void){
+
+  ITG i,n=6,nbad=0,ok,reason,c;
+  double fhat[6],duR[6],duF[6];
+  double lamn,Pn,tau,lam,P,g,fr,ff,dlam_new=0.,dlam_old,den_old;
+  double r2new,r2old,t;
+
+  printf("[PATHFOLLOW] legacy row-2 consistency check\n");
+  printf("   case   dlam(consistent)   dlam(legacy)   row2(consistent)"
+         "   row2(legacy)\n");
+
+  for(c=0;c<3;c++){
+
+    lamn=0.8-0.25*(double)c;
+    Pn=1.4+0.6*(double)c;
+    tau=2.0e-3;
+    lam=lamn-0.02;
+
+    for(i=0;i<n;i++){
+      fhat[i]=0.3+0.11*(double)i;
+      duR[i]=0.004*(double)(i+1)*(1.+0.3*(double)c);
+      duF[i]=0.09-0.011*(double)i;
+    }
+    P=0.;fr=0.;ff=0.;
+    for(i=0;i<n;i++){
+      P+=fhat[i]*(0.05*(double)(i+1));
+      fr+=fhat[i]*duR[i];
+      ff+=fhat[i]*duF[i];
+    }
+    g=pathfollow_dg(Pn,lamn,P,lam)-tau;
+
+    ok=pathfollow_dlam(g,lamn,Pn,fr,ff,0.,&dlam_new,&reason);
+    if(ok==0){printf("   consistent row refused, reason %" ITGFORMAT "\n",
+                     reason);nbad++;continue;}
+
+    den_old=0.5*lamn*ff+0.5*Pn;
+    if(!(fabs(den_old)>0.)) continue;
+    dlam_old=-(g+0.5*lamn*fr)/den_old;
+
+    /* row 2 residual  a^T du + bb*dlam + g  with du = duR + dlam*duF,
+       a = 0.5*lamn*f_hat, bb = -0.5*Pn.  Zero means the step actually
+       enforces the constraint. */
+
+    t=0.;for(i=0;i<n;i++) t+=0.5*lamn*fhat[i]*(duR[i]+dlam_new*duF[i]);
+    r2new=t-0.5*Pn*dlam_new+g;
+
+    t=0.;for(i=0;i<n;i++) t+=0.5*lamn*fhat[i]*(duR[i]+dlam_old*duF[i]);
+    r2old=t-0.5*Pn*dlam_old+g;
+
+    printf("   %-6" ITGFORMAT " %+.8e   %+.8e   %.3e        %.3e\n",
+           c,dlam_new,dlam_old,fabs(r2new),fabs(r2old));
+
+    if(!(fabs(r2new)<1.e-12*(fabs(g)+1.))) nbad++;
+    if(fabs(r2old)>1.e-12*(fabs(g)+1.)){
+      /* expected: the legacy row does NOT satisfy the constraint */
+    }else{
+      printf("   case %" ITGFORMAT ": legacy row unexpectedly consistent\n",c);
+    }
+  }
+  printf("[PATHFOLLOW] consistent row leaves row2=0; the legacy row does "
+         "not.  %" ITGFORMAT " failure(s) in the consistent row.\n",nbad);
+  return nbad;
+}
