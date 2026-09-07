@@ -21,3 +21,7 @@ ccx_2.23
 ccx_2.23step
 *.vtu
 *.damage
+*.png
+*.svg
+test/**/run_*.log
+test/**/*.probe
