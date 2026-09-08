@@ -1927,6 +1927,17 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      dissipation increment.  The state proper lives in pathfollow.c; these
      are only the handles the Newton loop needs. */
 
+  /* ---- topology / deletion diagnostics (topodiag.c) -----------------
+     Measurement only.  td_trace prints a content hash of the COMMITTED
+     state at the top of every attempt and the sorted composition of every
+     deletion batch, which is what turns "the same batch repeats from the
+     same state" from an inference into a measurement.  td_from runs the
+     connectivity/rank/residual report from that increment on. */
+
+  ITG td_trace=0,td_from=0,*td_comp=NULL,*td_sort=NULL,td_armed=0;
+  unsigned long long td_state=0ULL,td_batch=0ULL;
+  topodiag_report td_rep;
+
   char *pf_env=NULL;
   ITG pf_on=0,pf_engaged=0,pf_pending=0,pf_reason=0,pf_applied=0,
     pf_neqarm=0,pf_nstep=0,pf_icutbprev=0,pf_ncut=0;
@@ -3751,6 +3762,22 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      the one pathfollow.c verifies, and it refuses to arm otherwise
      rather than degrade silently. */
 
+  if(getenv("CCX_DAMAGE_BATCH_TRACE")!=NULL) td_trace=1;
+  if(getenv("CCX_TOPODIAG")!=NULL) td_from=atoi(getenv("CCX_TOPODIAG"));
+  if((td_trace!=0)||(td_from>0)){
+    if(topodiag_selftest()!=0){
+      printf("[TOPODIAG] *ERROR: self test failed; diagnostics disabled\n");
+      td_trace=0;td_from=0;
+    }else{
+      td_armed=1;
+      NNEW(td_comp,ITG,*nk);
+      NNEW(td_sort,ITG,(*ne>0)?*ne:1);
+      printf("[TOPODIAG] armed: batch trace %s, topology report from "
+             "increment %" ITGFORMAT ".  Nothing here changes the "
+             "calculation.\n",td_trace?"ON":"off",td_from);
+    }
+  }
+
   pf_env=getenv("CCX_PATHFOLLOW");
   if(pf_env!=NULL){
     pf_tauv=atof(pf_env);
@@ -5425,6 +5452,29 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     }
 
     reltime=theta+dtheta;
+
+    /* Content hash of the COMMITTED state at the top of this attempt.
+       vini/xstateini/damdamageini/ipkondamageini are exactly what a
+       rollback restores, so two attempts that print the same hash really
+       did start from the same state - which is the half of the
+       "repeating event" claim that cannot be read off the existing log. */
+
+    if((td_armed!=0)&&(td_trace!=0)){
+      td_state=topodiag_hash_seed();
+      td_state=topodiag_hash_d(vini,mt**nk,td_state);
+      if(xstateini!=NULL)
+        td_state=topodiag_hash_d(xstateini,*nstate_*mi[0]**ne,td_state);
+      if(damdamageini!=NULL)
+        td_state=topodiag_hash_d(damdamageini,mi[0]*ne0,td_state);
+      if(ipkondamageini!=NULL)
+        td_state=topodiag_hash_i(ipkondamageini,ne0,td_state);
+      td_state=topodiag_hash_i(ipkon,*ne,td_state);
+      printf("[BATCHTRACE] attempt inc=%" ITGFORMAT " icutb=%" ITGFORMAT
+             " theta=%.12e dtheta=%.12e committed_state=%016llx\n",
+             iinc,icutb,theta,dtheta,td_state);
+      fflush(stdout);
+    }
+
     FORTRAN(uc6setinc,(&iinc));
 
     /* trial load factor for dissipation control; theta itself is
@@ -7826,6 +7876,86 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	   iteration for free.  It is then frozen for the rest of the
 	   increment, which is what makes the constraint exactly
 	   differentiable. */
+
+	/* ---- TOPOLOGY / RANK / RESIDUAL REPORT ------------------------
+	   Runs at the first iteration of every attempt from CCX_TOPODIAG on.
+	   b holds fext-f = -R and ad/au are assembled, so this is the real
+	   operator and the real residual of the state the solver is about
+	   to work on.  pardiso.c copies ad/au into its own array before
+	   factorising, so the extra solve below cannot disturb the
+	   factorisation the run then performs, and the scratch vector keeps
+	   b untouched. */
+
+	if((td_armed!=0)&&(td_from>0)&&(iinc>=td_from)&&(iit==1)&&
+	   (*ithermal<2)){
+	  double *td_x=NULL,*td_r0=NULL,td_nx,td_nb,td_pr;
+	  ITG td_it,td_k;
+
+	  topodiag_run(&td_rep,td_comp,kon,ipkon,lakon,*ne,*nk,nactdof,mt,
+	               nodeboun,ndirboun,*nboun,ipompc,nodempc,*nmpc,
+	               ad,au,jq,irow,neq[1],nzs[0],b);
+	  printf("[TOPODIAG] --- inc=%" ITGFORMAT " icutb=%" ITGFORMAT
+	         " iter=%" ITGFORMAT " committed_state=%016llx ---\n",
+	         iinc,icutb,iit,td_state);
+	  topodiag_print(&td_rep,"assembled operator",iinc);
+
+	  /* Softest mode by inverse iteration on the SAME operator, then
+	     the residual's projection onto it.  If the residual lies along
+	     a soft mode the obstruction is the topology; if it does not,
+	     the topology is sound and the corrector is the problem.  That
+	     is the whole point of the measurement. */
+
+	  NNEW(td_x,double,neq[1]);
+	  NNEW(td_r0,double,neq[1]);
+	  isiz=neq[1];cpypardou(td_r0,b,&isiz,&num_cpus);
+	  for(td_k=0;td_k<neq[1];td_k++)
+	    td_x[td_k]=(double)((td_k*2654435761U)%20011)/10005.-1.;
+	  for(td_it=0;td_it<4;td_it++){
+	    td_nb=0.;
+	    for(td_k=0;td_k<neq[1];td_k++) td_nb+=td_x[td_k]*td_x[td_k];
+	    td_nb=sqrt(td_nb);
+	    if(td_nb>0.) for(td_k=0;td_k<neq[1];td_k++) td_x[td_k]/=td_nb;
+	    if(*isolver==0){
+#ifdef SPOOLES
+	      spooles(ad,au,adb,aub,&sigma,td_x,icol,irow,&neq[0],&nzs[0],
+	              &symmetryflag,&inputformat,&nzs[2]);
+#endif
+	    }else if(*isolver==7){
+#ifdef PARDISO
+	      pardiso_main(ad,au,adb,aub,&sigma,td_x,icol,irow,&neq[0],
+	                   &nzs[0],&symmetryflag,&inputformat,jq,&nzs[2],
+	                   &nrhs);
+#endif
+	    }else break;
+	    td_nx=0.;
+	    for(td_k=0;td_k<neq[1];td_k++) td_nx+=td_x[td_k]*td_x[td_k];
+	    td_nx=sqrt(td_nx);
+	    printf("[TOPODIAG]   inverse iteration %" ITGFORMAT
+	           ": 1/sigma_min >= %.6e\n",td_it+1,td_nx);
+	  }
+	  td_pr=topodiag_project(td_r0,td_x,neq[1]);
+	  printf("[TOPODIAG]   |cos(residual, softest mode)| = %.6f\n",td_pr);
+	  {
+	    ITG td_bn=-1,td_bd=0,td_bc=-2,td_e;
+	    double td_bv=0.;
+	    for(td_k=0;td_k<*nk;td_k++){
+	      for(td_it=1;td_it<mt;td_it++){
+	        td_e=nactdof[mt*td_k+td_it];
+	        if(td_e>0){
+	          if(fabs(td_x[td_e-1])>td_bv){
+	            td_bv=fabs(td_x[td_e-1]);td_bn=td_k+1;td_bd=td_it;
+	            td_bc=td_comp[td_k];
+	          }
+	        }
+	      }
+	    }
+	    printf("[TOPODIAG]   softest mode peaks at node %" ITGFORMAT
+	           " dir %" ITGFORMAT " (component %" ITGFORMAT ")\n",
+	           td_bn,td_bd,td_bc);
+	  }
+	  SFREE(td_r0);SFREE(td_x);
+	  fflush(stdout);
+	}
 
 	if((pf_on==1)&&(iit==1)){
 
@@ -12529,6 +12659,24 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           for(k=0;k<damage_tent_count;k++){
             printf(" %" ITGFORMAT,damage_tent_elem[k]);
           }
+          printf("\n");
+          fflush(stdout);
+        }
+
+        /* The batch as a SET: sorted, hashed, and printed in full.  Two
+           batches with the same hash are the same set of elements
+           whatever order the scan produced them in. */
+
+        if((td_armed!=0)&&(td_trace!=0)){
+          td_batch=topodiag_hash_batch(damage_tent_elem,damage_tent_count,
+                                       td_sort,topodiag_hash_seed());
+          printf("[BATCHTRACE] batch inc=%" ITGFORMAT " icutb=%" ITGFORMAT
+                 " pass=%" ITGFORMAT " n=%" ITGFORMAT
+                 " committed_state=%016llx batch=%016llx sorted:",
+                 iinc,icutb,damage_active_pass,damage_tent_count,
+                 td_state,td_batch);
+          for(k=0;k<damage_tent_count;k++)
+            printf(" %" ITGFORMAT,td_sort[k]);
           printf("\n");
           fflush(stdout);
         }

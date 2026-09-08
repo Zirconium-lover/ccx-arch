@@ -1110,6 +1110,7 @@ packagingmain.c \
 pardiso.c \
 pathfollow.c \
 crackcontrol.c \
+topodiag.c \
 pardiso_cp.c \
 pastix.c \
 pcgsolver.c \

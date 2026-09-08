@@ -4902,6 +4902,63 @@ typedef struct{
   double dmaxmax;  /* largest committed maximum separation             */
 }crackcontrol_census;
 
+/* ---- topology diagnostic (topodiag.c) -------------------------------
+   Measurement only: nothing here decides anything or is on a solution
+   path.  It exists to tell a true orphan degree of freedom, a physically
+   detached component with rigid-body modes, and a sound topology with a
+   failing corrector apart from one another. */
+
+typedef struct{
+  ITG nelem;        /* live elements the graph was built from            */
+  ITG nfacet;       /* of those, user (cohesive) elements                */
+  ITG ncomp;        /* connected components of the live element graph    */
+  ITG maincomp;     /* id of the largest component                       */
+  ITG mainnode;     /* nodes in it                                       */
+  ITG nfloat;       /* components with NO prescribed dof and NO MPC      */
+  ITG nfloatnode;   /* nodes in those                                    */
+  ITG nfloatdof;    /* active dofs in those                              */
+  ITG floatmax;     /* nodes in the largest floating component           */
+  ITG floatfirst;   /* id of the first floating component                */
+  ITG norphandof;   /* active dofs on nodes with no live element         */
+  ITG norphannode;  /* nodes carrying them                               */
+  ITG orphannode;   /* the first such node, 1-based, or -1               */
+  ITG nzerodiag;    /* exactly zero diagonal entries                     */
+  ITG ntinydiag;    /* below 1e-12 of the largest                        */
+  ITG nisolated;    /* equations with no off-diagonal coupling at all    */
+  ITG resmaxeq;     /* equation carrying the largest residual            */
+  ITG resmaxnode;   /* and its node, 1-based                             */
+  ITG resmaxdir;    /* and direction                                     */
+  ITG resmaxcomp;   /* and component                                     */
+  double admax,admin;
+  double resnorm,resmax,resfloat;
+}topodiag_report;
+
+ITG topodiag_find(ITG *p,ITG a);
+void topodiag_union(ITG *p,ITG a,ITG b);
+ITG topodiag_nope(const char *lak);
+ITG topodiag_selftest(void);
+void topodiag_report_zero(topodiag_report *r);
+void topodiag_run(topodiag_report *r,ITG *comp,
+                  const ITG *kon,const ITG *ipkon,const char *lakon,ITG ne,
+                  ITG nk,const ITG *nactdof,ITG mt,
+                  const ITG *nodeboun,const ITG *ndirboun,ITG nboun,
+                  const ITG *ipompc,const ITG *nodempc,ITG nmpc,
+                  const double *ad,const double *au,const ITG *jq,
+                  const ITG *irow,ITG neq,ITG nzs,
+                  const double *res);
+double topodiag_project(const double *v,const double *w,ITG neq);
+void topodiag_print(const topodiag_report *r,const char *tag,ITG iinc);
+unsigned long long topodiag_hash_bytes(const void *p,size_t n,
+                                       unsigned long long h);
+unsigned long long topodiag_hash_d(const double *a,ITG n,
+                                   unsigned long long h);
+unsigned long long topodiag_hash_i(const ITG *a,ITG n,
+                                   unsigned long long h);
+unsigned long long topodiag_hash_seed(void);
+unsigned long long topodiag_hash_batch(const ITG *elem,ITG n,
+                                       ITG *sorted,
+                                       unsigned long long h);
+
 double crackcontrol_frame(const double *x1,const double *x2,const double *x3,
                           double *rmat);
 double crackcontrol_dir(const double *dl,double beta,double tol,double *m);
