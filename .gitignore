@@ -25,3 +25,16 @@ ccx_2.23step
 *.svg
 test/**/run_*.log
 test/**/*.probe
+*.12d
+ccx_dbg
+test/pathfollow/coh_mu*.inp
+test/pathfollow/plascheck.inp
+test/pathfollow/probe.inp
+test/pathfollow/snapback_pf.inp
+test/pathfollow/off_ref/
+test/pathfollow/off_new/
+test/pathfollow/on_run/
+test/pathfollow/*.dat
+__pycache__/
+*.pyc
+*.de1stats
