@@ -1939,6 +1939,16 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
   double pf_sqa[4],pf_scam[5];
   ITG pf_lincheck=0,pf_codmode=0;
   double pf_dphi=0.,pf_cu=0.,*pf_cvec=NULL;
+
+  /* ---- mixed-mode crack control (pf_codmode==2) ---------------------
+     The control functional is rebuilt from the COMMITTED state at the top
+     of every attempt and the constraint is written incrementally, so a
+     redefinition between increments carries nothing over.  See
+     crackcontrol.c. */
+
+  ITG pf_ccmode=0,pf_ccnw=0,pf_ccengage=0,pf_ccarmed=0;
+  double pf_dphicur=0.,pf_lam0it=0.,pf_dlamit=0.,pf_gacc=0.,pf_phiacc=0.;
+  crackcontrol_census pf_cs;
 	 
   FILE *f1,*fdamage=NULL;
 
@@ -3797,6 +3807,80 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          replaces the dissipation constraint on a localised cohesive
          crack. */
 
+      /* ---- mixed-mode crack control ------------------------------
+         CCX_CRACK_CONTROL=<dphi> arms the generalisation of the above:
+         the control coordinate is the effective separation the UC6 law
+         itself advances along, deff^2 = max(dn,0)^2+beta*|ds|^2, frozen
+         into an affine functional once per attempt.  The two are
+         mutually exclusive; CCX_PATHFOLLOW_COD is kept unchanged so that
+         the Mode-I result stays a regression test. */
+
+      if((getenv("CCX_CRACK_CONTROL")!=NULL)&&
+         (getenv("CCX_PATHFOLLOW_COD")!=NULL)){
+        printf("[CRACKCTL] *ERROR: CCX_CRACK_CONTROL and "
+               "CCX_PATHFOLLOW_COD both define the control coordinate; "
+               "set only one.  Not armed.\n");
+      }else if(getenv("CCX_CRACK_CONTROL")!=NULL){
+        char *cce;
+        ITG ce,ncoh=0;
+        for(ce=0;ce<*ne;ce++){
+          if((lakon[8*ce]!='U')||(lakon[8*ce+1]!='C')||
+             (lakon[8*ce+2]!='6')) continue;
+          ncoh++;
+        }
+        if(ncoh==0){
+          printf("[CRACKCTL] *ERROR: CCX_CRACK_CONTROL needs UC6 "
+                 "cohesive elements; none found.  Not armed.\n");
+        }else if(crackcontrol_selftest()!=0){
+          printf("[CRACKCTL] *ERROR: the kinematics self test failed; "
+                 "refusing to arm.\n");
+        }else{
+          pf_dphi=atof(getenv("CCX_CRACK_CONTROL"));
+          if(!(pf_dphi>0.)){
+            printf("[CRACKCTL] *ERROR: CCX_CRACK_CONTROL must be a "
+                   "positive control increment.  Not armed.\n");
+          }else{
+            pf_ccmode=1;                     /* default: process zone   */
+            cce=getenv("CCX_CRACK_CONTROL_MODE");
+            if(cce!=NULL){
+              if((strcmp(cce,"MEAN")==0)||(strcmp(cce,"0")==0)) pf_ccmode=0;
+              else if((strcmp(cce,"ZONE")==0)||(strcmp(cce,"1")==0)) pf_ccmode=1;
+              else if((strcmp(cce,"DISS")==0)||(strcmp(cce,"2")==0)) pf_ccmode=2;
+              else printf("[CRACKCTL] unknown CCX_CRACK_CONTROL_MODE "
+                          "\"%s\"; keeping ZONE\n",cce);
+            }
+            cce=getenv("CCX_CRACK_CONTROL_ENGAGE");
+            if(cce!=NULL) pf_ccengage=atoi(cce);
+            NNEW(pf_cvec,double,neq[1]);
+            if(pathfollow_cod_arm(pf_cvec,neq[1])==1){
+              pf_codmode=2;
+              pf_ccarmed=1;
+              pf_dphicur=pf_dphi;
+              pf_engaged=0;      /* ordinary control until the crack has
+                                    a process zone to control          */
+              printf("[CRACKCTL] armed on %" ITGFORMAT " UC6 facet(s): "
+                     "mode=%s, control increment dphi=%.6e per "
+                     "increment.\n",ncoh,
+                     (pf_ccmode==0)?"MEAN (all facets)":
+                     ((pf_ccmode==1)?"ZONE (process zone)":
+                      "DISS (cohesive dissipation)"),pf_dphi);
+              printf("[CRACKCTL] the functional is refrozen from the "
+                     "committed state at every attempt and the "
+                     "constraint is incremental: g = c^T(u-u_n) - "
+                     "dphi.\n");
+              if(pf_ccengage>0)
+                printf("[CRACKCTL] engagement deferred to increment %"
+                       ITGFORMAT ".\n",pf_ccengage);
+              else
+                printf("[CRACKCTL] engages as soon as the process zone "
+                       "is non-empty.\n");
+            }else{
+              printf("[CRACKCTL] *ERROR: could not arm.\n");
+            }
+          }
+        }
+      }
+
       if(getenv("CCX_PATHFOLLOW_COD")!=NULL){
         ITG ce,ci,ck,cip,cn,cnp,cdof,ncoh=0;
         double ca[3],cb[3],cnv[3],cnorm,csh[3],cw;
@@ -5080,12 +5164,27 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         if(pf_codmode==1){
           pathfollow_cod_settarget(pathfollow_cod_target()+pf_dphi);
           pf_dgc=pf_cu;
+        }else if(pf_codmode==2){
+
+          /* CONSTRAINT RESIDUAL AT THE ACCEPTED STATE.  Everything else
+             the driver prints is measured mid-iteration, before the last
+             correction was applied, so it cannot answer "did the
+             constraint converge".  This does: vold is the accepted
+             state, vini is still the committed one, and the projection
+             uses the same c the corrector used. */
+
+          pf_phiacc=pf_project(pathfollow_cod_c(),vold,vini,nactdof,*nk,mt);
+          pf_gacc=pf_phiacc-pf_dphicur;
         }
         pathfollow_commit(pf_lam,pf_pdu,&pf_dgc);
         if(pf_engaged==1){
           pf_taucur*=1.4;
           if(pf_taucur>pf_tauv) pf_taucur=pf_tauv;
           pathfollow_settau(pf_taucur);
+          if(pf_codmode==2){
+            pf_dphicur*=1.4;
+            if(pf_dphicur>pf_dphi) pf_dphicur=pf_dphi;
+          }
         }
         pf_dlampred=pf_lam-pf_lamprev;
         pf_lamprev=pf_lam;
@@ -5096,7 +5195,26 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                  "measured dG=%.6e has reached 0.2*tau=%.6e\n",
                  iinc,pf_lam,pf_dgc,0.2*pf_tauv);
         }
-        if(pf_codmode==1){
+        if(pf_codmode==2){
+
+          /* Census at the ACCEPTED state (vold, xstate), which is what
+             "the front advanced" has to be measured on.  pf_cvec is
+             refrozen from the committed state at the top of the next
+             attempt, so using it as the scratch vector here costs
+             nothing. */
+
+          crackcontrol_build(pf_cvec,neq[1],pf_ccmode,co,kon,ipkon,lakon,
+                             *ne,ielprop,prop,xstate,*nstate_,mi,vold,
+                             nactdof,*nk,mt,&pf_cs);
+          printf("[CRACKCTL] inc=%" ITGFORMAT " ACCEPTED lambda=%.8f "
+                 "dphi=%.6e achieved=%.6e g=%.3e |R|=%.3e du=%.3e "
+                 "zone=%" ITGFORMAT " init=%" ITGFORMAT " fail=%"
+                 ITGFORMAT " dead=%" ITGFORMAT " deffmax=%.6e "
+                 "shear=%.4f\n",
+                 iinc,pf_lam,pf_dphicur,pf_phiacc,pf_gacc,ram[0],ram[1],
+                 pf_cs.nzone,pf_cs.ninit,pf_cs.nfail,pf_cs.ndead,
+                 pf_cs.deffmax,pf_cs.shearfrac);
+        }else if(pf_codmode==1){
           printf("[PATHFOLLOW] inc=%" ITGFORMAT " ACCEPTED lambda=%.8f "
                  "phi=%.6e target=%.6e\n",iinc,pf_lam,pf_cu,
                  pathfollow_cod_target());
@@ -5321,6 +5439,28 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                  "; constraint origin restarted at the current state\n",
                  pf_neqarm,neq[1]);
           pf_neqarm=neq[1];
+
+          /* The control functional lives in EQUATION space.  After a
+             remastruct its entries refer to dofs that no longer exist,
+             so a vector kept from before the change is not merely stale,
+             it is read out of bounds.  The mixed-mode functional is
+             rebuilt from the model a few lines below, every attempt; the
+             absolute Mode-I functional cannot be rebuilt without redoing
+             the geometry pass, so it is disarmed loudly rather than used
+             wrong. */
+
+          if(pf_codmode==2){
+            RENEW(pf_cvec,double,neq[1]);
+          }else if(pf_codmode==1){
+            printf("[PATHFOLLOW] *ERROR: CCX_PATHFOLLOW_COD builds its "
+                   "control functional once, from a fixed equation "
+                   "numbering.  The equation count has changed, so the "
+                   "vector no longer refers to the same dofs.  "
+                   "Disarming rather than continuing with a stale "
+                   "constraint; use CCX_CRACK_CONTROL, which refreezes "
+                   "the functional every attempt.\n");
+            pf_on=0;pf_engaged=0;pf_codmode=0;
+          }
         }
       }
     }
@@ -5338,6 +5478,16 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         pf_ncut++;
         pathfollow_settau(pf_taucur);
 
+        /* For crack control the CONTROL INCREMENT is the step size, for
+           exactly the same reason: lambda no longer follows theta, so a
+           theta cutback retries the identical problem. */
+
+        if(pf_codmode==2){
+          pf_dphicur*=0.5;
+          if(pf_dphicur<1.e-8*pf_dphi) pf_dphicur=1.e-8*pf_dphi;
+          printf("[CRACKCTL] cutback: dphi -> %.6e\n",pf_dphicur);
+        }
+
         /* the predictor is proportional to tau, so it rescales itself */
 
         printf("[PATHFOLLOW] cutback %" ITGFORMAT ": tau -> %.6e\n",
@@ -5346,6 +5496,47 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
       }
       pf_icutbprev=icutb;
       pathfollow_incstart();
+
+      /* ---- mixed-mode crack control: refreeze the functional --------
+         Built from the COMMITTED state (vini, xstateini), which is what
+         a rollback restores, so a retry rebuilds the identical vector.
+         The constraint is incremental, so the target is simply the
+         control increment currently in force. */
+
+      if(pf_codmode==2){
+        pf_ccnw=crackcontrol_build(pf_cvec,neq[1],pf_ccmode,co,kon,ipkon,
+                                   lakon,*ne,ielprop,prop,xstateini,
+                                   *nstate_,mi,vini,nactdof,*nk,mt,&pf_cs);
+
+        /* ZONE and DISS are supported on the process zone.  Before the
+           first initiation, and again if every initiated point has
+           failed, that set is empty and the functional carries no
+           weight.  Fall back to the mean over all live facets for this
+           attempt rather than handing the bordered row a zero vector. */
+
+        if((pf_ccnw==0)&&(pf_ccmode!=0)){
+          pf_ccnw=crackcontrol_build(pf_cvec,neq[1],0,co,kon,ipkon,
+                                     lakon,*ne,ielprop,prop,xstateini,
+                                     *nstate_,mi,vini,nactdof,*nk,mt,
+                                     &pf_cs);
+        }
+        pathfollow_cod_arm(pf_cvec,neq[1]);
+        pathfollow_cod_settarget(pf_dphicur);
+
+        if((pf_engaged==0)&&(pf_ccnw>0)){
+          if(((pf_ccengage>0)&&(iinc>=pf_ccengage))||
+             ((pf_ccengage<=0)&&(pf_cs.nzone>0))){
+            pf_engaged=1;
+            printf("[CRACKCTL] engaged at inc=%" ITGFORMAT " lambda=%.8f: "
+                   "process zone %" ITGFORMAT " ip(s), initiated %"
+                   ITGFORMAT ", failed %" ITGFORMAT ", shear fraction "
+                   "%.4f\n",iinc,pathfollow_lamn(),pf_cs.nzone,
+                   pf_cs.ninit,pf_cs.nfail,pf_cs.shearfrac);
+            fflush(stdout);
+          }
+        }
+      }
+
       if(pf_engaged==0){
         pf_lam=theta+dtheta;
       }else{
@@ -7980,6 +8171,12 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	   changing them.  Correctness first; the cost is a constant factor
 	   and is reported at the end of the step. */
 
+	/* Reset here, not inside the block below: the line search has to be
+	   able to tell "this iteration applied a constraint step" from "the
+	   value left over by an earlier one". */
+
+	pf_applied=0;pf_dlamit=0.;pf_lam0it=pf_lam;
+
 	if((pf_on==1)&&(pathfollow_have()==1)&&(*ithermal<2)){
 	  const double *pf_fh=pathfollow_fhat();
 	  for(k=0;k<neq[1];k++) pf_uf[k]=pf_fh[k];
@@ -8285,18 +8482,26 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	    /* the trial displacement is READ FROM THE MODEL, not
 	       accumulated; see the design note in pathfollow.c */
 
-	    if(pf_codmode==1){
+	    if(pf_codmode>=1){
 
-	      /* phi is an ABSOLUTE quantity: the opening measured from the
-	         reference configuration, not an increment.  c only couples
-	         plus/minus node pairs, so c^T(vold-uref) is exactly the mean
-	         normal separation. */
+	      /* Mode 1 (CCX_PATHFOLLOW_COD): phi is ABSOLUTE, the mean normal
+	         separation measured from the reference configuration.
+	         Mode 2 (CCX_CRACK_CONTROL): phi is INCREMENTAL, c^T(u-u_n),
+	         because the functional itself is refrozen every attempt and
+	         only its increment is meaningful across a refreeze.
 
-	      pf_cu=pf_project(pathfollow_cod_c(),vold,pf_uref,nactdof,*nk,mt);
+	         c only couples plus/minus node pairs, so in both cases the
+	         projection is exactly the controlled opening. */
+
+	      pf_lam0it=pf_lam;
+	      pf_dlamit=0.;
+	      pf_cu=pf_project(pathfollow_cod_c(),vold,
+	                       (pf_codmode==2)?vini:pf_uref,nactdof,*nk,mt);
 	      pf_applied=pathfollow_cod_step(b,pf_uf,pf_cu,&pf_lam,pf_clip,
 	                                     &pf_g,&pf_dlam,&pf_reason);
 	      pf_dg=pf_cu;
 	      if(pf_applied==1){
+	        pf_dlamit=pf_lam-pf_lam0it;
 	        for(k=0;k<*nboun;k++){
 	          xbounact[k]=xbounold[k]+(xboun[k]-xbounold[k])*pf_lam;
 	        }
@@ -10152,6 +10357,19 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
             SFREE(v);SFREE(stx);SFREE(fn);
             for(i=0;i<neq[1];i++)
               b[i]=flinesearch*damage_linesearch_step[i];
+
+            /* The bordered step is ONE Newton step in (u,lambda).
+               Damping only its displacement half leaves the prescribed
+               dofs at the undamped load factor, so the trial state is
+               not on the ray the line search thinks it is contracting
+               along - and the constraint it was solved to satisfy is not
+               satisfied at any point of that ray.  Contract both. */
+
+            if((pf_on==1)&&(pf_applied==1)){
+              pf_lam=pf_lam0it+flinesearch*pf_dlamit;
+              for(i=0;i<*nboun;i++)
+                xbounact[i]=xbounold[i]+(xboun[i]-xbounold[i])*pf_lam;
+            }
 
             MNEW(v,double,mt**nk);
             isiz=mt**nk;cpypardou(v,vold,&isiz,&num_cpus);

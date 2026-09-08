@@ -1109,6 +1109,7 @@ opmain.c \
 packagingmain.c \
 pardiso.c \
 pathfollow.c \
+crackcontrol.c \
 pardiso_cp.c \
 pastix.c \
 pcgsolver.c \

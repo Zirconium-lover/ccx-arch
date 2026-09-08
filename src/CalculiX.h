@@ -4878,6 +4878,42 @@ ITG pathfollow_cod_step(double *b,const double *uf,double cu,double *lam,
                         double dlmax,double *gout,double *dlamout,
                         ITG *reason);
 
+/* ---- mixed-mode crack control (crackcontrol.c) ---------------------
+   The control functional for a UC6 cohesive interface: a frozen
+   linearisation of the effective separation
+       deff^2 = max(dn,0)^2 + beta*(ds1^2+ds2^2)
+   so that the constraint stays affine during one corrector.  See the
+   block comment in crackcontrol.c. */
+
+typedef struct{
+  ITG nfacet;      /* UC6 elements in the model                        */
+  ITG ndead;       /* of those, deleted (ipkon<0)                      */
+  ITG nip;         /* live integration points visited                  */
+  ITG ninit;       /* dmax > d0  (initiated)                           */
+  ITG nzone;       /* d0 < dmax < df  (process zone)                   */
+  ITG nfail;       /* dmax >= df (fully failed)                        */
+  double area;     /* total live facet area                            */
+  double zonearea; /* facet area carrying the process zone             */
+  double weight;   /* total weight the functional carries              */
+  double shearfrac;/* area-weighted beta*|ds|^2/deff^2 in the zone     */
+  double deffmax;  /* largest effective separation                     */
+  double dmaxmax;  /* largest committed maximum separation             */
+}crackcontrol_census;
+
+double crackcontrol_frame(const double *x1,const double *x2,const double *x3,
+                          double *rmat);
+double crackcontrol_dir(const double *dl,double beta,double tol,double *m);
+double crackcontrol_dissrate(double kn,double tn0,double gc);
+ITG crackcontrol_selftest(void);
+void crackcontrol_census_zero(crackcontrol_census *s);
+ITG crackcontrol_build(double *c,ITG neq,ITG mode,
+                       const double *co,const ITG *kon,const ITG *ipkon,
+                       const char *lakon,ITG ne,
+                       const ITG *ielprop,const double *prop,
+                       const double *xstate,ITG nstate_,const ITG *mi,
+                       const double *v,const ITG *nactdof,ITG nk,ITG mt,
+                       crackcontrol_census *s);
+
 void spooles(double *ad,double *au,double *adb,double *aub,
              double *sigma,double *b,
              ITG *icol,ITG *irow,ITG *neq,ITG *nzs,ITG *symmtryflag,
