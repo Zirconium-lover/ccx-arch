@@ -38,3 +38,4 @@ test/pathfollow/*.dat
 __pycache__/
 *.pyc
 *.de1stats
+test/s3rad/_runs/
