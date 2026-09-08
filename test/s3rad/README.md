@@ -172,8 +172,104 @@ CCX_EXE=$PWD/build-mkl/ccx_2.23_pardiso S3RAD_DECK=/tmp/pilot.inp \
 ```
 
 `CCX_CRACK_CONTROL_ENGAGE=<inc>` keeps the run under ORDINARY control
-until that increment.  Verified: with the feature armed but not engaged
-the `.sta` file is line-for-line identical to the stock baseline, so the
-extra solve, the census and the diagnostics do not perturb the
-trajectory, and one run yields both the pre-wall census and the
+until that increment, so one run yields both the pre-wall census and the
 continuation.
+
+**Verified**: armed but not engaged is the stock run.  A pilot with
+`ENGAGE=250` at the SAME thread count as the baseline has a `.sta` file
+identical to it line for line for 448 lines - every attempt of every one
+of the first 249 accepted increments - and the first difference is the
+attempt at which it engages.  The extra solve, the refrozen functional,
+the census and the diagnostics therefore do not perturb the trajectory.
+
+The thread count does.  `MKL_CBWR=COMPATIBLE` fixes the instruction set
+but not the reduction order, so a pilot run at 3 threads against a
+4-thread baseline diverges on its own - measured, at increment 198.
+Compare runs at equal thread count or not at all.
+
+---
+
+## Pilot result: NEGATIVE
+
+The continuation works, and it does not solve this model.  Both halves of
+that sentence are measurements.
+
+### What the continuation does
+
+Engaging the mixed-mode control at increment 340, just before the stock
+run's wall, with `dphi = 2e-05`, `DISS`, `DTHETA = 1e-05`, PARDISO, 4
+threads:
+
+| | value |
+|---|---|
+| consecutive accepted engaged increments | **659** (341 → 999) |
+| equilibrium residual `\|R\|` | median 2.65e-04, max 8.36e-03 |
+| constraint residual `\|g\|` | median 7.9e-18, max 4.5e-17 |
+| load factor | 0.212979 → **min 0.212905** → 0.215116 |
+| largest `deff` | 8.7023e-02 → 9.0213e-02, non-decreasing in 611 of 658 steps |
+| failed UC6 points | 5377 → 5435 |
+| initiated UC6 points | 15434 → 15441 |
+| shear fraction on the front | 0.652 → 0.654 |
+| stop | `rc=201`, "too many cutbacks", 10331 s |
+
+The load factor **turns**: it falls for the first ~30 engaged increments
+and then rises again, which is a limit point being passed, and it is
+passed with the equilibrium residual converged and the constraint
+residual at 1e-18.  Nothing was weakened to get this - the convergence
+criteria are the stock ones and the deck is the committed one apart from
+output frequency.
+
+### Why it is still a negative result
+
+Reaching increment 340 at all needed one change to the recorded
+environment: `CCX_DAMAGE_DEADALL` from `1.e-2` to `5.e-2`.  With the
+recorded value the run stops at increment 348 in a livelock - a deletion
+batch leaves an orphan node, its same-load re-equilibration does not
+converge, the batch is rolled back, and the identical event repeats.
+
+So the honest control is **stock at the same `DEADALL`**, run
+armed-but-never-engaged so it prints the same census:
+
+| | original baseline `DEADALL=1e-2` | pilot, continuation, `DEADALL=5e-2` | control, **stock**, `DEADALL=5e-2` |
+|---|---|---|---|
+| accepted increments | 352 | 999 | 466 and still running |
+| load factor reached | 0.212194 | 0.215116 | **0.229500** |
+| failed UC6 points | 5353 | 5435 | **5565** |
+| deleted UC6 facets | 81 | 81 | **82** |
+| largest `deff` | 8.568e-02 | 9.021e-02 | **1.239e-01** |
+
+Against the ORIGINAL recorded wall the pilot passes on every metric.
+Against the control at the same `DEADALL` it does not: plain
+displacement control goes further on every front measure, in a third of
+the increments.
+
+**The wall recorded for this model was a dead-support deletion threshold,
+not a load-factor limit point.**  The continuation cannot be credited
+with passing it, and on the configuration where the comparison is fair it
+is slower than doing nothing.
+
+### The limit is the step size the corrector can take
+
+`dphi` was requested at 2e-05 and the run actually ran at 4.4e-07 to
+1.1e-05 - the cutback logic held it one to two orders below the request
+throughout.  The continuation is therefore not limited by its control
+law, which converged to 1e-18 every single increment, but by how large a
+step the coupled Newton iteration will accept on this model.  That is the
+quantity to attack next.
+
+### The single best next experiment
+
+Measure why the coupled corrector will not take the requested step.  The
+constraint row is exact and cheap; the equilibrium row is the one that
+refuses.  The one measurement that would settle it is the **rank-one
+structure of the failing step**: at an increment where `dphi = 2e-05`
+fails and `dphi = 5e-07` succeeds, dump `du_R`, `du_F` and the residual
+after the full step, and test whether the residual after the step lies in
+the span of the softest few modes of `K` (inverse iteration is already
+implemented as `CCX_DAMAGE_NULLVEC`).  If it does, the obstruction is the
+same floating-piece mechanism the earlier `m12_field` work recorded, and
+the answer is topological - a proper branch switch at deletion - not a
+better continuation coordinate.  If it does not, the corrector is simply
+seeing the semismooth UC6 initiation kink at 10000 points at once, and
+the answer is a semismooth (Newton-min or active-set) corrector rather
+than the plain one.
