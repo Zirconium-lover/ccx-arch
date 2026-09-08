@@ -164,6 +164,24 @@ static void damage_aba_cmp(const char *name,const double *a,
 
 static ITG damage_history_nip(const char *lakonel,ITG mi0);
 
+/* Project f_hat (equation space) onto a nodal displacement difference.
+   Only free dofs contribute, and j starts at 1 because j=0 is the thermal
+   dof, exactly as resultsini.c applies the correction.  This is how the
+   path following reads the model instead of shadowing it. */
+
+static double pf_project(const double *fh,const double *a,const double *c,
+                         const ITG *nactdof,ITG nk,ITG mt){
+  ITG i,j,k;
+  double p=0.;
+  for(i=0;i<nk;i++){
+    for(j=1;j<mt;j++){
+      k=nactdof[mt*i+j];
+      if(k>0) p+=fh[k-1]*(a[mt*i+j]-c[mt*i+j]);
+    }
+  }
+  return p;
+}
+
 /* ---- discrete-branch census -------------------------------------------
    J-14 measured a sharp loss of local linearity between alpha=0.0625 and
    alpha=0.125 and called it a "discrete switch".  That was a hypothesis, not
@@ -1907,7 +1925,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     pf_neqarm=0,pf_nstep=0,pf_icutbprev=0,pf_ncut=0;
   double pf_lam=0.,pf_lamprev=0.,pf_dlampred=0.,pf_dlamjump=0.,pf_tauv=0.,
     pf_dg=0.,pf_g=0.,pf_dlam=0.,pf_dgc=0.,pf_clip=0.05,pf_taucur=0.,
-    pf_dtheta_eng=1.e-3,*pf_uf=NULL,*pf_rhs0=NULL,*pf_y=NULL;
+    pf_dtheta_eng=1.e-3,pf_pdu=0.,*pf_uf=NULL,*pf_rhs0=NULL,*pf_y=NULL,
+    *pf_uref=NULL;
 	 
   FILE *f1,*fdamage=NULL;
 
@@ -3624,6 +3643,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           printf("[PATHFOLLOW] *ERROR: could not allocate; not armed.\n");
         }else{
           NNEW(pf_uf,double,neq[1]);
+          NNEW(pf_uref,double,mt**nk);
+          isiz=mt**nk;cpypardou(pf_uref,vold,&isiz,&num_cpus);
           pf_neqarm=neq[1];
           pf_taucur=pf_tauv;
           pf_on=1;
@@ -4951,20 +4972,16 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 
       neini=*ne;
 	  
-      /* vold is copied into vini */
-	  
-      isiz=mt**nk;cpypardou(vini,vold,&isiz,&num_cpus);
-	  
-      isiz=*nboun;cpypardou(xbounini,xbounact,&isiz,&num_cpus);
-
       /* ---- CCX_PATHFOLLOW: commit the increment just accepted --------
-         This block runs exactly once per accepted physical increment, so
-         it is the only place the constraint reference may move.  A
-         rejected attempt never reaches it, and the trial state it left
-         behind is discarded by pathfollow_incstart below. */
+         This runs exactly once per accepted physical increment, and it
+         must run BEFORE vini is overwritten with vold: the increment's
+         displacement change is vold-vini, and after the copy that
+         difference is identically zero.  A rejected attempt never reaches
+         this block, which is what makes the constraint transactional. */
 
-      if((pf_on==1)&&(pf_pending==1)){
-        pathfollow_commit(pf_lam,&pf_dgc);
+      if((pf_on==1)&&(pf_pending==1)&&(pathfollow_have()==1)){
+        pf_pdu=pf_project(pathfollow_fhat(),vold,vini,nactdof,*nk,mt);
+        pathfollow_commit(pf_lam,pf_pdu,&pf_dgc);
         if(pf_engaged==1){
           pf_taucur*=1.4;
           if(pf_taucur>pf_tauv) pf_taucur=pf_tauv;
@@ -4980,11 +4997,20 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                  iinc,pf_lam,pf_dgc,0.2*pf_tauv);
         }
         printf("[PATHFOLLOW] inc=%" ITGFORMAT " ACCEPTED lambda=%.8f "
-               "dG=%.6e engaged=%" ITGFORMAT " refusals=%" ITGFORMAT "\n",
-               iinc,pf_lam,pf_dgc,pf_engaged,pathfollow_refusals());
+               "dG=%.6e P=%.6e ff=%.6e engaged=%" ITGFORMAT " refusals=%"
+               ITGFORMAT "\n",iinc,pf_lam,pf_dgc,pathfollow_Pn(),
+               pathfollow_ff(),pf_engaged,pathfollow_refusals());
         fflush(stdout);
       }
       pf_pending=pf_on;
+
+      /* vold is copied into vini */
+	  
+      isiz=mt**nk;cpypardou(vini,vold,&isiz,&num_cpus);
+	  
+      isiz=*nboun;cpypardou(xbounini,xbounact,&isiz,&num_cpus);
+
+
       if((*ithermal==1)||(*ithermal>=3)){
 	isiz=*nk;cpypardou(t1ini,t1act,&isiz,&num_cpus);
       }
@@ -5213,7 +5239,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         fflush(stdout);
       }
       pf_icutbprev=icutb;
-      pathfollow_incstart(0.,&pf_lam);
+      pathfollow_incstart();
       if(pf_engaged==0){
         pf_lam=theta+dtheta;
       }else{
@@ -5231,6 +5257,31 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
       pf_dlamjump=pf_lam-pathfollow_lamn();
       for(k=0;k<*nboun;k++){
         xbounact[k]=xbounold[k]+(xboun[k]-xbounold[k])*pf_lam;
+      }
+
+      /* Bisection probe: is the model state at the START of an attempt
+         really the committed one?  vold-vini must be identically zero
+         here; anything else means the rollback did not restore what the
+         constraint assumes it restored. */
+
+      if(getenv("CCX_PATHFOLLOW_ACCUMCHECK")!=NULL){
+        double pfd=0.,pfm=0.;
+        ITG pfi,pfj,pfk;
+        for(pfi=0;pfi<*nk;pfi++){
+          for(pfj=1;pfj<mt;pfj++){
+            pfk=nactdof[mt*pfi+pfj];
+            if(pfk>0){
+              pfd+=(vold[mt*pfi+pfj]-vini[mt*pfi+pfj])*
+                   (vold[mt*pfi+pfj]-vini[mt*pfi+pfj]);
+              if(fabs(vold[mt*pfi+pfj]-vini[mt*pfi+pfj])>pfm)
+                pfm=fabs(vold[mt*pfi+pfj]-vini[mt*pfi+pfj]);
+            }
+          }
+        }
+        printf("[PF-START] inc=%" ITGFORMAT " attempt icutb=%" ITGFORMAT
+               " |vold-vini|=%.6e max=%.6e lambda=%.8f\n",
+               iinc,icutb,sqrt(pfd),pfm,pf_lam);
+        fflush(stdout);
       }
     }
 
@@ -6241,6 +6292,29 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
       NNEW(iruc,ITG,nzs[1]-nzs[0]);
       for(k=0;k<nzs[1]-nzs[0];k++){
 	iruc[k]=irow[k+nzs[0]]-neq[0];}
+    }
+
+    /* Second half of the rollback probe: PF-START reports |vold-vini| at
+       the top of the attempt, this reports it at the last statement before
+       the Newton loop.  Anything nonzero here is state that moved between
+       the two, which the constraint would otherwise attribute to the
+       increment. */
+
+    if((pf_on==1)&&(getenv("CCX_PATHFOLLOW_ACCUMCHECK")!=NULL)){
+      double pfd=0.,pft;
+      ITG pfi,pfj,pfk;
+      for(pfi=0;pfi<*nk;pfi++){
+        for(pfj=1;pfj<mt;pfj++){
+          pfk=nactdof[mt*pfi+pfj];
+          if(pfk>0){
+            pft=vold[mt*pfi+pfj]-vini[mt*pfi+pfj];
+            pfd+=pft*pft;
+          }
+        }
+      }
+      printf("[PF-PRELOOP] inc=%" ITGFORMAT " icutb=%" ITGFORMAT
+             " |vold-vini|=%.6e\n",iinc,icutb,sqrt(pfd));
+      fflush(stdout);
     }
 
     while(icntrl==0){
@@ -7262,42 +7336,6 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	  }
 	}
 
-	/* ---- CCX_PATHFOLLOW_ACCUMCHECK ---------------------------------
-	   The whole constraint rests on one assumption: that summing the
-	   corrections handed to results() reproduces the displacement the
-	   model actually holds.  If any other code path re-solves, rescales
-	   or re-applies b, the sum silently stops matching and the
-	   constraint is then evaluated at a state that does not exist.
-	   This compares f_hat^T(sum of corrections) against
-	   f_hat^T(vold-vini) read straight out of the model, and is the
-	   first thing to run when the constraint converges but equilibrium
-	   does not.
-
-	   vold, not v: v is allocated and freed several times inside this
-	   routine and is a dangling pointer at this point, which is what the
-	   first version of this check actually measured (model=1.1e+09,
-	   -nan, -3.5e+107).  vold is the current Newton iterate and is live
-	   for the whole routine. */
-
-	if((pf_on==1)&&(pathfollow_have()==1)&&
-	   (getenv("CCX_PATHFOLLOW_ACCUMCHECK")!=NULL)){
-	  double pfdir=0.,pfacc,pfden;
-	  const double *pffh=pathfollow_fhat();
-	  ITG pfi,pfj,pfk;
-	  for(pfi=0;pfi<*nk;pfi++){
-	    for(pfj=1;pfj<mt;pfj++){   /* j=0 is thermal; resultsini skips it */
-	      pfk=nactdof[mt*pfi+pfj];
-	      if(pfk>0) pfdir+=pffh[pfk-1]*(vold[mt*pfi+pfj]-vini[mt*pfi+pfj]);
-	    }
-	  }
-	  pfacc=pathfollow_pdu();
-	  pfden=fabs(pfdir)+fabs(pfacc)+1.e-30;
-	  printf("[PF-ACCUM] it=%" ITGFORMAT " model=%.12e accum=%.12e "
-	         "reldiff=%.3e %s\n",iit,pfdir,pfacc,
-	         fabs(pfdir-pfacc)/pfden,
-	         (fabs(pfdir-pfacc)<1.e-9*pfden)?"ok":"MISMATCH");
-	  fflush(stdout);
-	}
 
 
 	/* ---- CCX_PATHFOLLOW_SOLVECHECK: keep the right-hand side -------
@@ -7321,7 +7359,11 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	   differentiable. */
 
 	if((pf_on==1)&&(iit==1)){
-	  pathfollow_capture(b,pf_dlamjump,NULL);
+	  pathfollow_capture(b,pf_dlamjump);
+	  if(pathfollow_have()==1){
+	    pathfollow_setPn(pf_project(pathfollow_fhat(),vini,pf_uref,
+	                                nactdof,*nk,mt));
+	  }
 	}
 
 	/* Stabilisation of detached pieces.
@@ -7864,9 +7906,33 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 
 	  pathfollow_measure(pf_uf);
 	  pf_applied=0;
-	  if(pf_engaged==1)
-	    pf_applied=pathfollow_step(b,pf_uf,&pf_lam,pf_clip,
+	  if(pf_engaged==1){
+
+	    /* the trial displacement is READ FROM THE MODEL, not
+	       accumulated; see the design note in pathfollow.c */
+
+	    pf_pdu=pf_project(pathfollow_fhat(),vold,vini,nactdof,*nk,mt);
+
+	    /* At the first iteration put lambda exactly on the constraint,
+	       in closed form, so that the coupled iteration does not open
+	       with a residual the stock extrapolation put there. */
+
+	    /* Measured: this does NOT rescue the descending branch (1 accepted
+	       increment past engagement against 2 without it), so it is
+	       opt-in and off by default.  It is kept because it isolates one
+	       hypothesis cleanly - the opening constraint residual is not
+	       what stops the run. */
+
+	    if((iit==1)&&(getenv("CCX_PATHFOLLOW_PROJECT")!=NULL)){
+	      if(pathfollow_project_lambda(pf_pdu,&pf_lam)==1){
+	        for(k=0;k<*nboun;k++){
+	          xbounact[k]=xbounold[k]+(xboun[k]-xbounold[k])*pf_lam;
+	        }
+	      }
+	    }
+	    pf_applied=pathfollow_step(b,pf_uf,pf_pdu,&pf_lam,pf_clip,
 	                               &pf_dg,&pf_g,&pf_dlam,&pf_reason);
+	  }
 	  if(pf_applied==1){
 	    for(k=0;k<*nboun;k++){
 	      xbounact[k]=xbounold[k]+(xboun[k]-xbounold[k])*pf_lam;
@@ -7881,12 +7947,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	  }
 	}
 
-	/* The correction actually handed to results() is what the committed
-	   displacement must accumulate, so this has to sit AFTER the
-	   constraint contribution has been added to b and before anything
-	   else can touch it. */
 
-	if(pf_on==1) pathfollow_accum(b);
 
 	/* Locate the softest mode of the assembled operator.
 
