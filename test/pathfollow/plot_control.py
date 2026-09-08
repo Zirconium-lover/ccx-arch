@@ -101,7 +101,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--modeI', nargs=2, metavar=('STOCK', 'CTRL'))
     ap.add_argument('--mixed', nargs=2, metavar=('STOCK', 'CTRL'))
-    ap.add_argument('--s3rad', nargs=2, metavar=('STOCK', 'CTRL'))
+    ap.add_argument('--s3rad', nargs=1, metavar='RUNDIR',
+                    help='one pilot run; it is split at the engagement '
+                         'increment, because the armed-but-not-engaged '
+                         'phase reproduces the stock trajectory '
+                         'line-for-line')
     ap.add_argument('-o', '--out', default='out.png')
     a = ap.parse_args()
 
@@ -141,32 +145,58 @@ def main():
                 exact=(us, ys))
 
     if a.s3rad:
-        st = read_log(os.path.join(a.s3rad[0], 'run.log'), 'CRACKCTL')
-        ct = read_log(os.path.join(a.s3rad[1], 'run.log'), 'CRACKCTL')
-        fig, ax = plt.subplots(1, 3, figsize=(15, 4.2))
-        for d, lab, c in ((st, 'stock (armed, never engaged)', C_STOCK),
-                          (ct, 'crack control', C_CTRL)):
-            if not d:
+        d = read_log(os.path.join(a.s3rad[0], 'run.log'), 'CRACKCTL')
+        eng = None
+        for l in open(os.path.join(a.s3rad[0], 'run.log')):
+            m = re.search(r'\[CRACKCTL\] engaged at inc=(\d+)', l)
+            if m:
+                eng = int(m.group(1))
+        if eng is None:
+            eng = d[-1]['inc'] + 1
+        st = [x for x in d if x['inc'] <= eng]
+        ct = [x for x in d if x['inc'] >= eng]
+        fig, ax = plt.subplots(1, 4, figsize=(19, 4.3))
+        for dd, lab, c in ((st, 'ordinary control (= stock)', C_STOCK),
+                           (ct, 'crack control', C_CTRL)):
+            if not dd:
                 continue
-            ax[0].plot([x['inc'] for x in d], [x['lam'] for x in d],
-                       color=c, lw=1.1, label=lab)
-            ax[1].plot([x['inc'] for x in d], [x.get('fail', 0) for x in d],
-                       color=c, lw=1.1, label=lab + ' - failed UC6 points')
-            ax[1].plot([x['inc'] for x in d], [x.get('dead', 0) for x in d],
-                       color=c, lw=1.1, ls=':',
-                       label=lab + ' - deleted UC6 facets')
-            ax[2].semilogy([x['inc'] for x in d],
-                           [max(abs(x.get('R', 0.)), 1e-16) for x in d],
+            ax[0].plot([x['inc'] for x in dd], [x['lam'] for x in dd],
+                       color=c, lw=1.2, label=lab)
+            ax[1].plot([x['inc'] for x in dd],
+                       [x.get('deff', 0) for x in dd], color=c, lw=1.2,
+                       label=lab)
+            ax[2].semilogy([x['inc'] for x in dd],
+                           [max(abs(x.get('R', 0.)), 1e-16) for x in dd],
                            color=c, lw=.9, label=lab + r'  $\|R\|_\infty$')
-            ax[2].semilogy([x['inc'] for x in d],
-                           [max(abs(x.get('g', 0.)), 1e-24) for x in d],
+            ax[2].semilogy([x['inc'] for x in dd],
+                           [max(abs(x.get('g', 0.)), 1e-24) for x in dd],
                            color=c, lw=.9, ls='--', label=lab + '  |g|')
-        style(ax[0], 'accepted increment', 'load factor', 's3rad load factor')
-        style(ax[1], 'accepted increment', 'integration points / facets',
-              's3rad front advance')
+        # fourth panel: the engaged stretch on its own, because on the
+        # scale of the whole run it is a few pixels wide
+        if len(ct) > 1:
+            ax[3].plot([x['inc'] for x in ct], [x['lam'] for x in ct],
+                       color=C_CTRL, lw=1.4, marker='o', ms=3,
+                       label='load factor')
+            a2 = ax[3].twinx()
+            a2.plot([x['inc'] for x in ct], [x.get('deff', 0) for x in ct],
+                    color=C_STOCK, lw=1.4, marker='s', ms=3,
+                    label='largest deff')
+            a2.set_ylabel('largest UC6 deff', color=C_STOCK)
+            a2.tick_params(axis='y', colors=C_STOCK)
+            for sp in ('top',):
+                a2.spines[sp].set_visible(False)
+            ax[3].legend(fontsize=7, frameon=False, loc='upper left')
+        for x in ax[:3]:
+            x.axvline(eng, color='#888', lw=.8, ls=':')
+        style(ax[0], 'accepted increment', 'load factor',
+              's3rad load factor (dotted line = engagement)')
+        style(ax[1], 'accepted increment', 'largest UC6 deff',
+              's3rad front: largest effective separation')
         style(ax[2], 'accepted increment', 'residual',
-              's3rad: equilibrium and constraint')
-        for x in ax:
+              's3rad: equilibrium and constraint residuals')
+        style(ax[3], 'accepted increment', 'load factor',
+              'the engaged stretch: lambda turns, deff advances')
+        for x in ax[:3]:
             x.legend(fontsize=7, frameon=False)
         fig.tight_layout(); fig.savefig(a.out, dpi=140)
         print('wrote', a.out)

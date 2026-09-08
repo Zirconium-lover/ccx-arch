@@ -1946,7 +1946,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      redefinition between increments carries nothing over.  See
      crackcontrol.c. */
 
-  ITG pf_ccmode=0,pf_ccnw=0,pf_ccengage=0,pf_ccarmed=0;
+  ITG pf_ccmode=0,pf_ccnw=0,pf_ccengage=0,pf_ccarmed=0,pf_ncutfloor=0;
   double pf_dphicur=0.,pf_lam0it=0.,pf_dlamit=0.,pf_gacc=0.,pf_phiacc=0.,
     pf_fhcos=0.,pf_fhrat=0.,pf_eps=1.e-5,pf_ccgrow=1.1;
   crackcontrol_census pf_cs;
@@ -5525,7 +5525,34 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 
         if(pf_codmode==2){
           pf_dphicur*=0.5;
-          if(pf_dphicur<1.e-8*pf_dphi) pf_dphicur=1.e-8*pf_dphi;
+          if(pf_dphicur<1.e-8*pf_dphi){
+            pf_dphicur=1.e-8*pf_dphi;
+
+            /* TERMINATION.  With dtheta held fixed the stock stop
+               "increment size smaller than minimum" can never fire, so
+               without this the run has no termination criterion at all
+               and a wall becomes an infinite loop instead of a reported
+               result.  Measured on the target: the deletion batch at
+               increment 348 leaves an orphan node, its same-load
+               re-equilibration does not converge, the batch is rolled
+               back, and the identical event repeats forever.
+
+               dphi at its floor and still failing means the obstruction
+               is not the size of the continuation step. */
+
+            pf_ncutfloor++;
+            if(pf_ncutfloor>=3){
+              printf("[CRACKCTL] *WALL: the control increment is at its "
+                     "floor (%.6e, 1e-8 of the requested %.6e) and the "
+                     "attempt still fails.  The obstruction is not the "
+                     "size of the continuation step.  Stopping.\n",
+                     pf_dphicur,pf_dphi);
+              fflush(stdout);
+              FORTRAN(stop,());
+            }
+          }else{
+            pf_ncutfloor=0;
+          }
           printf("[CRACKCTL] cutback: dphi -> %.6e\n",pf_dphicur);
         }
 
