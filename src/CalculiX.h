@@ -4857,6 +4857,7 @@ ITG pathfollow_have(void);
 const double *pathfollow_fhat(void);
 void pathfollow_incstart(void);
 void pathfollow_freeze(void);
+void pathfollow_unfreeze(void);
 ITG pathfollow_frozen(void);
 void pathfollow_capture(const double *b,double dlampred);
 void pathfollow_setPn(double Pn);

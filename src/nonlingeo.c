@@ -1948,7 +1948,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 
   ITG pf_ccmode=0,pf_ccnw=0,pf_ccengage=0,pf_ccarmed=0;
   double pf_dphicur=0.,pf_lam0it=0.,pf_dlamit=0.,pf_gacc=0.,pf_phiacc=0.,
-    pf_fhcos=0.,pf_fhrat=0.;
+    pf_fhcos=0.,pf_fhrat=0.,pf_eps=1.e-5;
   crackcontrol_census pf_cs;
 	 
   FILE *f1,*fdamage=NULL;
@@ -3856,6 +3856,9 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
             }
             cce=getenv("CCX_CRACK_CONTROL_ENGAGE");
             if(cce!=NULL) pf_ccengage=atoi(cce);
+            cce=getenv("CCX_CRACK_CONTROL_EPS");
+            if(cce!=NULL) pf_eps=atof(cce);
+            if(!(pf_eps>0.)) pf_eps=1.e-5;
             NNEW(pf_cvec,double,neq[1]);
             if(pathfollow_cod_arm(pf_cvec,neq[1])==1){
               pf_codmode=2;
@@ -5376,16 +5379,29 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
        ends the step, and an uncapped theta would end the run in the middle
        of the snap-back while lambda still has most of the branch to go. */
 
-    /* SET, not cap.  theta is a counter once the constraint drives
-       lambda, so letting checkconvergence shrink it does not make the
-       retry any easier - it only walks theta down to tmin and aborts the
-       run with "increment size smaller than minimum" while the load step
-       is unchanged.  Measured: 2 accepted increments past engagement, then
-       dtheta 3.9e-6 -> 9.8e-7 and a hard stop.  The path-following cutback
-       is tau, which pathfollow_settau has already halved by this point. */
+    /* CAP, not set.  The original code SET dtheta to a constant once the
+       constraint took over, on the argument that theta is only a counter
+       when lambda is decoupled from it, so shrinking it cannot make a
+       retry easier.  That argument holds only for a rate-INDEPENDENT
+       model.
+
+       The s3rad target is not one: CCX_DAMAGE_VISCOSITY=1e-4 and the UC6
+       law both relax with alpha = dt/(mu+dt), so dtime is a constitutive
+       parameter and a theta cutback really does change the problem.
+       Measured: the stock run needs dtime around 1e-6 at increment 250
+       (alpha=0.0095) and recovers there by cutting it; pinning dtheta at
+       1e-4 holds alpha at 0.5, i.e. removes almost all of the viscous
+       regularisation, and the first engaged attempt failed through five
+       cutbacks that could not touch dtime.
+
+       So: let the stock controller keep sizing dtheta - that is the
+       rate-dependent part of the problem and it must stay adaptive - and
+       only cap it from above, which is what stops theta from running to
+       1 in the middle of the branch.  The continuation step size is
+       dphi, and that is cut separately. */
 
     if((pf_on==1)&&(pf_engaged==1)){
-      dtheta=pf_dtheta_eng;
+      if(dtheta>pf_dtheta_eng) dtheta=pf_dtheta_eng;
       if(theta+dtheta>1.) dtheta=1.-theta;
     }
 
@@ -5529,10 +5545,32 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         pathfollow_cod_arm(pf_cvec,neq[1]);
         pathfollow_cod_settarget(pf_dphicur);
 
+        /* With the extrapolation suppressed, b/dlamjump at the first
+           iteration IS -dR/dlambda, so there is no reason to keep a
+           vector captured many increments and one remastruct ago.  The
+           freeze existed to stop the dissipation constraint rescaling
+           its own tau; the crack-control constraint does not depend on
+           the scale of f_hat, only on its being the true derivative. */
+
+        if(pf_engaged==1) pathfollow_unfreeze();
+
         if((pf_engaged==0)&&(pf_ccnw>0)){
           if(((pf_ccengage>0)&&(iinc>=pf_ccengage))||
              ((pf_ccengage<=0)&&(pf_cs.nzone>0))){
             pf_engaged=1;
+
+            /* The cap above was applied before this decision was taken,
+               so the attempt that engages would otherwise run with the
+               uncapped stock dtheta - which is exactly the attempt where
+               the constitutive relaxation must not jump.  Apply it here
+               too.  Only the time-like quantities are rebuilt: xbounact
+               is overwritten from pf_lam a few lines below anyway. */
+
+            if(dtheta>pf_dtheta_eng) dtheta=pf_dtheta_eng;
+            if(theta+dtheta>1.) dtheta=1.-theta;
+            reltime=theta+dtheta;
+            time=reltime**tper;
+            dtime=dtheta**tper;
             printf("[CRACKCTL] engaged at inc=%" ITGFORMAT " lambda=%.8f: "
                    "process zone %" ITGFORMAT " ip(s) of which %"
                    ITGFORMAT " loading, initiated %" ITGFORMAT
@@ -5569,6 +5607,39 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
            lambda sits still while the step controller burns its cutbacks.
            Measured as "too many cutbacks" with no [PATHFOLLOW] it= line at
            all. */
+        /* PROBE JUMP, not predictor jump, once the crack constraint is
+           driving.
+
+           f_hat is obtained as b/dlamjump at the first iteration.  With
+           the displacement extrapolation suppressed that quotient is a
+           SECANT of -dR/dlambda over the jump, and it is the tangent only
+           in the limit of a small jump.  Using the previous accepted
+           dlambda as that jump makes it a secant over the whole physical
+           step: at increment 60 of the target the step is 2e-03, over
+           which the boundary-adjacent material yields and damages, and
+           an honest finite difference of the residual put
+           |f_hat|/|dR/dlambda| at 1.43.
+
+           A scale error there is not harmless.  The corrector adds
+           dlambda*K^-1 f_hat to u and dlambda to lambda; if f_hat = s*q
+           the DISPLACEMENT half is right and the LOAD half is a factor
+           1/s short, so the prescribed dofs end up where the free dofs
+           did not assume.  Measured on the target: the constraint row
+           converged to 1e-19 every iteration while the equilibrium
+           residual stalled at 0.17 - and it stalled on nodes next to the
+           loaded face, which is exactly where -dR/dlambda lives.  With
+           dlambda clamped to 1e-9 the same increment converged to 8e-04
+           and was accepted, so the machinery is sound and the reference
+           vector is what is wrong.
+
+           So take the jump as a small PROBE of size pf_eps.  It costs
+           nothing - no extra residual evaluation, no state to restore -
+           because the first iteration of the increment has to evaluate a
+           residual anyway.  The constraint then supplies the real
+           predictor: its own dlambda closes the whole step in one
+           corrector, since phi is linear in u. */
+
+        if(pf_codmode==2) pf_dlampred=pf_eps;
         if(!(fabs(pf_dlampred)>1.e-12)) pf_dlampred=dtheta;
         pf_lam=pathfollow_lamn()+pf_dlampred;
       }
@@ -6390,6 +6461,40 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     /* for massless contact there is no need for prediction,
        since scheme is on velocity level */
       
+    /* ---- CCX_PATHFOLLOW: the stock predictor is the wrong predictor ---
+       prediction() extrapolates v = vold + dtime*veold, i.e. it repeats
+       the previous increment's displacement change.  That is right when
+       the step time IS the load parameter.  It is wrong here for two
+       independent reasons, both measured on the target at increment 60:
+
+       1. It moves the CONTROL COORDINATE before the corrector runs.  The
+          extrapolation advanced phi to 1.65e-04 against a target of
+          1.0e-05, so every corrector opened by having to undo 94% of the
+          predictor, and a cutback made that worse rather than better
+          because it shrinks dphi faster than it shrinks the predictor.
+
+       2. It destroys the capture of f_hat.  f_hat is obtained as
+          b/dlamjump at the first iteration, which is -dR/dlambda only if
+          the ONLY thing that moved since the committed state is the
+          prescribed pattern.  With an extrapolated u, b also contains
+          K*du_pred - which is designed to cancel the load term - so the
+          quotient is a difference of two nearly equal quantities.
+          Measured against an honest finite difference of the residual at
+          fixed u, the frozen f_hat came out at cos=+0.983 but
+          |f_hat|/|q| = 1.43.  A scale error s there leaves the
+          DISPLACEMENT correction right and the LOAD FACTOR step a factor
+          1/s short, so the prescribed dofs end up where the free dofs did
+          not assume: the constraint row converged to 1e-19 while the
+          equilibrium row stalled with lambda marching down 6.7e-05 per
+          iteration.  That is exactly the trace that was measured.
+
+       prediction() skips the extrapolation when idiscon != 0 and resets
+       the flag itself, so suppressing it is one assignment.  The method
+       keeps its OWN predictor: the previous accepted dlambda, applied to
+       lambda alone, which is the standard arc-length predictor. */
+
+    if((pf_on==1)&&(pf_engaged==1)) idiscon=1;
+
     if (*mortar==-1){
       memcpy(&v[0],&vold[0],sizeof(double)*mt **nk);
     }else{

@@ -631,6 +631,17 @@ void pathfollow_incstart(void){ (void)0; }
 void pathfollow_freeze(void){ pf_frozen=1; }
 ITG pathfollow_frozen(void){ return pf_frozen; }
 
+/* Allow the NEXT capture to refresh f_hat, keeping the current vector as
+   the fallback if the jump turns out to be too small to divide by.
+
+   This is safe only where the capture is exact, i.e. where the caller has
+   suppressed the displacement extrapolation so that the first residual of
+   an attempt differs from the committed one by the prescribed pattern
+   alone.  It is not a licence to refresh under the stock predictor: that
+   is what produced the runaway recorded in pathfollow_incstart. */
+
+void pathfollow_unfreeze(void){ pf_frozen=0; }
+
 /* First Newton iteration, BEFORE the solve.  b holds fext-f = -R, and the
    only thing that moved since the committed state is the prescribed
    pattern, by dlampred, so -R = f_hat*dlampred with f_hat := -dR/dlambda.
