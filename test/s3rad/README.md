@@ -232,16 +232,16 @@ armed-but-never-engaged so it prints the same census:
 
 | | original baseline `DEADALL=1e-2` | pilot, continuation, `DEADALL=5e-2` | control, **stock**, `DEADALL=5e-2` |
 |---|---|---|---|
-| accepted increments | 352 | 999 | 466 and still running |
-| load factor reached | 0.212194 | 0.215116 | **0.229500** |
-| failed UC6 points | 5353 | 5435 | **5565** |
+| accepted increments | 352 | 999, stopped | 470, **still running** when the pilot stopped |
+| load factor reached | 0.212194 | 0.215116 | **0.231500** |
+| failed UC6 points | 5353 | 5435 | **5576** |
 | deleted UC6 facets | 81 | 81 | **82** |
-| largest `deff` | 8.568e-02 | 9.021e-02 | **1.239e-01** |
+| largest `deff` | 8.568e-02 | 9.021e-02 | **1.2874e-01** |
 
 Against the ORIGINAL recorded wall the pilot passes on every metric.
 Against the control at the same `DEADALL` it does not: plain
-displacement control goes further on every front measure, in a third of
-the increments.
+displacement control goes further on every front measure, in half the
+increments, and it had not stopped when the pilot did.
 
 **The wall recorded for this model was a dead-support deletion threshold,
 not a load-factor limit point.**  The continuation cannot be credited
