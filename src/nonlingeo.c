@@ -1786,6 +1786,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_stiff_n1=0,damage_stiff_n2=0,damage_stiff_n3=0,
     damage_stiff_worst=-1,
     damage_topology_orphans=0,damage_indexe=0,
+    damage_ls_bestused=0,damage_ls_legacy=0,damage_lsr=0,
     damage_de13_new=0,damage_de13_transaction=0,
     damage_slow_active=0,damage_slow_extended=0,damage_slow_nsoft=0,
     damage_slow_allow=0,damage_slow_estres=0,damage_slow_estcorr=0,
@@ -1935,8 +1936,12 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      connectivity/rank/residual report from that increment on. */
 
   ITG td_trace=0,td_from=0,*td_comp=NULL,*td_sort=NULL,td_armed=0;
+  ITG td_nmode=0,td_qneq=0;
+  double *td_qkeep=NULL;
   unsigned long long td_state=0ULL,td_batch=0ULL;
   topodiag_report td_rep;
+
+  lsladder damage_lsl;
 
   char *pf_env=NULL;
   ITG pf_on=0,pf_engaged=0,pf_pending=0,pf_reason=0,pf_applied=0,
@@ -4145,6 +4150,44 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         damage_ls_trials=atoi(damage_de13_env);
         if(damage_ls_trials<1) damage_ls_trials=1;
         if(damage_ls_trials>32) damage_ls_trials=32;
+      }
+
+      /* ---- THE BACKTRACKING LADDER ---------------------------------
+         Measured on the target with CCX_DAMAGE_LS_PROBE, over the 245
+         line-search activations of a run to the recorded wall:
+
+           in 114 of them (46.5%) the best step length lies BELOW the
+           floor of 0.1, i.e. outside what the ladder {1.0, 0.5, 0.1}
+           can reach;
+
+           at the wall increment 353, iterations 12 to 16, the floor step
+           RAISES |R|inf - 2.852e-03, 3.053e-03, 3.353e-03, 3.649e-03,
+           3.822e-03 - while alpha=0.03 lowers it at every one of them.
+           The iteration was converging until iteration 11 and the ladder
+           turned it round.
+
+         So the ladder is deepened (floor 1e-3, up to 8 halvings) and the
+         search now falls back on the BEST alpha it measured rather than
+         the last.  Neither changes any convergence criterion: what an
+         increment must satisfy to be accepted is untouched, this only
+         chooses how far along a direction to step.
+
+         CCX_DAMAGE_LS_LEGACY=1 restores the old ladder exactly, which is
+         what makes a controlled A/B possible from ONE binary. */
+
+      if(getenv("CCX_DAMAGE_LS_LEGACY")!=NULL){
+        damage_ls_legacy=1;
+        damage_ls_min=DAMAGE_LINESEARCH_MIN;
+        damage_ls_trials=DAMAGE_LINESEARCH_MAX_TRIALS;
+        printf("[DAMAGE LINESEARCH] LEGACY ladder: floor %.2f, %d trials, "
+               "and the last trial is taken whether or not it contracts.\n",
+               DAMAGE_LINESEARCH_MIN,DAMAGE_LINESEARCH_MAX_TRIALS);
+      }else{
+        if(getenv("CCX_DAMAGE_LS_MIN")==NULL) damage_ls_min=1.e-3;
+        if(getenv("CCX_DAMAGE_LS_TRIALS")==NULL) damage_ls_trials=8;
+        printf("[DAMAGE LINESEARCH] ladder: floor %.4e, up to %"
+               ITGFORMAT " trials, and the BEST alpha measured is taken "
+               "when none contracts.\n",damage_ls_min,damage_ls_trials);
       }
       if((damage_ls_min!=DAMAGE_LINESEARCH_MIN)||
          (damage_ls_trials!=DAMAGE_LINESEARCH_MAX_TRIALS)){
@@ -7888,8 +7931,9 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 
 	if((td_armed!=0)&&(td_from>0)&&(iinc>=td_from)&&(iit==1)&&
 	   (*ithermal<2)){
-	  double *td_x=NULL,*td_r0=NULL,td_nx,td_nb,td_pr;
-	  ITG td_it,td_k;
+	  double *td_x=NULL,*td_r0=NULL,*td_q=NULL,td_nx=0.,td_nb,td_pr;
+	  ITG td_it,td_k,td_m,td_nm;
+#define TD_NMODE 3
 
 	  topodiag_run(&td_rep,td_comp,kon,ipkon,lakon,*ne,*nk,nactdof,mt,
 	               nodeboun,ndirboun,*nboun,ipompc,nodempc,*nmpc,
@@ -7905,55 +7949,106 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	     the topology is sound and the corrector is the problem.  That
 	     is the whole point of the measurement. */
 
+	  /* THREE soft directions, deflated against each other, not one.
+	     A single inverse iteration converges to one vector, and a
+	     residual can be orthogonal to that one while lying squarely in
+	     a two- or three-dimensional soft SUBSPACE - which is exactly
+	     what six rigid-body modes of a detached piece would look like.
+	     The span projection below is the quantity that cannot be
+	     fooled that way, and the random control says what "small"
+	     means in 29501 dimensions. */
+
 	  NNEW(td_x,double,neq[1]);
 	  NNEW(td_r0,double,neq[1]);
+	  NNEW(td_q,double,TD_NMODE*neq[1]);
 	  isiz=neq[1];cpypardou(td_r0,b,&isiz,&num_cpus);
-	  for(td_k=0;td_k<neq[1];td_k++)
-	    td_x[td_k]=(double)((td_k*2654435761U)%20011)/10005.-1.;
-	  for(td_it=0;td_it<4;td_it++){
-	    td_nb=0.;
-	    for(td_k=0;td_k<neq[1];td_k++) td_nb+=td_x[td_k]*td_x[td_k];
-	    td_nb=sqrt(td_nb);
-	    if(td_nb>0.) for(td_k=0;td_k<neq[1];td_k++) td_x[td_k]/=td_nb;
-	    if(*isolver==0){
+	  td_nm=0;
+	  for(td_m=0;td_m<TD_NMODE;td_m++){
+	    for(td_k=0;td_k<neq[1];td_k++)
+	      td_x[td_k]=(double)(((td_k+7919*td_m)*2654435761U)%20011)
+	                 /10005.-1.;
+	    if(td_nm>0){
+	      if(topodiag_deflate(td_x,td_q,td_nm,neq[1])==0) break;
+	    }
+	    for(td_it=0;td_it<3;td_it++){
+	      td_nb=0.;
+	      for(td_k=0;td_k<neq[1];td_k++) td_nb+=td_x[td_k]*td_x[td_k];
+	      td_nb=sqrt(td_nb);
+	      if(td_nb>0.) for(td_k=0;td_k<neq[1];td_k++) td_x[td_k]/=td_nb;
+	      if(*isolver==0){
 #ifdef SPOOLES
-	      spooles(ad,au,adb,aub,&sigma,td_x,icol,irow,&neq[0],&nzs[0],
-	              &symmetryflag,&inputformat,&nzs[2]);
+	        spooles(ad,au,adb,aub,&sigma,td_x,icol,irow,&neq[0],&nzs[0],
+	                &symmetryflag,&inputformat,&nzs[2]);
 #endif
-	    }else if(*isolver==7){
+	      }else if(*isolver==7){
 #ifdef PARDISO
-	      pardiso_main(ad,au,adb,aub,&sigma,td_x,icol,irow,&neq[0],
-	                   &nzs[0],&symmetryflag,&inputformat,jq,&nzs[2],
-	                   &nrhs);
+	        pardiso_main(ad,au,adb,aub,&sigma,td_x,icol,irow,&neq[0],
+	                     &nzs[0],&symmetryflag,&inputformat,jq,&nzs[2],
+	                     &nrhs);
 #endif
-	    }else break;
-	    td_nx=0.;
-	    for(td_k=0;td_k<neq[1];td_k++) td_nx+=td_x[td_k]*td_x[td_k];
-	    td_nx=sqrt(td_nx);
-	    printf("[TOPODIAG]   inverse iteration %" ITGFORMAT
-	           ": 1/sigma_min >= %.6e\n",td_it+1,td_nx);
-	  }
-	  td_pr=topodiag_project(td_r0,td_x,neq[1]);
-	  printf("[TOPODIAG]   |cos(residual, softest mode)| = %.6f\n",td_pr);
-	  {
-	    ITG td_bn=-1,td_bd=0,td_bc=-2,td_e;
-	    double td_bv=0.;
-	    for(td_k=0;td_k<*nk;td_k++){
-	      for(td_it=1;td_it<mt;td_it++){
-	        td_e=nactdof[mt*td_k+td_it];
-	        if(td_e>0){
-	          if(fabs(td_x[td_e-1])>td_bv){
-	            td_bv=fabs(td_x[td_e-1]);td_bn=td_k+1;td_bd=td_it;
-	            td_bc=td_comp[td_k];
+	      }else{td_m=TD_NMODE;break;}
+	      td_nx=0.;
+	      for(td_k=0;td_k<neq[1];td_k++) td_nx+=td_x[td_k]*td_x[td_k];
+	      td_nx=sqrt(td_nx);
+	      if(td_nm>0) topodiag_deflate(td_x,td_q,td_nm,neq[1]);
+	    }
+	    if(td_m>=TD_NMODE) break;
+	    if(topodiag_deflate(td_x,td_q,td_nm,neq[1])==0) break;
+	    for(td_k=0;td_k<neq[1];td_k++) td_q[td_nm*neq[1]+td_k]=td_x[td_k];
+	    td_nm++;
+	    {
+	      ITG td_bn=-1,td_bd=0,td_bc=-2,td_e,tb,tf;
+	      double td_bv=0.;
+	      for(td_k=0;td_k<*nk;td_k++){
+	        for(td_it=1;td_it<mt;td_it++){
+	          td_e=nactdof[mt*td_k+td_it];
+	          if(td_e>0){
+	            if(fabs(td_x[td_e-1])>td_bv){
+	              td_bv=fabs(td_x[td_e-1]);td_bn=td_k+1;td_bd=td_it;
+	              td_bc=td_comp[td_k];
+	            }
 	          }
 	        }
 	      }
+	      topodiag_support(td_bn,kon,ipkon,lakon,*ne,&tb,&tf);
+	      printf("[TOPODIAG]   soft mode %" ITGFORMAT
+	             ": 1/sigma_min >= %.6e, peaks at node %" ITGFORMAT
+	             " dir %" ITGFORMAT " (component %" ITGFORMAT
+	             ", %" ITGFORMAT " live bulk element(s), %" ITGFORMAT
+	             " live facet(s)), |cos(R,mode)|=%.3e\n",
+	             td_nm,td_nx,td_bn,td_bd,td_bc,tb,tf,
+	             topodiag_project(td_r0,td_x,neq[1]));
 	    }
-	    printf("[TOPODIAG]   softest mode peaks at node %" ITGFORMAT
-	           " dir %" ITGFORMAT " (component %" ITGFORMAT ")\n",
-	           td_bn,td_bd,td_bc);
 	  }
-	  SFREE(td_r0);SFREE(td_x);
+	  /* Keep the basis for the rest of the attempt: the decisive
+	     question is not where the RESIDUAL points but where the
+	     CORRECTION does.  With 1/sigma_min at 6e13 a residual component
+	     along a soft mode of 1e-7 - which the cosine prints as zero -
+	     becomes a correction of order one, and that is what a runaway
+	     Newton step looks like. */
+
+	  if((td_qkeep==NULL)||(td_qneq!=neq[1])){
+	    if(td_qkeep!=NULL) SFREE(td_qkeep);
+	    NNEW(td_qkeep,double,TD_NMODE*neq[1]);
+	    td_qneq=neq[1];
+	  }
+	  isiz=TD_NMODE*neq[1];cpypardou(td_qkeep,td_q,&isiz,&num_cpus);
+	  td_nmode=td_nm;
+
+	  td_pr=topodiag_project_span(td_r0,td_q,td_nm,neq[1]);
+	  for(td_k=0;td_k<neq[1];td_k++)
+	    td_x[td_k]=(double)(((td_k+104729)*2246822519U)%20011)/10005.-1.;
+	  printf("[TOPODIAG]   share of |R| in the span of the %" ITGFORMAT
+	         " softest modes: %.6e   (random control %.6e)\n",
+	         td_nm,td_pr,topodiag_project(td_r0,td_x,neq[1]));
+	  {
+	    ITG tb,tf;
+	    topodiag_support(td_rep.resmaxnode,kon,ipkon,lakon,*ne,&tb,&tf);
+	    printf("[TOPODIAG]   residual peak node %" ITGFORMAT
+	           " has %" ITGFORMAT " live bulk element(s), %" ITGFORMAT
+	           " live facet(s)\n",td_rep.resmaxnode,tb,tf);
+	  }
+	  SFREE(td_q);SFREE(td_r0);SFREE(td_x);
 	  fflush(stdout);
 	}
 
@@ -8483,6 +8578,27 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	   right-hand side cannot reuse the first factorisation without
 	   changing them.  Correctness first; the cost is a constant factor
 	   and is reported at the end of the step. */
+
+	/* ---- where does the CORRECTION point? --------------------------
+	   b now holds the ordinary Newton correction du_R = K^-1(-R), before
+	   any constraint, line search or trust region touches it.  If its
+	   norm is dominated by the soft subspace measured at iteration 1,
+	   the runaway steps are the ill-conditioning being amplified, and no
+	   amount of step-size control fixes that.  If it is not, the steps
+	   are large for a constitutive reason. */
+
+	if((td_armed!=0)&&(td_from>0)&&(iinc>=td_from)&&(td_qkeep!=NULL)&&
+	   (td_qneq==neq[1])&&(td_nmode>0)&&(*ithermal<2)){
+	  double tdn=0.,tds;
+	  ITG tdk;
+	  for(tdk=0;tdk<neq[1];tdk++) tdn+=b[tdk]*b[tdk];
+	  tdn=sqrt(tdn);
+	  tds=topodiag_project_span(b,td_qkeep,td_nmode,neq[1]);
+	  printf("[TOPODIAG]   correction inc=%" ITGFORMAT " iter=%" ITGFORMAT
+	         " |du|2=%.6e  share in the %" ITGFORMAT
+	         " softest modes: %.6e\n",iinc,iit,tdn,td_nmode,tds);
+	  fflush(stdout);
+	}
 
 	/* Reset here, not inside the block below: the line search has to be
 	   able to tell "this iteration applied a constraint step" from "the
@@ -10663,6 +10779,91 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           NNEW(damage_linesearch_step,double,neq[1]);
           isiz=neq[1];cpypardou(damage_linesearch_step,b,&isiz,&num_cpus);
           damage_linesearch_contracted=0;
+          lsladder_start(&damage_lsl,damage_linesearch_oldnorm,
+                         damage_ls_min,0.5,damage_ls_trials,
+                         damage_ls_legacy);
+          flinesearch=damage_lsl.alpha;
+
+          /* ---- BACKTRACKING LADDER PROBE (CCX_DAMAGE_LS_PROBE) --------
+             The line search backtracks 1.0 -> 0.5 -> 0.1 and stops: three
+             trials with a floor of 0.1.  At the increments that fail it
+             reports contracted=0, i.e. even a tenth of the step makes the
+             residual worse - by 14000x at increment 346.  Two things can
+             cause that and they need different answers:
+
+               the DIRECTION is usable and the floor is simply too coarse
+               for a damage transition, in which case some smaller alpha
+               contracts;
+
+               the direction is wrong, in which case no alpha does.
+
+             This walks a finer ladder and PRINTS the residual at each
+             alpha.  It decides nothing: the normal trial loop below runs
+             afterwards, unchanged, and its own final evaluation is what
+             the solver keeps.  alpha=1 is evaluated TWICE so the log
+             carries its own proof that a trial evaluation is
+             reproducible - dam and damvisc are rebuilt from the committed
+             baseline on every results() call, and this is what shows it
+             rather than assuming it. */
+
+          if(getenv("CCX_DAMAGE_LS_PROBE")!=NULL){
+            static const double lsp[9]={1.,1.,0.5,0.2,0.1,0.03,0.01,
+                                        0.003,0.001};
+            ITG lpi;
+            double lpr,lp0=-1.;
+            for(lpi=0;lpi<9;lpi++){
+              SFREE(v);SFREE(stx);SFREE(fn);
+              for(i=0;i<neq[1];i++)
+                b[i]=lsp[lpi]*damage_linesearch_step[i];
+              MNEW(v,double,mt**nk);
+              isiz=mt**nk;cpypardou(v,vold,&isiz,&num_cpus);
+              NNEW(stx,double,6*mi[0]**ne);
+              MNEW(fn,double,mt**nk);
+              if(ne1d2d==1)NNEW(inum,ITG,*nk);
+              results(co,nk,kon,ipkon,lakon,ne,v,stn,inum,stx,
+                  elcon,nelcon,rhcon,nrhcon,alcon,nalcon,alzero,ielmat,
+                  ielorien,norien,orab,ntmat_,t0,t1act,ithermal,
+                  prestr,iprestr,filab,eme,emn,een,iperturb,
+                  f,fn,nactdof,&iout,qa,vold,b,nodeboun,
+                  ndirboun,xbounact,nboun,ipompc,
+                  nodempc,coefmpc,labmpc,nmpc,nmethod,cam,&neq[1],veold,
+                  accold,&bet,&gam,&dtime,&time,ttime,plicon,nplicon,
+                  plkcon,nplkcon,xstateini,xstiff,xstate,npmat_,epn,
+                  matname,mi,&ielas,&icmd,ncmat_,nstate_,stiini,vini,
+                  ikboun,ilboun,ener,enern,emeini,xstaten,eei,enerini,
+                  cocon,ncocon,set,nset,istartset,iendset,ialset,nprint,
+                  prlab,prset,qfx,qfn,trab,inotr,ntrans,fmpc,nelemload,
+                  nload,ikmpc,ilmpc,istep,&iinc,springarea,&reltime,&ne0,
+                  thicke,shcon,nshcon,sideload,xloadact,xloadold,&icfd,
+                  inomat,pslavsurf,pmastsurf,mortar,islavact,cdn,
+                  islavnode,nslavnode,ntie,clearini,islavsurf,ielprop,
+                  prop,energyini,energy,&kscale,iponoeln,inoeln,nener,
+                  orname,network,ipobody,xbodyact,ibody,typeboun,itiefac,
+                  tieset,smscale,&mscalmethod,nbody,t0g,t1g,islavquadel,
+                  aut,irowt,jqt,&mortartrafoflag,&intscheme,physcon,dam,
+                  damn,iponoel);
+              if(ne1d2d==1)SFREE(inum);
+              calcresidual(nmethod,neq,res,fext,f,iexpl,nactdof,aux2,vold,
+                           vini,&dtime,accold,nk,adb,aub,jq,irow,nzl,alpha,
+                           fextini,fini,islavnode,nslavnode,mortar,ntie,mi,
+                           nzs,&nasym,&idamping,veold,adc,auc,cvini,cv,
+                           &alpham,&num_cpus);
+              lpr=0.;
+              for(i=0;i<neq[0];i++) if(fabs(res[i])>lpr) lpr=fabs(res[i]);
+              if(lpi==0) lp0=lpr;
+              printf("[LS-PROBE] inc=%" ITGFORMAT " attempt=%" ITGFORMAT
+                     " iter=%" ITGFORMAT " alpha=%.4f |R|inf=%.6e"
+                     " (res_old=%.6e, ratio=%.3e)%s\n",
+                     iinc,icutb+1,iit,lsp[lpi],lpr,
+                     damage_linesearch_oldnorm,
+                     lpr/(damage_linesearch_oldnorm+1.e-300),
+                     ((lpi==1)&&(lp0>=0.))?
+                     ((fabs(lpr-lp0)<=1.e-12*(lp0+1.e-300))?
+                      "  [repeat of alpha=1: REPRODUCIBLE]":
+                      "  [repeat of alpha=1: NOT REPRODUCIBLE]"):"");
+            }
+            fflush(stdout);
+          }
 
           for(damage_linesearch_trial=1;
               damage_linesearch_trial<=damage_ls_trials;
@@ -10723,23 +10924,72 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
               if(fabs(res[i])>damage_linesearch_dampednorm)
                 damage_linesearch_dampednorm=fabs(res[i]);
             }
-            if(damage_linesearch_dampednorm<=damage_linesearch_oldnorm){
+
+            /* The ladder decides: accept, descend, or give up.  It is a
+               separate unit (lsladder.c) with its own regression test,
+               because both of the things it used to get wrong - the rungs
+               it could reach and which rung it handed back - were the
+               cause of the recorded wall. */
+
+            damage_lsr=lsladder_step(&damage_lsl,
+                                     damage_linesearch_dampednorm);
+            if(damage_lsr==1){
               damage_linesearch_contracted=1;
               break;
             }
-
-            if(damage_linesearch_trial<damage_ls_trials){
-              if(damage_linesearch_trial==damage_ls_trials-1){
-                flinesearch=damage_ls_min;
-              }else{
-                flinesearch*=0.5;
-                if(flinesearch<damage_ls_min)
-                  flinesearch=damage_ls_min;
-              }
-            }
+            if(damage_lsr<0) break;
+            flinesearch=damage_lsl.alpha;
           }
           if(damage_linesearch_trial>damage_ls_trials)
             damage_linesearch_trial=damage_ls_trials;
+
+          /* Nothing contracted.  Falling out with the LAST trial in b is
+             the defect: the last trial is the floor, and the floor is not
+             the best of what was measured.  Re-evaluate at the best alpha
+             instead, so the step the solver takes is never worse than the
+             best step this search actually saw. */
+
+          if((damage_linesearch_contracted==0)&&
+             (fabs(lsladder_final(&damage_lsl)-flinesearch)>1.e-12)){
+            flinesearch=lsladder_final(&damage_lsl);
+            SFREE(v);SFREE(stx);SFREE(fn);
+            for(i=0;i<neq[1];i++)
+              b[i]=flinesearch*damage_linesearch_step[i];
+            MNEW(v,double,mt**nk);
+            isiz=mt**nk;cpypardou(v,vold,&isiz,&num_cpus);
+            NNEW(stx,double,6*mi[0]**ne);
+            MNEW(fn,double,mt**nk);
+            if(ne1d2d==1)NNEW(inum,ITG,*nk);
+            results(co,nk,kon,ipkon,lakon,ne,v,stn,inum,stx,
+                elcon,nelcon,rhcon,nrhcon,alcon,nalcon,alzero,ielmat,
+                ielorien,norien,orab,ntmat_,t0,t1act,ithermal,
+                prestr,iprestr,filab,eme,emn,een,iperturb,
+                f,fn,nactdof,&iout,qa,vold,b,nodeboun,
+                ndirboun,xbounact,nboun,ipompc,
+                nodempc,coefmpc,labmpc,nmpc,nmethod,cam,&neq[1],veold,accold,
+                &bet,&gam,&dtime,&time,ttime,plicon,nplicon,plkcon,nplkcon,
+                xstateini,xstiff,xstate,npmat_,epn,matname,mi,&ielas,
+                &icmd,ncmat_,nstate_,stiini,vini,ikboun,ilboun,ener,enern,
+                emeini,xstaten,eei,enerini,cocon,ncocon,set,nset,istartset,
+                iendset,ialset,nprint,prlab,prset,qfx,qfn,trab,inotr,ntrans,
+                fmpc,nelemload,nload,ikmpc,ilmpc,istep,&iinc,springarea,
+                &reltime,&ne0,thicke,shcon,nshcon,
+                sideload,xloadact,xloadold,&icfd,inomat,pslavsurf,pmastsurf,
+                mortar,islavact,cdn,islavnode,nslavnode,ntie,clearini,
+                islavsurf,ielprop,prop,energyini,energy,&kscale,iponoeln,
+                inoeln,nener,orname,network,ipobody,xbodyact,ibody,typeboun,
+                itiefac,tieset,smscale,&mscalmethod,nbody,t0g,t1g,
+                islavquadel,aut,irowt,jqt,&mortartrafoflag,
+                &intscheme,physcon,dam,damn,iponoel);
+            if(ne1d2d==1)SFREE(inum);
+            calcresidual(nmethod,neq,res,fext,f,iexpl,nactdof,aux2,vold,
+                         vini,&dtime,accold,nk,adb,aub,jq,irow,nzl,alpha,
+                         fextini,fini,islavnode,nslavnode,mortar,ntie,mi,
+                         nzs,&nasym,&idamping,veold,adc,auc,cvini,cv,
+                         &alpham,&num_cpus);
+            damage_linesearch_dampednorm=damage_lsl.bestres;
+            damage_ls_bestused++;
+          }
           SFREE(damage_linesearch_step);
           damage_linesearch_applied=1;
         }
@@ -13921,6 +14171,27 @@ damage_controller_done:
               damage_tent_count++;
             }
           }
+        }
+
+        /* The batch as a SET: sorted, hashed and printed in full, next to
+           the committed-state hash of the attempt that produced it.  Two
+           batches with the same hash are the same set of elements
+           whatever order the scan produced them in, and the PAIR
+           (committed state, batch) is what would have to repeat for the
+           batch/rollback loop to be real. */
+
+        if((td_armed!=0)&&(td_trace!=0)&&(damage_tent_count>0)){
+          td_batch=topodiag_hash_batch(damage_tent_elem,damage_tent_count,
+                                       td_sort,topodiag_hash_seed());
+          printf("[BATCHTRACE] batch inc=%" ITGFORMAT " icutb=%" ITGFORMAT
+                 " pass=%" ITGFORMAT " n=%" ITGFORMAT
+                 " committed_state=%016llx batch=%016llx sorted:",
+                 iinc,icutb,damage_active_pass,damage_tent_count,
+                 td_state,td_batch);
+          for(k=0;k<damage_tent_count;k++)
+            printf(" %" ITGFORMAT,td_sort[k]);
+          printf("\n");
+          fflush(stdout);
         }
 
         damage_topology_rebuild=1;

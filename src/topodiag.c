@@ -347,6 +347,75 @@ void topodiag_run(topodiag_report *r,ITG *comp,
    whether the residual is in the span of a soft mode found by inverse
    iteration. */
 
+/* Support of one node: how many live bulk elements and how many live user
+   (cohesive) elements hold it.  The soft-mode peak and the residual peak
+   are only interpretable next to this: a node held by facets alone is a
+   conditioning problem, a node held by two nearly dead tets is another,
+   and they are not the same defect. */
+
+void topodiag_support(ITG node,const ITG *kon,const ITG *ipkon,
+                      const char *lakon,ITG ne,ITG *nbulk,ITG *nfac){
+
+  ITG i,j,nope,idx;
+
+  *nbulk=0;*nfac=0;
+  if(node<1) return;
+  for(i=0;i<ne;i++){
+    if(ipkon[i]<0) continue;
+    nope=topodiag_nope(&lakon[8*i]);
+    if(nope<=0) continue;
+    idx=ipkon[i];
+    for(j=0;j<nope;j++){
+      if(kon[idx+j]==node){
+        if(lakon[8*i]=='U') (*nfac)++; else (*nbulk)++;
+        break;
+      }
+    }
+  }
+}
+
+/* Orthogonalise w against the k vectors already in q (each of length neq),
+   then normalise.  Returns 0 if what is left is numerically nothing, which
+   is how a deflated inverse iteration says "there is no further
+   independent soft direction". */
+
+ITG topodiag_deflate(double *w,const double *q,ITG k,ITG neq){
+
+  ITG i,j;
+  double d,n;
+
+  for(j=0;j<k;j++){
+    d=0.;
+    for(i=0;i<neq;i++) d+=w[i]*q[(size_t)j*neq+i];
+    for(i=0;i<neq;i++) w[i]-=d*q[(size_t)j*neq+i];
+  }
+  n=0.;
+  for(i=0;i<neq;i++) n+=w[i]*w[i];
+  n=sqrt(n);
+  if(!(n>0.)) return 0;
+  for(i=0;i<neq;i++) w[i]/=n;
+  return 1;
+}
+
+/* Fraction of |v| that lies in the span of the k orthonormal columns of q.
+   This is the quantity a single-vector cosine cannot give: a soft
+   SUBSPACE of dimension more than one would hide from it. */
+
+double topodiag_project_span(const double *v,const double *q,ITG k,ITG neq){
+
+  ITG i,j;
+  double d,s=0.,vv=0.;
+
+  for(i=0;i<neq;i++) vv+=v[i]*v[i];
+  if(!(vv>0.)) return 0.;
+  for(j=0;j<k;j++){
+    d=0.;
+    for(i=0;i<neq;i++) d+=v[i]*q[(size_t)j*neq+i];
+    s+=d*d;
+  }
+  return sqrt(s/vv);
+}
+
 double topodiag_project(const double *v,const double *w,ITG neq){
 
   ITG i;

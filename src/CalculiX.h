@@ -4902,6 +4902,29 @@ typedef struct{
   double dmaxmax;  /* largest committed maximum separation             */
 }crackcontrol_census;
 
+/* ---- the backtracking ladder of the damage line search (lsladder.c) --
+   Extracted from the Newton loop because it was wrong and the way it was
+   wrong is worth a regression test.  See the block comment there. */
+
+typedef struct{
+  double alpha;     /* the trial step length now under test              */
+  double best;      /* the best rung measured so far                     */
+  double bestres;   /* and the residual there                            */
+  double oldres;    /* the residual the search has to beat               */
+  double floor;     /* the smallest rung the ladder may reach            */
+  double ratio;     /* how fast the ladder descends                      */
+  ITG ntrial;       /* rungs allowed                                     */
+  ITG itrial;       /* rungs used                                        */
+  ITG contracted;   /* a rung beat oldres                                */
+  ITG legacy;       /* reproduce the old shape and the old fallback      */
+}lsladder;
+
+void lsladder_start(lsladder *l,double oldres,double flr,double ratio,
+                    ITG ntrial,ITG legacy);
+ITG lsladder_step(lsladder *l,double res);
+double lsladder_final(const lsladder *l);
+ITG lsladder_selftest(void);
+
 /* ---- topology diagnostic (topodiag.c) -------------------------------
    Measurement only: nothing here decides anything or is on a solution
    path.  It exists to tell a true orphan degree of freedom, a physically
@@ -4947,6 +4970,11 @@ void topodiag_run(topodiag_report *r,ITG *comp,
                   const ITG *irow,ITG neq,ITG nzs,
                   const double *res);
 double topodiag_project(const double *v,const double *w,ITG neq);
+void topodiag_support(ITG node,const ITG *kon,const ITG *ipkon,
+                      const char *lakon,ITG ne,ITG *nbulk,ITG *nfac);
+ITG topodiag_deflate(double *w,const double *q,ITG k,ITG neq);
+double topodiag_project_span(const double *v,const double *q,ITG k,
+                             ITG neq);
 void topodiag_print(const topodiag_report *r,const char *tag,ITG iinc);
 unsigned long long topodiag_hash_bytes(const void *p,size_t n,
                                        unsigned long long h);
