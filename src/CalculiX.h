@@ -4868,6 +4868,16 @@ ITG pathfollow_step(double *b,const double *uf,double pdu,double *lam,
                     ITG *reason);
 void pathfollow_commit(double lam,double pdu,double *dgcommit);
 
+/* crack-opening control: linear functional of u, exact derivatives */
+ITG pathfollow_cod_arm(const double *c,ITG neq);
+ITG pathfollow_cod(void);
+double pathfollow_cod_target(void);
+void pathfollow_cod_settarget(double t);
+const double *pathfollow_cod_c(void);
+ITG pathfollow_cod_step(double *b,const double *uf,double cu,double *lam,
+                        double dlmax,double *gout,double *dlamout,
+                        ITG *reason);
+
 void spooles(double *ad,double *au,double *adb,double *aub,
              double *sigma,double *b,
              ITG *icol,ITG *irow,ITG *neq,ITG *nzs,ITG *symmtryflag,

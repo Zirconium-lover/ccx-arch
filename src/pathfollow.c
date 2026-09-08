@@ -824,3 +824,113 @@ void pathfollow_commit(double lam,double pdu,double *dgcommit){
      (ff 1.0 -> 110 -> 3856 -> 8.5e5).  While the constraint is not yet
      engaged, capture refreshes f_hat every increment on its own. */
 }
+
+/* ==================================================================== */
+/* Crack-opening control.                                               */
+/*                                                                      */
+/* WHY THIS AND NOT THE DISSIPATION CONSTRAINT.                         */
+/*                                                                      */
+/* On the clean cohesive benchmark the Gutierrez constraint is          */
+/* identically zero.  Measured: P = f_hat^T u tracked lambda*ff to every */
+/* printed digit through the whole run (lambda=0.81486456, ff=4.999972e+02,
+   P=4.074302e+02 = lambda*ff) and dG stayed at 1e-12 while the interface
+   was failing.  The reason is structural, not numerical: under displacement
+   control f_hat = -dR/dlambda is supported on the dofs next to the LOADED
+   FACE, and once the interface fails the whole block on that side moves
+   rigidly with the prescribed face, so f_hat^T u stays proportional to
+   lambda no matter what the crack does.  A dissipation constraint built
+   from that vector cannot see a crack that is not adjacent to the loading
+   boundary.
+                                                                        
+   Crack-opening control has no such blind spot, and it is the natural
+   control for cohesive failure: the opening increases monotonically along
+   the whole equilibrium branch, including the part where BOTH the load and
+   the end displacement run backwards.  That is exactly a snap-back.
+                                                                        
+   The control functional is linear in u,
+                                                                        
+       phi(u) = c^T u  =  mean normal separation over the cohesive facets
+                                                                        
+   with c built once from the reference geometry, so
+                                                                        
+       g(u,lambda) = c^T u - phi_target ,  dg/du = c ,  dg/dlambda = 0
+                                                                        
+   and the second row of the bordered system is
+                                                                        
+       dlambda = -( g + c^T du_R ) / ( c^T du_F ) .                  (9)
+                                                                        
+   Both derivatives are exact by construction - c is a constant vector -
+   so this constraint cannot suffer the inconsistency that the
+   linearisation probe was built to detect.                             */
+
+static double *pf_c=NULL;        /* control functional, equation space   */
+static double  pf_target=0.;     /* prescribed opening                   */
+static ITG     pf_cod=0;         /* crack-opening control armed          */
+
+ITG pathfollow_cod_arm(const double *c,ITG neq){
+
+  ITG k;
+
+  if((c==NULL)||(neq<=0)) return 0;
+  if(pf_c!=NULL) free(pf_c);
+  pf_c=(double *)calloc((size_t)neq,sizeof(double));
+  if(pf_c==NULL) return 0;
+  for(k=0;k<neq;k++) pf_c[k]=c[k];
+  pf_cod=1;
+  return 1;
+}
+
+ITG pathfollow_cod(void){return pf_cod;}
+double pathfollow_cod_target(void){return pf_target;}
+void pathfollow_cod_settarget(double t){pf_target=t;}
+const double *pathfollow_cod_c(void){return pf_c;}
+
+/* Scalar row (9).  cu is c^T u at the current iterate, READ FROM THE
+   MODEL by the caller, exactly as for the dissipation constraint. */
+
+ITG pathfollow_cod_step(double *b,const double *uf,double cu,double *lam,
+                        double dlmax,double *gout,double *dlamout,
+                        ITG *reason){
+
+  ITG k;
+  double cdr=0.,cdf=0.,g,dlam=0.,adur,aduf,bb;
+
+  *reason=0;
+  if((pf_on==0)||(pf_cod==0)) return 0;
+
+  for(k=0;k<pf_neq;k++){
+    cdr+=pf_c[k]*b[k];
+    cdf+=pf_c[k]*uf[k];
+  }
+  g=cu-pf_target;
+  if(gout!=NULL) *gout=g;
+  if(getenv("CCX_PATHFOLLOW_PROBE")!=NULL){
+    printf("[COD] phi=%.6e target=%.6e g=%.4e  c.duR=%.6e c.duF=%.6e\n",
+           cu,pf_target,g,cdr,cdf);
+    fflush(stdout);
+  }
+
+  /* Reuse the same guarded division as the dissipation row: a^T du_R
+     plays the role of c^T du_R, a^T du_F that of c^T du_F, and the
+     explicit lambda derivative is zero. */
+
+  adur=cdr;aduf=cdf;bb=0.;
+  {
+    double den=aduf+bb,num=-(g+adur),d,sc;
+    if(!(g==g)||!(cdr==cdr)||!(cdf==cdf)){*reason=1;return 0;}
+    sc=fabs(aduf)+fabs(bb);
+    if(!(fabs(den)>1.e-12*sc)||!(sc>0.)){*reason=2;return 0;}
+    d=num/den;
+    if(!(d==d)){*reason=3;return 0;}
+    if(dlmax>0.){
+      if(d>dlmax){d=dlmax;*reason=4;}
+      if(d<-dlmax){d=-dlmax;*reason=4;}
+    }
+    dlam=d;
+  }
+
+  for(k=0;k<pf_neq;k++) b[k]+=dlam*uf[k];
+  *lam+=dlam;
+  if(dlamout!=NULL) *dlamout=dlam;
+  return 1;
+}
