@@ -4175,6 +4175,20 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          CCX_DAMAGE_LS_LEGACY=1 restores the old ladder exactly, which is
          what makes a controlled A/B possible from ONE binary. */
 
+      /* The ladder is the thing that was wrong, so prove it is right
+         before using it, on every run, the way pathfollow and
+         crackcontrol do.  A failure here is not something to carry on
+         through: the search would silently go back to handing back a
+         step it had measured to be worse. */
+
+      if(lsladder_selftest()!=0){
+        printf("[DAMAGE LINESEARCH] *ERROR: the backtracking ladder self "
+               "test failed; disabling the adaptive line search rather "
+               "than running with a rule that is not the one that was "
+               "tested.\n");
+        damage_linesearch_mode=0;
+      }
+
       if(getenv("CCX_DAMAGE_LS_LEGACY")!=NULL){
         damage_ls_legacy=1;
         damage_ls_min=DAMAGE_LINESEARCH_MIN;

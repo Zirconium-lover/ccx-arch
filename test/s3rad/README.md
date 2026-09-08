@@ -273,3 +273,111 @@ better continuation coordinate.  If it does not, the corrector is simply
 seeing the semismooth UC6 initiation kink at 10000 points at once, and
 the answer is a semismooth (Newton-min or active-set) corrector rather
 than the plain one.
+
+---
+
+# The `DEADALL=1.e-2` wall: root cause and fix
+
+## The proposed sequence did not happen
+
+The hypothesis under test was: a deletion batch forms, the topology loses
+rank, the same-load re-equilibration fails, the batch is rolled back, and
+the run returns to the same committed state and forms the same batch
+again.  `CCX_DAMAGE_BATCH_TRACE=1` hashes the committed state
+(vini, xstateini, damdamageini, ipkon) at the top of every attempt and
+hashes the sorted composition of every deletion batch, so both halves are
+measured rather than inferred.  `batchtrace.py` reads the log.
+
+| measurement | result |
+|---|---|
+| attempts traced to the wall | 696 |
+| deletion batches formed at the wall increment | **0** |
+| `(committed state, batch)` pairs occurring more than once | **0** |
+| last committed batch | 236, at increment 351, `deleted=2` |
+| terminal events / committed batches over the whole run | 253 / 236 |
+
+The wall increment contains no deletion or terminal activity at all across
+all of its attempts.  What repeats there is the rescue loop - three levels
+by design, each rolling back to the same increment-start baseline - and
+the increment is not diverging when the run stops: the dogleg drives
+`phi` from 3.96e-02 to 6.32e-05 monotonically over eight trust-region
+iterations.  Batches do repeat elsewhere (increments 154 and 223) and the
+run continued past every one.
+
+## The topology is sound
+
+`CCX_TOPODIAG=<inc>` builds the live element graph itself - including UC6
+facets, which `nodebelongstoel` skips - and reports it against the
+assembled operator and the real residual.  For every attempt of
+increments 345 to 353:
+
+| quantity | value |
+|---|---|
+| connected components | **1** (9929 nodes) |
+| components with no prescribed dof and no MPC | **0** |
+| active dofs on nodes with no live element | **0** |
+| equations with no off-diagonal coupling | **0** |
+| exactly zero diagonals | **0** |
+| smallest diagonal | 2.848e-03, **constant** |
+
+so neither a true orphan degree of freedom nor a detached component
+exists, at the wall or anywhere near it.
+
+The operator IS nearly singular, and it does not matter.  Three deflated
+inverse iterations give `1/sigma_min = 6.0e13`, constant across
+converging and failing increments alike, and the near-null space is
+irrelevant to the solution:
+
+| soft mode | peaks at | its support | `|cos(R, mode)|` |
+|---|---|---|---|
+| 1 | node 8422 | **0 bulk elements**, 3 facets | 1.3e-22 |
+| 2 | node 2608 | **0 bulk elements**, 3 facets | 2.6e-23 |
+| 3 | node 1349 | **0 bulk elements**, 5 facets | 2.5e-23 |
+
+against a random control of 1.0e-02.  These are the cohesive-only nodes
+the deletion code calls Class B.  The share of the Newton CORRECTION in
+the span of those three modes is 1e-05 to 1e-08 at the very iterations
+where the correction explodes, so the ill-conditioning is not what stops
+the run either.
+
+## What does stop it
+
+`CCX_DAMAGE_LS_PROBE=1` walks a finer ladder and prints the residual at
+each step length without changing what the solver does; `alpha=1` is
+evaluated twice, so the log carries its own proof that a trial evaluation
+is reproducible.  Over the 245 line-search activations of a run to the
+wall:
+
+* the ladder is `{1.0, 0.5, 0.1}` - three rungs with a floor of 0.1;
+* in **114 of 245 activations (46.5%)** the best step length lies BELOW
+  that floor, outside anything the ladder can reach;
+* when nothing contracts, the loop falls out with the LAST rung in hand.
+
+At the wall increment, iterations 12 to 16, that fallback raises the
+residual every time while `alpha=0.03` lowers it every time:
+
+| iteration | `res_old` | `alpha=0.1` (taken) | `alpha=0.03` (best) |
+|---|---|---|---|
+| 11 | 3.039e-03 | 2.852e-03 | 2.956e-03 |
+| 12 | 2.852e-03 | **3.053e-03** | 2.774e-03 |
+| 13 | 3.053e-03 | **3.353e-03** | 3.014e-03 |
+| 14 | 3.353e-03 | **3.649e-03** | 3.307e-03 |
+| 15 | 3.649e-03 | **3.822e-03** | 3.586e-03 |
+| 16 | 3.822e-03 | **4.043e-03** | 3.759e-03 |
+
+The iteration was converging through iteration 11.  The ladder turned it
+round, and the step-time controller then stopped the run for "too slow
+convergence".
+
+## The fix
+
+`src/lsladder.c` is that decision as a unit with its own regression test.
+The ladder now has a floor of 1e-3 and up to 8 rungs, and the search takes
+the **best** rung it measured rather than the last.  Neither is a
+convergence criterion: what an increment must satisfy to be accepted is
+untouched.  `CCX_DAMAGE_LS_LEGACY=1` restores the old shape and the old
+fallback exactly.
+
+`lsladder_selftest()` runs whenever the adaptive line search arms, and the
+search refuses to arm if it fails.  Test B asserts that the OLD rule hands
+back 0.1 when 0.5 was measurably better - the defect itself, pinned.
