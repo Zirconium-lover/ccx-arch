@@ -76,3 +76,104 @@ a calibrated `s3rad` mixed-mode step.
 The committed deck explicitly requests PARDISO.  A SPOOLES copy may be useful
 for diagnostics, but must have a different filename and must be reported as a
 solver-change experiment rather than the historical baseline.
+
+---
+
+## Reproduced baseline on this container
+
+The recorded wall above was measured elsewhere with 6 threads.  Rerun
+here with the committed deck, a PARDISO/MKL build made by
+`src/build_mkl.sh`, the recorded environment and **4 threads** (this
+container has 4 cores; `MKL_CBWR=COMPATIBLE` fixes the instruction set but
+not the reduction order across a different thread count, so the increment
+sequence is not expected to match increment for increment):
+
+| | recorded | reproduced here |
+|---|---|---|
+| solver | PARDISO | PARDISO |
+| threads | 6 | 4 |
+| stop | `rc=201` | `rc=201`, "increment size smaller than minimum" |
+| last accepted increment | 589 | **352** |
+| load factor at the wall | - | **0.212194** |
+| last step time before the stop | 1.319848e-06 | 1.113620e-06 |
+| wall time | ~2182 s | ~2040 s |
+
+The failure mode is the same and the step time at the stop agrees to
+within 20%; the increment count differs because the cutback history does.
+**The physical state, not the increment number, is the yardstick.**
+
+### UC6 state at the wall
+
+`uc6census.py` counts it from the deck's own SDV output, so a stock run
+and a continuation run are measured on the same quantity without
+re-running anything:
+
+```sh
+./uc6census.py <rundir>/m.dat --inp m12_s3rad_gc24_w.inp --last 2
+```
+
+At the last printed increment before the stop:
+
+| quantity | value |
+|---|---|
+| live UC6 integration points | 15957 (of 16200; 81 facets deleted) |
+| initiated, `dmax > d0` | 15429 |
+| process zone, `d0 < dmax < df` | 10076 |
+| failed, `dmax >= df` | 5353 |
+| largest `dmax` | 8.568e-02 |
+| bulk deletion batches | 236 |
+
+### The front is shear-dominated
+
+Recomputed from the `E` output of the same run (the UC6 local separations
+`dn, ds1, ds2`), over the 10945 process-zone points at increment 170:
+
+| statistic | fraction of `deff^2` carried by shear |
+|---|---|
+| mean | 0.63 |
+| median | 0.73 |
+| p10 | 0.085 |
+| p90 | 1.000 |
+| points above 0.5 | 63% |
+| points above 0.9 | 39% |
+
+For two fifths of the active front the normal opening is essentially not
+the coordinate at all.  This is the measurement behind the mixed-mode
+control coordinate.
+
+## Running a continuation pilot
+
+The committed deck prints `S, E, SDV` for 5400 interface elements every
+increment, about 1.2 MB of `.dat` per increment.  A continuation run of a
+few thousand increments would stop on disk rather than on mechanics, so
+`mkpilotdeck.py` derives a copy whose ONLY difference is output
+frequency, and prints both hashes and the exact diff:
+
+```sh
+./mkpilotdeck.py -o /tmp/pilot.inp --every 200
+```
+
+```text
+-*Output, Frequency=5                     +*Output, Frequency=200
+-*Node Print, Nset=FACE_XL_NSET, Totals=Yes
+                                          +..., Frequency=200
+-*El Print, Elset=INTERFACE                +..., Frequency=200
+```
+
+`run_s3rad.sh` accepts that derived deck through `S3RAD_DECK` and records
+`deck_is_committed=no` in `provenance.txt`.
+
+```sh
+CCX_EXE=$PWD/build-mkl/ccx_2.23_pardiso S3RAD_DECK=/tmp/pilot.inp \
+  ./test/s3rad/run_s3rad.sh /tmp/pilot-run \
+  CCX_PATHFOLLOW=1e30 CCX_CRACK_CONTROL=2e-5 CCX_CRACK_CONTROL_MODE=DISS \
+  CCX_CRACK_CONTROL_ENGAGE=340 CCX_PATHFOLLOW_DTHETA=1e-5 \
+  CCX_PATHFOLLOW_CLIP=5e-3
+```
+
+`CCX_CRACK_CONTROL_ENGAGE=<inc>` keeps the run under ORDINARY control
+until that increment.  Verified: with the feature armed but not engaged
+the `.sta` file is line-for-line identical to the stock baseline, so the
+extra solve, the census and the diagnostics do not perturb the
+trajectory, and one run yields both the pre-wall census and the
+continuation.

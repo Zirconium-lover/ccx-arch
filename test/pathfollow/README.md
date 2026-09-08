@@ -244,3 +244,142 @@ an O(0.5) residual in the constraint it is supposed to enforce.
 
 `.dat`, `.sta`, `.frd`, `.log`, `.png` are gitignored on purpose — only the
 inputs and the generators are committed.
+
+---
+
+# Mixed-mode crack control
+
+`CCX_PATHFOLLOW_COD` controls the mean NORMAL separation.  That is the
+right coordinate for the benchmark above and the wrong one for a real
+mixed-mode front, so `CCX_CRACK_CONTROL` generalises it.  The two are
+mutually exclusive and the old one is left untouched, so everything above
+remains a regression test.
+
+## What is controlled
+
+The UC6 law advances along one scalar per integration point,
+
+    deff^2 = max(dn,0)^2 + beta*(ds1^2 + ds2^2) ,   beta = (Ts0/Tn0)^2
+
+which is not linear in `u` but IS positively homogeneous of degree one.
+Freezing
+
+    q = ( max(dn,0), beta*ds1, beta*ds2 ) ,   m = q/deff
+
+at a state gives `m . d == deff` exactly (Euler) and `m` is the exact
+gradient of `deff`, so
+
+    phi(u) = sum_ip w_ip * m_ip . [[u]]_ip
+
+is affine during one corrector, its value at the linearisation point is
+the weighted mean of `deff`, and both derivatives are exact.
+
+The functional is rebuilt from the COMMITTED state at the top of every
+attempt and the constraint is written incrementally,
+`g = c^T(u - u_n) - dphi`, so redefining it between increments carries
+nothing over.  That is also what repairs the absolute form's stale-vector
+defect when element deletion changes the equation count.
+
+## Weights
+
+For the bilinear law the dissipated energy per unit advance of `deff` is
+the constant `1/2*Tn0*df/(df-d0)`, so weighting by `area*that` over the
+loading part of the process zone makes `phi` the cohesive dissipation -
+the Gutierrez constraint written for the crack instead of for the loading
+boundary.
+
+| `CCX_CRACK_CONTROL_MODE` | selection |
+|---|---|
+| `MEAN` | every live UC6 point |
+| `ZONE` | the process zone `d0 < dmax < df` |
+| `DISS` (default) | the process zone **where it is loading**, `deff >= dmax` |
+
+All three are normalised by the weight they carry, so `dphi` is a length
+in every mode.  That cannot change the step: the bordered row is
+invariant under `c -> s*c` with `dphi -> s*dphi`.
+
+The loading restriction is not a tuning knob.  Measured on `s3rad` at
+stock increments 160-175:
+
+| | 160 | 175 |
+|---|---|---|
+| process zone | 11002 | 10874 |
+| of those, loading | 4716 | 4105 |
+| mean `deff` over the zone | 4.007e-03 | 3.924e-03 |
+| mean `deff` over the loading part | 6.215e-03 | 6.347e-03 |
+
+The zone mean runs *backwards*, because points leave the zone into
+failure faster than the survivors open.  The loading mean is monotone and
+its rate (+8.8e-06 per increment) is the natural control increment.
+
+## The benchmark
+
+```sh
+cd test/pathfollow
+python3 mkmixed.py -o mixed.inp            # already committed
+../../src/ccx_2.23 -i mixed                # stock -> the wall
+CCX_PATHFOLLOW=1e30 CCX_CRACK_CONTROL=4e-6 CCX_CRACK_CONTROL_ENGAGE=1 \
+    CCX_PATHFOLLOW_DTHETA=2e-4 ../../src/ccx_2.23 -i mixed
+python3 check_mixed.py <rundir>
+```
+
+A bar cut by an INCLINED cohesive plane.  Every node is held in y and z,
+so the model is still an exact 1-D chain, but the axial jump resolves
+onto the tilted facet frame and loads a fixed, non-trivial mode mix:
+
+    dn = D*c , |ds| = D*sqrt(1-c^2) , deff = D*kappa ,
+    kappa = sqrt(c^2 + beta*(1-c^2)) , c = n_x
+
+The closed form is exact including the St-Venant-Kirchhoff bulk -
+CalculiX runs UC6 only on the NLGEOM path, so the small-strain form
+`u = D + sigma*L/E` is wrong by 4e-03, which is what the first version of
+`check_mixed.py` measured before it was corrected.
+
+Measured, on this container:
+
+| | 45 deg (36% shear) | 76 deg (90% shear) |
+|---|---|---|
+| stock accepted increments | 62, rc=201 | 62, rc=201 |
+| crack control accepted | **4999** | **4950** |
+| of those, post-peak | **2400** | **2400** |
+| recomputed `deff` vs printed | 1.2e-07 | 4.5e-07 |
+| shear fraction | 0.3600 as predicted, 2.5e-07 | 0.9000, 8.8e-07 |
+| reaction vs closed form | 5.0e-07 | 6.7e-05 |
+| displacement vs closed form | 4.4e-07 | 3.1e-06 |
+| `|g|` at an accepted state | 2.2e-18 | 5.6e-18 |
+| end displacement | 0.05026 -> 0.02263, backwards | 0.12583 -> 0.02584 |
+
+Both worst cases sit at the increment that crosses the initiation kink,
+which is the same non-differentiability the pure-tangent probe found on
+the Mode-I benchmark.
+
+## Environment variables
+
+| variable | effect |
+|---|---|
+| `CCX_CRACK_CONTROL=<dphi>` | arm mixed-mode control with that control increment |
+| `CCX_CRACK_CONTROL_MODE=MEAN\|ZONE\|DISS` | which points carry weight (default `DISS`) |
+| `CCX_CRACK_CONTROL_ENGAGE=<inc>` | engage at that increment; `0`/unset engages as soon as the process zone is non-empty |
+| `CCX_CRACK_CONTROL_EPS=<eps>` | probe jump used to capture `-dR/dlambda` (default 1e-5) |
+| `CCX_CRACK_CONTROL_GROW=<f>` | factor `dphi` is grown by after an accepted increment (default 1.1) |
+
+## Two lifecycle points that had to be right
+
+**The stock predictor had to go.**  `prediction()` extrapolates
+`v = vold + dtime*veold`, which is correct when the step time IS the load
+parameter.  Here it moved the control coordinate before the corrector
+ran - measured, `phi` extrapolated to 1.65e-04 against a target of
+1.0e-05 - so every corrector opened by having to undo 94% of it, and a
+cutback made that worse because it shrinks `dphi` faster than the
+predictor.  `prediction()` skips the extrapolation when `idiscon != 0`,
+so suppressing it is one assignment.  The method keeps its own predictor.
+
+**The reference load has to be a tangent.**  `f_hat` is captured as
+`b/dlamjump` at the first iteration.  Over the previous accepted step
+(2e-03 on the target) that is a secant, and an honest finite difference
+of the residual put `|f_hat|/|dR/dlambda|` at 1.43.  A scale error there
+leaves the displacement half of the corrector right and the load half a
+factor `1/s` short, so the prescribed dofs end up where the free dofs did
+not assume: the constraint row converged to 1e-19 while the equilibrium
+row stalled at 0.17, on nodes next to the loaded face.  Capturing over a
+small probe jump instead costs nothing and puts the ratio at 1.0000.

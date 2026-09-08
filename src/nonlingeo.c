@@ -1948,7 +1948,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 
   ITG pf_ccmode=0,pf_ccnw=0,pf_ccengage=0,pf_ccarmed=0;
   double pf_dphicur=0.,pf_lam0it=0.,pf_dlamit=0.,pf_gacc=0.,pf_phiacc=0.,
-    pf_fhcos=0.,pf_fhrat=0.,pf_eps=1.e-5;
+    pf_fhcos=0.,pf_fhrat=0.,pf_eps=1.e-5,pf_ccgrow=1.1;
   crackcontrol_census pf_cs;
 	 
   FILE *f1,*fdamage=NULL;
@@ -3859,6 +3859,9 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
             cce=getenv("CCX_CRACK_CONTROL_EPS");
             if(cce!=NULL) pf_eps=atof(cce);
             if(!(pf_eps>0.)) pf_eps=1.e-5;
+            cce=getenv("CCX_CRACK_CONTROL_GROW");
+            if(cce!=NULL) pf_ccgrow=atof(cce);
+            if(!(pf_ccgrow>=1.)) pf_ccgrow=1.1;
             NNEW(pf_cvec,double,neq[1]);
             if(pathfollow_cod_arm(pf_cvec,neq[1])==1){
               pf_codmode=2;
@@ -5190,7 +5193,13 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           if(pf_taucur>pf_tauv) pf_taucur=pf_tauv;
           pathfollow_settau(pf_taucur);
           if(pf_codmode==2){
-            pf_dphicur*=1.4;
+
+            /* 1.4 was measured to be too greedy on the target: dphi grew
+               past what the increment could take, attempt 1 failed, dphi
+               was halved, attempt 2 converged - one wasted attempt per
+               increment, every increment.  Grow gently instead. */
+
+            pf_dphicur*=pf_ccgrow;
             if(pf_dphicur>pf_dphi) pf_dphicur=pf_dphi;
           }
         }
@@ -5394,14 +5403,24 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
        regularisation, and the first engaged attempt failed through five
        cutbacks that could not touch dtime.
 
-       So: let the stock controller keep sizing dtheta - that is the
-       rate-dependent part of the problem and it must stay adaptive - and
-       only cap it from above, which is what stops theta from running to
-       1 in the middle of the branch.  The continuation step size is
-       dphi, and that is cut separately. */
+       Capping it and leaving the stock controller to size it below the
+       cap was tried and MEASURED, and it does not work either, for a
+       different reason: once engaged, an attempt that fails is fixed by
+       halving dphi, not by halving dtheta, but the stock controller
+       halves dtheta anyway and then refuses to grow it back because the
+       accepted attempt took 29 iterations.  dtheta therefore ratchets
+       down one notch per increment and the run dies on "increment size
+       smaller than minimum" - measured, 14 accepted engaged increments
+       and then that exact stop.
+
+       So dtheta is SET again, and it is a CHOICE of time step: with
+       lambda decoupled, theta is the clock the rate-dependent laws run
+       on and nothing else, and holding it fixed makes the viscous
+       relaxation per increment constant.  The continuation step size is
+       dphi and that alone is what a cutback shrinks. */
 
     if((pf_on==1)&&(pf_engaged==1)){
-      if(dtheta>pf_dtheta_eng) dtheta=pf_dtheta_eng;
+      dtheta=pf_dtheta_eng;
       if(theta+dtheta>1.) dtheta=1.-theta;
     }
 
@@ -5566,7 +5585,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                too.  Only the time-like quantities are rebuilt: xbounact
                is overwritten from pf_lam a few lines below anyway. */
 
-            if(dtheta>pf_dtheta_eng) dtheta=pf_dtheta_eng;
+            dtheta=pf_dtheta_eng;
             if(theta+dtheta>1.) dtheta=1.-theta;
             reltime=theta+dtheta;
             time=reltime**tper;
