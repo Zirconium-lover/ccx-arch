@@ -1947,7 +1947,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      crackcontrol.c. */
 
   ITG pf_ccmode=0,pf_ccnw=0,pf_ccengage=0,pf_ccarmed=0;
-  double pf_dphicur=0.,pf_lam0it=0.,pf_dlamit=0.,pf_gacc=0.,pf_phiacc=0.;
+  double pf_dphicur=0.,pf_lam0it=0.,pf_dlamit=0.,pf_gacc=0.,pf_phiacc=0.,
+    pf_fhcos=0.,pf_fhrat=0.;
   crackcontrol_census pf_cs;
 	 
   FILE *f1,*fdamage=NULL;
@@ -3840,14 +3841,18 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
             printf("[CRACKCTL] *ERROR: CCX_CRACK_CONTROL must be a "
                    "positive control increment.  Not armed.\n");
           }else{
-            pf_ccmode=1;                     /* default: process zone   */
+            /* Default DISS: the process zone restricted to where it is
+               LOADING.  Measured on the target, the unrestricted zone
+               mean runs backwards while the loading mean advances
+               monotonically - see crackcontrol.c. */
+            pf_ccmode=2;
             cce=getenv("CCX_CRACK_CONTROL_MODE");
             if(cce!=NULL){
               if((strcmp(cce,"MEAN")==0)||(strcmp(cce,"0")==0)) pf_ccmode=0;
               else if((strcmp(cce,"ZONE")==0)||(strcmp(cce,"1")==0)) pf_ccmode=1;
               else if((strcmp(cce,"DISS")==0)||(strcmp(cce,"2")==0)) pf_ccmode=2;
               else printf("[CRACKCTL] unknown CCX_CRACK_CONTROL_MODE "
-                          "\"%s\"; keeping ZONE\n",cce);
+                          "\"%s\"; keeping DISS\n",cce);
             }
             cce=getenv("CCX_CRACK_CONTROL_ENGAGE");
             if(cce!=NULL) pf_ccengage=atoi(cce);
@@ -5208,12 +5213,13 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                              nactdof,*nk,mt,&pf_cs);
           printf("[CRACKCTL] inc=%" ITGFORMAT " ACCEPTED lambda=%.8f "
                  "dphi=%.6e achieved=%.6e g=%.3e |R|=%.3e du=%.3e "
-                 "zone=%" ITGFORMAT " init=%" ITGFORMAT " fail=%"
-                 ITGFORMAT " dead=%" ITGFORMAT " deffmax=%.6e "
-                 "shear=%.4f\n",
+                 "zone=%" ITGFORMAT " load=%" ITGFORMAT " init=%"
+                 ITGFORMAT " fail=%" ITGFORMAT " dead=%" ITGFORMAT
+                 " deffmax=%.6e shear=%.4f w=%.6e fhat=%.6f/%.4f\n",
                  iinc,pf_lam,pf_dphicur,pf_phiacc,pf_gacc,ram[0],ram[1],
-                 pf_cs.nzone,pf_cs.ninit,pf_cs.nfail,pf_cs.ndead,
-                 pf_cs.deffmax,pf_cs.shearfrac);
+                 pf_cs.nzone,pf_cs.nload,pf_cs.ninit,pf_cs.nfail,
+                 pf_cs.ndead,pf_cs.deffmax,pf_cs.shearfrac,pf_cs.weight,
+                 pf_fhcos,pf_fhrat);
         }else if(pf_codmode==1){
           printf("[PATHFOLLOW] inc=%" ITGFORMAT " ACCEPTED lambda=%.8f "
                  "phi=%.6e target=%.6e\n",iinc,pf_lam,pf_cu,
@@ -5528,10 +5534,12 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
              ((pf_ccengage<=0)&&(pf_cs.nzone>0))){
             pf_engaged=1;
             printf("[CRACKCTL] engaged at inc=%" ITGFORMAT " lambda=%.8f: "
-                   "process zone %" ITGFORMAT " ip(s), initiated %"
-                   ITGFORMAT ", failed %" ITGFORMAT ", shear fraction "
-                   "%.4f\n",iinc,pathfollow_lamn(),pf_cs.nzone,
-                   pf_cs.ninit,pf_cs.nfail,pf_cs.shearfrac);
+                   "process zone %" ITGFORMAT " ip(s) of which %"
+                   ITGFORMAT " loading, initiated %" ITGFORMAT
+                   ", failed %" ITGFORMAT ", shear fraction %.4f, "
+                   "weight %.6e\n",iinc,pathfollow_lamn(),pf_cs.nzone,
+                   pf_cs.nload,pf_cs.ninit,pf_cs.nfail,pf_cs.shearfrac,
+                   pf_cs.weight);
             fflush(stdout);
           }
         }
@@ -7669,6 +7677,30 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	   differentiable. */
 
 	if((pf_on==1)&&(iit==1)){
+
+	  /* HOW FAR HAS THE FROZEN REFERENCE VECTOR DRIFTED?
+	     f_hat is frozen at the first capture, and the corrector adds
+	     dlambda*K^-1 f_hat to the displacement while adding dlambda to
+	     lambda.  Those two are consistent only while f_hat is -dR/dlambda;
+	     a scale error s makes the applied load-factor step 1/s of the one
+	     the displacement correction assumed.  b/dlamjump IS the current
+	     secant of -dR/dlambda, so the comparison costs one pass over the
+	     vector and needs no extra residual evaluation.  Measured, not
+	     assumed: on the mixed benchmark the ratio is still 0.997 at
+	     increment 1500. */
+
+	  if((pathfollow_have()==1)&&(fabs(pf_dlamjump)>1.e-8)){
+	    const double *pffh=pathfollow_fhat();
+	    double pfa=0.,pfb=0.,pfd=0.,pfs;
+	    for(k=0;k<neq[1];k++){
+	      pfs=b[k]/pf_dlamjump;
+	      pfa+=pffh[k]*pffh[k];pfb+=pfs*pfs;pfd+=pffh[k]*pfs;
+	    }
+	    if((pfa>0.)&&(pfb>0.)){
+	      pf_fhcos=pfd/sqrt(pfa*pfb);
+	      pf_fhrat=sqrt(pfa/pfb);
+	    }
+	  }
 	  pathfollow_capture(b,pf_dlamjump);
 	  if(pathfollow_have()==1){
 	    pathfollow_setPn(pf_project(pathfollow_fhat(),vini,pf_uref,

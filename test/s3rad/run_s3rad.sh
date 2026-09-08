@@ -3,7 +3,11 @@ set -u
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
-DECK="$SCRIPT_DIR/m12_s3rad_gc24_w.inp"
+# S3RAD_DECK lets a pilot run use a DERIVED deck (see mkpilotdeck.py).
+# The committed deck's hash is then not the right thing to check, so the
+# check is replaced by recording the derived deck's own hash in
+# provenance.txt together with the fact that it is not the committed one.
+DECK=${S3RAD_DECK:-"$SCRIPT_DIR/m12_s3rad_gc24_w.inp"}
 EXE=${CCX_EXE:-"$ROOT/src/ccx_2.23"}
 RUN_DIR=${1:-"$SCRIPT_DIR/_runs/$(date +%Y%m%d-%H%M%S)"}
 if [ "$#" -gt 0 ]; then shift; fi
@@ -30,11 +34,19 @@ if [ ! -x "$EXE" ]; then
 fi
 
 ACTUAL_DECK_SHA=$(sha256sum "$DECK" | awk '{print $1}')
+DECK_IS_COMMITTED=yes
 if [ "$ACTUAL_DECK_SHA" != "$EXPECTED_DECK_SHA" ]; then
-    echo "deck hash mismatch" >&2
-    echo "expected: $EXPECTED_DECK_SHA" >&2
-    echo "actual:   $ACTUAL_DECK_SHA" >&2
-    exit 2
+    if [ -n "${S3RAD_DECK:-}" ]; then
+        DECK_IS_COMMITTED=no
+        echo "NOTE: running a DERIVED deck, not the committed one." >&2
+        echo "      $DECK" >&2
+        echo "      sha256 $ACTUAL_DECK_SHA" >&2
+    else
+        echo "deck hash mismatch" >&2
+        echo "expected: $EXPECTED_DECK_SHA" >&2
+        echo "actual:   $ACTUAL_DECK_SHA" >&2
+        exit 2
+    fi
 fi
 
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-6}
@@ -84,6 +96,7 @@ EXE_SHA=$(sha256sum "$EXE" | awk '{print $1}')
 {
     echo "deck=$DECK"
     echo "deck_sha256=$ACTUAL_DECK_SHA"
+    echo "deck_is_committed=$DECK_IS_COMMITTED"
     echo "executable=$EXE"
     echo "executable_sha256=$EXE_SHA"
     echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"

@@ -89,14 +89,46 @@
   Three weightings are provided, because which one is right is an
   empirical question and each is a different measurement:
 
-      0 MEAN  w = area/3 over every live facet, normalised.  phi is the
-              mean effective separation.  This is the mixed-mode
+      0 MEAN  w = area/3 over every live facet.  phi is the mean
+              effective separation.  This is the mixed-mode
               generalisation of CCX_PATHFOLLOW_COD and reduces to it
               when the crack is a pure Mode-I plane.
-      1 ZONE  the same, restricted to the process zone d0<dmax<df and
-              normalised by the weight actually carried.  phi is the mean
-              effective separation OF THE ACTIVE FRONT.
-      2 DISS  the dissipation weighting above.  phi is an energy.
+      1 ZONE  the same, restricted to the process zone d0<dmax<df.
+      2 DISS  the process zone AND ONLY WHERE IT IS LOADING
+              (deff >= dmax at the committed state), weighted by
+              area*rate.
+
+  All three are normalised by the weight they carry, so phi is a mean
+  separation in every mode and dphi is always a length.  That loses
+  nothing: the bordered row
+
+      dlambda = -( g + c^T du_R ) / ( c^T du_F ) ,  g = c^T(u-u_n) - dphi
+
+  is INVARIANT under c -> s*c together with dphi -> s*dphi, so the
+  normalisation cannot change the step - only the selection and the
+  relative weights can.  The unnormalised weight sum is reported so that
+  phi*sum(w) recovers the dissipation in energy units.
+
+  WHY THE LOADING RESTRICTION IS NOT A THRESHOLD BUT THE DEFINITION
+  ----------------------------------------------------------------
+  A point that is unloading dissipates nothing: its damage is frozen and
+  its traction follows the secant back to the origin.  Including it in
+  the control functional therefore averages the advancing front together
+  with material that is, by construction, not advancing.
+
+  This is not hypothetical.  Measured on the s3rad target at stock
+  increment 160-175, from the deck's own SDV/E output:
+
+      process zone            11002 -> 10874 integration points
+      of those, loading        4716 ->  4105
+      mean deff over the zone  4.007e-03 -> 3.924e-03   (DECREASING)
+      mean deff over loading   6.215e-03 -> 6.347e-03   (increasing,
+                                             +8.8e-06 per increment)
+
+  The zone mean runs BACKWARDS, because points leave the zone into
+  failure faster than the survivors open; a constraint built on it would
+  be asked to advance a quantity that physically retreats.  The loading
+  mean is monotone and its rate is the natural control increment.
 
   RE-ANCHORING
   ------------
@@ -308,9 +340,9 @@ ITG crackcontrol_build(double *c,ITG neq,ITG mode,
                        const double *v,const ITG *nactdof,ITG nk,ITG mt,
                        crackcontrol_census *s){
 
-  ITG e,ip,i,k,idx,nm,np,dof,nw=0;
+  ITG e,ip,i,k,idx,nm,np,dof,nw=0,loading;
   double rmat[9],area,x[9],jump[3],dl[3],m[3],mg[3],sh[3];
-  double kn,tn0,ts0,gc,beta,d0,df,deff,dmax,w,wtot=0.,rate,shear;
+  double kn,tn0,ts0,gc,beta,d0,df,deff,dmax,dst,w,wtot=0.,rate,shear;
 
   for(k=0;k<neq;k++) c[k]=0.;
   crackcontrol_census_zero(s);
@@ -357,8 +389,17 @@ ITG crackcontrol_build(double *c,ITG neq,ITG mode,
         for(k=0;k<3;k++) dl[i]+=rmat[3*i+k]*jump[k];
       }
       deff=crackcontrol_dir(dl,beta,1.e-14*d0,m);
-      dmax=xstate[nstate_*(mi[0]*e+ip)+0];
-      if(dmax<deff) dmax=deff;
+
+      /* dst is the COMMITTED maximum separation; deff is recomputed from
+         the same committed displacement field, so a point that was
+         loading at the commit has deff == dst to rounding and one that
+         unloaded has deff < dst.  That is the loading test - it reads
+         the model's own history variable rather than differencing two
+         states. */
+
+      dst=xstate[nstate_*(mi[0]*e+ip)+0];
+      loading=(deff>=dst*(1.-1.e-8))?1:0;
+      dmax=(dst<deff)?deff:dst;
 
       /* census -------------------------------------------------------- */
 
@@ -367,6 +408,7 @@ ITG crackcontrol_build(double *c,ITG neq,ITG mode,
         s->ninit++;
         if(dmax<df){
           s->nzone++;
+          if(loading!=0) s->nload++;
           shear=beta*(dl[1]*dl[1]+dl[2]*dl[2]);
           if(deff>0.) s->shearfrac+=area*shear/(deff*deff);
           s->zonearea+=area;
@@ -382,7 +424,8 @@ ITG crackcontrol_build(double *c,ITG neq,ITG mode,
       if(mode==0){
         w=area/3.;
       }else if((dmax>d0)&&(dmax<df)){
-        w=(mode==2)?(area/3.)*rate:(area/3.);
+        if(mode==2) w=(loading!=0)?(area/3.)*rate:0.;
+        else        w=area/3.;
       }else{
         w=0.;
       }
@@ -413,7 +456,7 @@ ITG crackcontrol_build(double *c,ITG neq,ITG mode,
      that phi is a separation whatever the size of the active set.  DISS
      is an energy and must not be normalised. */
 
-  if((mode!=2)&&(wtot>0.)){
+  if(wtot>0.){
     for(k=0;k<neq;k++) c[k]/=wtot;
   }
   return nw;

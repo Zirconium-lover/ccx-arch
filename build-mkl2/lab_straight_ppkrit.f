@@ -1,0 +1,1 @@
+/home/user/ccx-crack-prop-cod-lab/src/lab_straight_ppkrit.f

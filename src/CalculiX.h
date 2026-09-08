@@ -4891,6 +4891,7 @@ typedef struct{
   ITG nip;         /* live integration points visited                  */
   ITG ninit;       /* dmax > d0  (initiated)                           */
   ITG nzone;       /* d0 < dmax < df  (process zone)                   */
+  ITG nload;       /* of those, currently loading (deff >= dmax)       */
   ITG nfail;       /* dmax >= df (fully failed)                        */
   double area;     /* total live facet area                            */
   double zonearea; /* facet area carrying the process zone             */
