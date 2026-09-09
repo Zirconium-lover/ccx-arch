@@ -800,6 +800,29 @@ nodes AUTOSPC's census counts.  The residual there is 2.78e-02, **12% of the
 peak**: the force imbalance is at nodes 1245 and 5282, which are healthy (7
 and 3 live bulk elements).
 
+It is worth reading the whole failing increment rather than only its last
+iteration, because the step does not start out like that:
+
+| inc 556 iter | UC6 advancing (`deff>dmax0`) | `\|p_N\|inf` | `\|p_N\|2` | `\|R\|2` |
+|---|---|---|---|---|
+| 4 | 4467 | 0.1885 | 0.2123 | 0.6775 |
+| 5 | 4483 | 0.1336 | 0.1507 | 0.5022 |
+| 6 | 4490 | 0.5401 | 0.6108 | 0.3496 |
+| 7 | **137** | 1.0594 | 1.1931 | 0.3113 |
+| 8 | **142** | 1.0806 | 1.2164 | 0.3095 |
+
+While about 4490 UC6 points are on the SOFTENING branch the step is moderate
+and the residual falls 26% and 30% per iteration.  Between iterations 6 and 7
+the advancing set collapses to 137 of the 15954 points past initiation - the
+process zone unloads essentially in its entirety - and in the same step
+`|p_N|` doubles and the residual stops moving: 0.3496, 0.3113, 0.3095, under
+1% per iteration.  This is a correlation measured on one increment, not yet a
+proved mechanism, but it is a sharp one and it points the same way as
+everything else here: with the whole cohesive zone unloading, every facet
+tangent reverts to its stiff positive secant, and the softest thing left
+anywhere in the operator is the collapsed diagonal of a node held by one
+tetrahedron.
+
 So the operator inverts a small residual on a nearly-free node into an
 order-one displacement, and that displacement IS the Newton direction.  The
 direction is legitimate - the transpose identity `dot(J^T R,p_N)/|R|^2` holds

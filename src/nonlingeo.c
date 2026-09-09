@@ -2063,6 +2063,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_ct_lamsnap=0.,damage_ct_cprev=0.,
     *damage_dl_r0=NULL,*damage_dl_d=NULL,*damage_dl_w=NULL,
     *damage_dl_pn=NULL,*damage_dl_res=NULL,*damage_dl_dam=NULL,
+    *damage_dl_pm=NULL,*damage_dl_wm=NULL,damage_dl_npm2=0.,
     *damage_dl_visc=NULL,*damage_dl_xs=NULL,
     damage_dl_delta=0.,damage_dl_nb2=0.,damage_dl_nd2=0.,
     damage_dl_nw2=0.,damage_dl_tc=0.,damage_dl_npn2=0.,
@@ -2105,6 +2106,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_linesearch_oldnorm=0.,damage_linesearch_fullnorm=0.,
     damage_linesearch_dampednorm=0.,damage_linesearch_maxdd=0.,
     damage_wall_theta=-1.,*damage_wall_def=NULL;
+  ITG damage_wall_maskstep=0;
   double damage_nl_ell=0.;
   ITG damage_nl_mode=0;
   double damage_qam_floor=0.,damage_qam_peak=0.;
@@ -3984,6 +3986,21 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
            "diagnostic, the deflated null-vector probe and the line-search "
            "ladder probe run on the CURRENT increment, whatever its "
            "number.%s",damage_wall_theta,"\n");
+    fflush(stdout);
+  }
+  /* [WALLDIAG] MASKSTEP.  The wall measurement says 99.96% of |p_N|^2 sits
+     on the three dofs of ONE node whose assembled diagonal has collapsed,
+     while the force imbalance is two nodes away.  This probe walks the same
+     eps ladder along p_N with every component on an AUTOSPC-masked node
+     zeroed, so the question "is the step unusable BECAUSE it is spent on
+     collapsed-diagonal nodes" becomes a number instead of a story.  It reads
+     the mask AUTOSPC already builds, changes no solution path, and is off
+     unless asked for. */
+  if(getenv("CCX_DAMAGE_WALL_MASKSTEP")!=NULL){
+    damage_wall_maskstep=1;
+    printf("[WALLDIAG] MASKSTEP armed: the linearisation check gains a third "
+           "pass along p_N with the AUTOSPC-masked nodes' components zeroed. "
+           " Diagnostic only - nothing on a solution path reads it.%s","\n");
     fflush(stdout);
   }
   if((td_trace!=0)||(td_from>0)){
@@ -9407,6 +9424,40 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	        }
 	      }
 	      isiz=neq[1];cpypardou(damage_dl_pn,b,&isiz,&num_cpus);
+	      /* [WALLDIAG] MASKSTEP.  pm = p_N with every component that
+	         belongs to an AUTOSPC-masked node zeroed, and wm = J pm by the
+	         same proved loop.  Built HERE because ad and au are freed
+	         before the linearisation check runs; pm and wm are the only
+	         things that survive to it.  Nothing on a solution path reads
+	         either. */
+	      if((damage_wall_maskstep!=0)&&(damage_spc_mask!=NULL)&&
+	         (damage_spc_nk>=*nk)){
+	        ITG mi_,mj_,mk_;
+	        if(damage_dl_pm==NULL){
+	          NNEW(damage_dl_pm,double,neq[1]);
+	          NNEW(damage_dl_wm,double,neq[1]);
+	        }
+	        for(dk=0;dk<neq[1];dk++) damage_dl_pm[dk]=damage_dl_pn[dk];
+	        for(mi_=0;mi_<*nk;mi_++){
+	          if(damage_spc_mask[mi_]==0) continue;
+	          for(mj_=1;mj_<mt;mj_++){
+	            mk_=nactdof[mt*mi_+mj_];
+	            if(mk_>0) damage_dl_pm[mk_-1]=0.;
+	          }
+	        }
+	        for(dk=0;dk<neq[1];dk++)
+	          damage_dl_wm[dk]=ad[dk]*damage_dl_pm[dk];
+	        for(dc=0;dc<neq[1];dc++){
+	          for(dk=jq[dc]-1;dk<jq[dc+1]-1;dk++){
+	            dr=irow[dk]-1;
+	            damage_dl_wm[dr]+=au[dk]*damage_dl_pm[dc];
+	            damage_dl_wm[dc]+=au[nzs[2]+dk]*damage_dl_pm[dr];
+	          }
+	        }
+	        damage_dl_npm2=0.;
+	        for(dk=0;dk<neq[1];dk++)
+	          damage_dl_npm2+=damage_dl_pm[dk]*damage_dl_pm[dk];
+	      }
 	      damage_dl_nb2=0.;damage_dl_nd2=0.;damage_dl_nw2=0.;
 	      damage_dl_npn2=0.;damage_dl_dtpn=0.;
 	      for(dk=0;dk<neq[1];dk++){
@@ -10107,7 +10158,10 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           fflush(stdout);
         }
 
-        for(lpass=0;lpass<2;lpass++){
+        {
+        ITG lpassn=2;
+        if((damage_wall_maskstep!=0)&&(damage_dl_pm!=NULL)) lpassn=3;
+        for(lpass=0;lpass<lpassn;lpass++){
           if(lpass==0){
             for(ljj=0;ljj<neq[1];ljj++){
               lp[ljj]=damage_dl_pn[ljj];
@@ -10116,7 +10170,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
             printf("[DAMAGE TR LINCHECK] pass 1: p = p_N, so J p = r0 "
                    "EXACTLY.  res(u+eps p)/((1-eps)|r0|) must go to 1 and "
                    "the defect to zero like O(eps).%s","\n");
-          }else{
+          }else if(lpass==1){
             lsc=sqrt(damage_dl_npn2/damage_dl_nd2);
             for(ljj=0;ljj<neq[1];ljj++){
               lp[ljj]=lsc*damage_dl_d[ljj];
@@ -10126,6 +10180,27 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                    "|p_N|), so J p = %.6e * w.  d comes from the TRANSPOSE "
                    "loop and w from the forward loop, so a swapped pair "
                    "cannot pass this.%s",lsc,lsc,"\n");
+          }else{
+            /* [WALLDIAG] MASKSTEP.  p = p_N with the AUTOSPC-masked nodes'
+               components zeroed.  UNSCALED on purpose: the question is not
+               how this direction behaves at |p_N|, it is what the step
+               actually does once the collapsed-diagonal dofs are taken out
+               of it, so eps=1 here means "the rest of the Newton step". */
+            for(ljj=0;ljj<neq[1];ljj++){
+              lp[ljj]=damage_dl_pm[ljj];
+              ljp[ljj]=damage_dl_wm[ljj];
+            }
+            printf("[DAMAGE TR LINCHECK] pass 3 (MASKSTEP): p = p_N with the "
+                   "%" ITGFORMAT " AUTOSPC-masked nodes zeroed.  |p|=%.6e "
+                   "against |p_N|=%.6e, so the mask removes %.4f%% of "
+                   "|p_N|^2.  If the best rung here beats pass 1's best rung "
+                   "(and the ladder's accepted alpha), the step is unusable "
+                   "BECAUSE it is spent on collapsed-diagonal nodes; if it "
+                   "does not, that hypothesis is dead.%s",
+                   damage_spc_count,sqrt(damage_dl_npm2),
+                   sqrt(damage_dl_npn2),
+                   (damage_dl_npn2>0.)?
+                     100.*(1.-damage_dl_npm2/damage_dl_npn2):0.,"\n");
           }
           fflush(stdout);
           lnjp=0.;
@@ -10331,6 +10406,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
             }
             fflush(stdout);
           }
+        }
         }
 
         /* leave the full Newton step, exactly as the unprobed code would */
