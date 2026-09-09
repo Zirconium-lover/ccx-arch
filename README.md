@@ -1,5 +1,7 @@
 # CCX crack-propagation COD workbench
 
+For the current second-wall investigation, start with [`NEXT_TASK.md`](NEXT_TASK.md).
+
 This repository is a public experimental workbench for continuing a
 CalculiX 2.23 fracture calculation through a snap-back wall.  It is not a
 production release of CalculiX.

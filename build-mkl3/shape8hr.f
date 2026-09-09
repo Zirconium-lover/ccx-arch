@@ -1,1 +1,0 @@
-/home/user/ccx-crack-prop-cod-lab/src/shape8hr.f

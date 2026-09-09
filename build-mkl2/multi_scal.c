@@ -1,1 +1,0 @@
-/home/user/ccx-crack-prop-cod-lab/src/multi_scal.c

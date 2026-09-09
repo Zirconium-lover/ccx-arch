@@ -1,1 +1,0 @@
-/home/user/ccx-crack-prop-cod-lab/src/ccx_2.23step.c

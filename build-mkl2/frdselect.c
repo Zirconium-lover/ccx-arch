@@ -1,1 +1,0 @@
-/home/user/ccx-crack-prop-cod-lab/src/frdselect.c

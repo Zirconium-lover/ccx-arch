@@ -21,6 +21,7 @@ ccx_2.23
 ccx_2.23step
 ccx_2.23_pardiso
 build-mkl/
+build-mkl*/
 test/pathfollow/mixed_*.inp
 *.vtu
 *.damage

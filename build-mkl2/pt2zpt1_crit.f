@@ -1,1 +1,0 @@
-/home/user/ccx-crack-prop-cod-lab/src/pt2zpt1_crit.f

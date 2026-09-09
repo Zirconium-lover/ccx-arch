@@ -1,1 +1,0 @@
-/home/user/ccx-crack-prop-cod-lab/src/near3d_se.f

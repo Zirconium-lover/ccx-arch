@@ -1,1 +1,0 @@
-/home/user/ccx-crack-prop-cod-lab/src/umpc_mean_rot.f

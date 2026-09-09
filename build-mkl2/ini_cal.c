@@ -1,1 +1,0 @@
-/home/user/ccx-crack-prop-cod-lab/src/ini_cal.c
