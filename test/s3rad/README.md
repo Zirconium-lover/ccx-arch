@@ -753,6 +753,15 @@ attempt over 114 attempts and 101 accepted increments - through the
 increments 92 to 100 where the tangent defect is worst - with zero corrector
 activity in the log.  So the table above is the flag, not the build.
 
+**Feature-off equivalence of the DELIVERED tree**, which is a different and
+stronger claim, since the corrector is no longer there to switch off: a
+PARDISO binary built from the reverted source reproduces the unmodified-HEAD
+baseline `.sta` attempt for attempt over **336 attempts and 204 accepted
+increments**.  That run was stopped deliberately at that point to give its
+two cores to the measurement below, not because it diverged; the binary
+carrying the `MASKSTEP` probe continues the same comparison with its gate
+shut.
+
 The functional patch is therefore reverted rather than kept behind a flag,
 per the working brief.  What stays is every measurement that produced this
 conclusion, and the diagnostics that took them.
