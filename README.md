@@ -58,8 +58,12 @@ of their diagonal stiffness.
 **99.96% of that step sits on the three degrees of freedom of ONE of them.**
 Node 1244 is held by one live bulk element and six cohesive facets that are
 still in the mesh with zero stiffness; its assembled diagonal has collapsed,
-its own residual is only 12% of the peak, and the operator inverts that small
-residual into a displacement of 1.08.  The remaining 29405 degrees of
+its own residual is only 12% of the peak by then, and the operator inverts
+that small residual into a displacement of 1.08.  (The increment BEGINS with
+the imbalance on node 1244 - `|R|inf=6.78` there - and resolves most of it,
+8.32 down to 0.68, in four iterations.  What it cannot do is finish: once
+that node's residual is small the correction does not shrink with it, it
+grows, 0.043 to 0.61 to 1.22, onto the same node.)  The remaining 29405 degrees of
 freedom carry 0.04% of the step between them.  The direction is a genuine
 descent direction - the transpose identity holds to twelve digits - but the
 descent is spent moving a node that is barely attached, while the force

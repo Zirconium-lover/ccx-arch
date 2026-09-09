@@ -56,7 +56,7 @@ assumptions.
 - The topology at the new wall is sound, re-measured and not carried over:
   one component, no floating piece, no orphan dof, no isolated equation, and
   the residual orthogonal to the near-null space to twenty-one digits while
-  the correction carries at most 1.6e-05 of itself there. Node 1244 is a SOFT
+  the correction carries at most 1.6e-04 of itself there. Node 1244 is a SOFT
   mode, not a null mode - it still has one element - which is why the
   near-null probes do not see it.
 - What HAS changed is the support: 76 nodes have lost 99.9% of their

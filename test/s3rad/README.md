@@ -559,7 +559,7 @@ requires rather than carried over from the old wall:
 | `1/sigma_min`, three deflated inverse iterations | **6.0e13** |
 | `\|cos(R, soft mode)\|` | 1.4e-21, 2.4e-21, 6.8e-22 |
 | share of `\|R\|2` in the span of the three softest modes | 2.8e-21 (random control 7.2e-03) |
-| share of the CORRECTION in that span | 1.6e-05 down to 6.5e-07 |
+| share of the CORRECTION in that span | 1.6e-04 down to 6.5e-07 |
 | residual peak node 1244 | **1 live bulk element, 6 live facets** |
 
 The topological verdict of the old wall therefore survives re-measurement at
@@ -568,7 +568,7 @@ no isolated equation.  The operator IS nearly singular - `1/sigma_min` is
 6.0e13, against 3.3 at increment 92, so the front has produced the
 conditioning between them - but the near-null space is again irrelevant:
 the residual is orthogonal to it to twenty-one digits and the correction
-carries at most 1.6e-05 of itself there.
+carries at most 1.6e-04 of itself there.
 
 And it is not the deletion loop either, re-measured at the new wall with
 `CCX_DAMAGE_BATCH_TRACE=1` rather than carried over.  Over 1145 traced
@@ -822,6 +822,29 @@ everything else here: with the whole cohesive zone unloading, every facet
 tangent reverts to its stiff positive secant, and the softest thing left
 anywhere in the operator is the collapsed diagonal of a node held by one
 tetrahedron.
+
+One apparent contradiction in the two blocks above is worth settling, because
+it is really the sharpest fact here.  `topodiag`, which runs at the START of
+the failing increment, reports `|R|inf = 6.777907` **at node 1244 dir 3** and
+names it the residual peak.  `WALLDIAG`, at iteration 8, reports the peak at
+node 1245 with node 1244 only fifth at 2.78e-02.  Both are right, at
+different states, and the sequence between them is the story of the
+increment:
+
+| inc 556 | `\|R\|2` | `\|du\|2` |
+|---|---|---|
+| start (topodiag) | 8.3237 | - |
+| after iter 1 | | 0.1599 |
+| after iter 3 | | 0.0427 |
+| iter 4 | 0.6775 | 0.2123 |
+| iter 6 | 0.3496 | 0.6108 |
+| iter 8 | 0.3095 | 1.2164 |
+
+The increment starts with the imbalance ON node 1244 and resolves most of it
+- 8.32 down to 0.68 - in four iterations.  What it cannot do is finish.  Once
+node 1244's own residual is down to 12% of the peak, the correction does not
+shrink with it: it GROWS, 0.043 to 0.61 to 1.22, and concentrates ever harder
+on the same node.  The residual then moves 0.3496, 0.3113, 0.3095.
 
 So the operator inverts a small residual on a nearly-free node into an
 order-one displacement, and that displacement IS the Newton direction.  The
