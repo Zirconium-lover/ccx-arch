@@ -60,7 +60,7 @@ assumptions.
   mode, not a null mode - it still has one element - which is why the
   near-null probes do not see it.
 - What HAS changed is the support: 76 nodes have lost 99.9% of their
-  assembled diagonal, against 3 at increment 140.
+  assembled diagonal, against 3 at increment 136 and none at all at increment 91.
 - The deletion loop is refuted at the new wall too, re-measured with
   `CCX_DAMAGE_BATCH_TRACE=1`: the last committed batch is 415 at increment
   551, so increments 552-555 commit no deletion at all.

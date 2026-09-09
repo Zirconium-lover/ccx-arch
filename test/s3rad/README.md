@@ -583,7 +583,7 @@ increments 167 and 231, and the run continued past both.
 
 What HAS changed is the support of the front.  `CCX_DAMAGE_AUTOSPC`'s
 stiffness census counts **76 nodes whose assembled diagonal has fallen below
-1e-3 of its own intact value** at increment 548, against 3 at increment 140.
+1e-3 of its own intact value** at increment 548, against 3 at increment 136 and none at all at increment 91.
 The residual peaks at node 1244, which is held by ONE live bulk element and
 six cohesive facets that are all fully failed (`g = gmin = 1e-05`), and the
 correction peaks at its neighbour 1244/1245 with the same support.  Those
@@ -885,9 +885,24 @@ not what is wasting the step and the hypothesis is dead - and with the event
 reading already rejected above, the next place to look would be the
 `|p_N|/|R| = 3.93` amplification itself.
 
-This is one armed increment on the existing LINCHECK machinery, which
-already evaluates an arbitrary direction on `pass 2`.  It is not a run.
-**Measure before building.**
+`CCX_DAMAGE_WALL_MASKSTEP=1` implements exactly that as a third pass on the
+existing LINCHECK ladder, and it answers a prior question in its own header
+line before the ladder even runs: it prints what fraction of `|p_N|^2` the
+mask removes.  **If that reads about 99.96%, node 1244 is in the AUTOSPC set
+and the ladder below it tests the hypothesis.  If it reads about 0%, node
+1244 is NOT in the set** - its diagonal has not fallen below `1e-3` of intact
+- and the finding is that the collapsed-diagonal criterion does not capture
+the node that eats the step, which is worth knowing on its own.  Either way
+the pass is informative.  (`[DAMAGE STIFFNESS]` counts 76 nodes below `1e-3`
+at increment 548 and AUTOSPC uses the same test at the same threshold, so the
+count in the header should be 76; the share is the part that is not known in
+advance.)
+
+The probe is verified rather than asserted: armed at `theta=0.02`, where no
+node has collapsed, it reports 0 masked nodes, `|p| = |p_N|` exactly, and
+pass 3 reproduces pass 1 on all fifteen rungs to twelve digits.
+
+It is one armed increment, not a run.  **Measure before building.**
 
 If it survives, the question becomes what to DO with those degrees of
 freedom, and that choice is physical, not numerical.  A node held by one
