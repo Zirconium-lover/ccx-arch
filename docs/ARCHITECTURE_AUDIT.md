@@ -124,9 +124,34 @@ for.
    checked by hand, occasionally, on a 2.5-hour run.
 2. **Determinism at fixed thread count.**  Same binary, same flags, same
    threads, twice, bit-identical.  Never verified.
-3. **Thread-count sensitivity is measured, not assumed.**  The run that
-   passed the wall used 2 threads; nobody knows whether it passes at 4.
-   (A test for exactly this is running as this is written.)
+3. **Thread-count sensitivity is measured, not assumed.**  Now measured, and
+   the answer is bad: **the same binary with the same flags on 4 threads
+   instead of 2 diverges from the 2-thread run at attempt 483**, increment
+   269, taking 6 Newton iterations where the reference took 5 at the *same*
+   `theta` and the *same* `dtime`.  Twenty increments later the two runs are
+   on different walls - one reaches `theta=0.5575`, the other stops at
+   `theta=0.255032`.
+
+   The discrimination was done properly, because the first attribution was
+   wrong.  A run with three flags changed at once diverged and
+   `CCX_FRACTURE_DEADFACET` was blamed; its code is read-only, so two further
+   runs were launched to separate the variables:
+
+   | run | threads | flags | result |
+   |---|---|---|---|
+   | reference | 2 | AUTOSPC_FORCE | - |
+   | `THREADTEST` | **4** | AUTOSPC_FORCE | **diverges at attempt 483** |
+   | `ANIM2` | 2 | AUTOSPC_FORCE + VTK series | identical |
+
+   The thread count reproduces the divergence exactly - same attempt, same
+   increment, same 6-against-5 iterations - and the read-only switch is
+   innocent.  `MKL_CBWR=COMPATIBLE`, which this project sets and relied on,
+   fixes reproducibility across instruction sets, **not across thread
+   counts**.
+
+   Consequence for every comparison in this repository: **runs at different
+   thread counts are not comparable**, and any A/B must fix the thread count
+   as carefully as it fixes the deck.
 4. **Every switch is documented, defaults off, and has one test.**  95 fail
    the first clause today.
 5. **The load-path predicate is consistent.**  A node excluded from one
