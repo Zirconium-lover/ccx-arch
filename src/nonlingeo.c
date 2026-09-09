@@ -2107,6 +2107,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_linesearch_dampednorm=0.,damage_linesearch_maxdd=0.,
     damage_wall_theta=-1.,*damage_wall_def=NULL;
   ITG damage_wall_maskstep=0;
+  ITG damage_spc_force=0,damage_spc_fnode=0,damage_spc_fcount=0;
+  double damage_spc_fmax=0.;
   double damage_nl_ell=0.;
   ITG damage_nl_mode=0;
   double damage_qam_floor=0.,damage_qam_peak=0.;
@@ -3996,6 +3998,33 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      collapsed-diagonal nodes" becomes a number instead of a story.  It reads
      the mask AUTOSPC already builds, changes no solution path, and is off
      unless asked for. */
+  /* [DAMAGE AUTOSPC-FORCE] AUTOSPC already decides which nodes have lost
+     their load path - assembled diagonal below CCX_DAMAGE_AUTOSPC times the
+     node's OWN intact value - and removes them from the DISPLACEMENT
+     convergence norm only, deliberately leaving the force residual alone so
+     that "a node that still carries load still blocks convergence".
+
+     At the second wall that reasoning inverts.  The peak force residual sits
+     on a node held by ONE live bulk element whose six cohesive facets have
+     all failed (g -> 0), it needs a displacement of order one to be
+     equilibrated, and it moves 0.1% per Newton iteration.  It does not carry
+     load; it blocks convergence anyway, and it blocks the very increment in
+     which its own last element would damage and delete.  That is a deadlock:
+     the solve cannot advance because of the fragment, and the fragment
+     cannot resolve because the solve cannot advance.
+
+     This lifts the veto for exactly the AUTOSPC set and for nothing else.
+     The dof is still assembled, still solved and still moved - only its
+     veto over ram[0] is removed - and every excluded residual is printed, so
+     it can never hide a growing imbalance.  OFF unless asked for. */
+  if(getenv("CCX_DAMAGE_AUTOSPC_FORCE")!=NULL){
+    damage_spc_force=1;
+    printf("[DAMAGE AUTOSPC-FORCE] armed: a node already masked by AUTOSPC "
+           "is excluded from the FORCE residual ram[0] as well as from "
+           "cam[0].  Its dof is still solved and still moved; the largest "
+           "excluded residual is reported on every increment.%s","\n");
+    fflush(stdout);
+  }
   if(getenv("CCX_DAMAGE_WALL_MASKSTEP")!=NULL){
     damage_wall_maskstep=1;
     printf("[WALLDIAG] MASKSTEP armed: the linearisation check gains a third "
@@ -12299,8 +12328,20 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	  ram[k]=0.;
 	}
 	if(*ithermal!=2){
+	  damage_spc_fmax=0.;damage_spc_fnode=0;damage_spc_fcount=0;
 	  for(k=0;k<neq[0];++k){
 	    err=fabs(b[k]);
+	    if((damage_spc_force!=0)&&(damage_spc_mask!=NULL)&&
+	       (nactdofinv!=NULL)){
+	      ITG spcnd=nactdofinv[k]/mt;
+	      if((spcnd>=0)&&(spcnd<damage_spc_nk)&&
+	         (damage_spc_mask[spcnd]!=0)){
+	        damage_spc_fcount++;
+	        if(err>damage_spc_fmax){
+	          damage_spc_fmax=err;damage_spc_fnode=spcnd+1;}
+	        continue;
+	      }
+	    }
 	    if(err>ram[0]){
 	      ram[0]=err;
 	      ram[2]=k+0.5;}
@@ -12334,6 +12375,18 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	    ram[0]=0.;} 
 	  printf(" average force= %f\n",qa[0]);
 	  printf(" time avg. forc= %f\n",qam[0]);
+	  if((damage_spc_force!=0)&&(damage_spc_fcount>0)){
+	    /* Auditable by construction: the excluded peak is printed next to
+	       the criterion it was excluded from, so a masked residual that
+	       starts to grow is visible in the same place ram[0] is read. */
+	    printf("[DAMAGE AUTOSPC-FORCE] excluded %" ITGFORMAT " dof(s) on "
+	           "AUTOSPC-masked nodes from ram[0]; largest excluded "
+	           "residual %.6e at node %" ITGFORMAT " (ram[0]=%.6e, "
+	           "tolerance %.6e = %.4f x qam)%s",
+	           damage_spc_fcount,damage_spc_fmax,damage_spc_fnode,
+	           ram[0],ctrl[18]*qam[0],
+	           (qam[0]>0.)?damage_spc_fmax/qam[0]:0.,"\n");
+	  }
 	  if((ITG)((double)nactdofinv[(ITG)ram[2]]/mt)+1==0){
 	    printf(" largest residual force= %f\n",
 		   ram[0]);
