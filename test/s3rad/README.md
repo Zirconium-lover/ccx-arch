@@ -1040,6 +1040,107 @@ will reach it.  Projecting them out is worth doing - it is cheap, it is
 physically honest, and it buys the increments before the wall - but it must
 be the first half of a fix, not the whole of one.
 
+## What the 5% is: the run dies 5.7% above its own tolerance
+
+The masked-step section left one number unexplained - after removing the
+entire collapsed-node motion the residual still would not fall by more than
+about 5%.  That number is not a property of the step at all.  **It is the
+convergence gap itself**, and the two are the same quantity seen twice.
+
+`checkconvergence` accepts an increment when `ram[0] <= c1*qam[0]`, with
+`c1=ran=0.005` while `iit<=ip`.  At the wall, from the run's own output:
+
+```
+ average force= 0.280651        <- qa[0]
+ time avg. forc= 0.376005       <- qam[0]
+ largest residual force= 0.002246 in node 1246 and dof 1      <- ram[0]
+ largest increment of disp= 1.435697e-02                      <- uam[0]
+ largest correction to disp= 4.349496e-08 in node 8397        <- cam[0]
+```
+
+* displacement criterion `cam <= 0.01*uam`: 4.35e-08 against 1.44e-04.
+  **Passes by a factor of 3300.**
+* force criterion `ram <= 0.005*qam`: 2.246e-03 against 1.880e-03.
+  **Fails by 19%**, and on the last three attempts of increment 555 by
+  **5.7%** (`ram/qam = 0.005285` against 0.005).
+
+So the wall is one criterion, on one degree of freedom, missed by 5.7%.
+
+### Why no step fixes it: the criterion is the INF norm
+
+The masked step improves `|R|2` at the wall from 0.9924 to 0.9491.  It does
+nothing for `|R|inf`, which is what is judged:
+
+| inc | best `\|R\|2` full / masked | best `\|R\|inf` full / masked |
+|---|---|---|
+| 554 | 0.9924 / **0.9494** | 0.9980 / 0.9995 |
+| 555 | 0.9924 / **0.9491** | 0.9979 / 0.9997 |
+
+Masking moves the 2-norm and leaves the peak alone - it even makes the peak
+very slightly worse.  The peak sits at **node 1246** on every iteration of
+increments 554 and 555, and it moves by 0.1% per Newton iteration:
+0.002268, 0.002263, 0.002258, 0.002253, 0.002252, 0.002251, 0.002248,
+0.002246, at which point `iest=151 > ic=16` triggers the cutback.
+
+### And why a smaller step does not fix it either
+
+The obvious remedy is a smaller increment, and the run tries exactly that.
+It does not work, and the way it fails is the diagnosis.
+
+Converged residual of each accepted increment, as a percentage of its own
+tolerance, against the increment size that achieved it:
+
+| inc | accepted `dtheta` | converged `ram/qam` | % of tolerance |
+|---|---|---|---|
+| 549 | 3.75e-04 | 0.000927 | 18.5 |
+| 550 | 1.88e-04 | 0.000942 | 18.8 |
+| 551 | 1.88e-04 | 0.000783 | **15.7** |
+| 552 | 6.25e-05 | 0.002518 | 50.4 |
+| 553 | 7.81e-06 | 0.003747 | 74.9 |
+| 554 | 3.91e-06 | 0.004724 | 94.5 |
+| 555 | - | 0.005285 | **105.7 - fails** |
+
+Before increment 551 this number wanders between 14% and 99% with no trend.
+From 551 it climbs monotonically to failure - **while the increment size
+collapses by a factor of 48**.  Cutting the step 48x made the converged
+equilibrium 6x WORSE.
+
+That is the whole point.  A ratchet, an accumulation, or a slow-convergence
+problem all yield to a smaller step.  This does not.  A state whose
+equilibrium degrades as the load increment goes to zero is a state at which
+equilibrium is ceasing to exist, and `tmin = min(dtime_initial, 1e-6*tper) =
+1e-6` is simply where the asymptote is cut off.  Quantitatively: increment
+555 would need `dtheta <= 8.7e-07` to converge, against `tmin = 1e-06`.  The
+run misses by a factor of 1.15 in step size and by 5.7% in residual, and
+both are symptoms of the same asymptote.
+
+### The deck says what that means
+
+```
+*Step, Nlgeom, Inc=200000
+*Static, Solver=Pardiso
+1.000000e-03, 1., 1.000000e-09, 2.000000e-03
+*Boundary
+FACE_X0_NSET, 1, 1, 0.
+FACE_XL_NSET, 1, 1, 1.000
+```
+
+`theta` is not a load factor on a force - it is the **prescribed grip
+displacement**, ramped from 0 to 1.  A limit point in `theta` is therefore
+not an ordinary load limit point, which displacement control passes without
+noticing.  It is a **snap-back**: the equilibrium path requires the grip
+displacement to DECREASE, and no displacement-controlled solver can follow
+it, however small the step and however good the tangent.
+
+This is consistent with every previous negative result in this file, and it
+explains all of them at once.  The tangent is consistent because nothing is
+wrong with the tangent.  The Newton-Krylov corrector failed because the
+Jacobian was never the problem.  Event truncation failed because the branch
+crossings are a symptom.  Projecting out the collapsed nodes bought a real
+6.7x on `|R|2` and nothing on `|R|inf`, because the obstruction is not
+conditioning either.  **Nothing that improves the corrector can pass a point
+at which the solution being corrected towards does not exist.**
+
 ## The open question that is still open
 
 Independently of the wall, `damageq` - the forward-difference `dD/d(eps)` in

@@ -10155,6 +10155,51 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           damage_wall_where("correction",damage_dl_pn,neq[1],nactdof,mt,*nk,
                             5,ipkon,kon,lakon,xstate,stx,dam,*ne,ne0,mi[0],
                             *nstate_);
+          /* [WALLDIAG] STIFFNESS AT THE RESIDUAL PEAK.  The convergence test
+             checkconvergence() applies is on max|R| over the mechanical
+             block, not on |R|2, so the dof that decides the run is the peak
+             one.  This reports, for the five largest residual dofs, the
+             assembled diagonal AGAINST that node's own intact value and the
+             displacement |R|/k that would be needed to null the residual
+             locally.  A peak sitting on a node whose diagonal has collapsed,
+             needing a displacement far larger than anything physical, is a
+             different object from a peak on a healthy node, and only the
+             second is a convergence problem in the ordinary sense. */
+          {
+            ITG *wsn=NULL,*wsd=NULL,wi,wj,wk,wt,wbest;
+            double wa;
+            NNEW(wsn,ITG,neq[1]);NNEW(wsd,ITG,neq[1]);
+            for(wi=0;wi<neq[1];wi++){wsn[wi]=-1;wsd[wi]=0;}
+            for(wi=0;wi<*nk;wi++)
+              for(wj=1;wj<mt;wj++){
+                wk=nactdof[mt*wi+wj];
+                if((wk>0)&&(wk<=neq[1])){wsn[wk-1]=wi;wsd[wk-1]=wj;}
+              }
+            for(wt=0;wt<5;wt++){
+              wbest=-1;wa=-1.;
+              for(wi=0;wi<neq[1];wi++){
+                if(wsn[wi]<0) continue;
+                if(fabs(damage_dl_r0[wi])>wa){wa=fabs(damage_dl_r0[wi]);wbest=wi;}
+              }
+              if(wbest<0) break;
+              wi=wsn[wbest];
+              printf("[WALLDIAG]   Rpeak #%" ITGFORMAT ": node %" ITGFORMAT
+                     " dir %" ITGFORMAT " R=%.6e  addiag=%.6e addiag0=%.6e "
+                     "ratio=%.6e spc_masked=%" ITGFORMAT " need_du=|R|/k=%.6e"
+                     "%s",wt+1,wi+1,wsd[wbest],damage_dl_r0[wbest],
+                     (damage_addiag!=NULL)?damage_addiag[wi]:0.,
+                     (damage_addiag0!=NULL)?damage_addiag0[wi]:0.,
+                     ((damage_addiag!=NULL)&&(damage_addiag0!=NULL)&&
+                      (damage_addiag0[wi]>0.))?
+                       damage_addiag[wi]/damage_addiag0[wi]:-1.,
+                     ((damage_spc_mask!=NULL)&&(damage_spc_nk>wi))?
+                       damage_spc_mask[wi]:-1,
+                     ((damage_addiag!=NULL)&&(damage_addiag[wi]>0.))?
+                       fabs(damage_dl_r0[wbest])/damage_addiag[wi]:-1.,"\n");
+              wsn[wbest]=-1;
+            }
+            SFREE(wsn);SFREE(wsd);
+          }
           fflush(stdout);
         }
 
