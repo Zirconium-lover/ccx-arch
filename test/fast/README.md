@@ -59,7 +59,27 @@ refactor must reproduce these numbers exactly before it is allowed near
 ## What it does NOT yet do
 
 It completes rather than walling, so it does not yet reproduce a
-collapsed-support deadlock or a limit point.  A harder variant should be
-derived - a longer ligament, or a tougher interface - and pinned once it
-reproduces a wall in the same minute-scale budget.  Until then this deck
-proves that a change is *harmless*, not that it *fixes* anything.
+collapsed-support deadlock.  **Until it does, this deck proves that a change
+is *harmless*, not that it *fixes* anything.**
+
+A geometry sweep was run to try to make it wall, and it failed - which is
+worth recording, because it says where the mechanism actually lives:
+
+| variant | rc | wall clock | deleted | walls? |
+|---|---|---|---|---|
+| `--nx 10 --ny 6 --nz 6 --seed 0.5` | 0 | 58 s | 90 | no |
+| `--seed 0.3` | 0 | 54 s | 126 | no |
+| `--nx 14 --ny 8 --nz 8 --seed 0.4` | 0 | 208 s | 216 | no |
+| `--nx 16 --seed 0.35` | 0 | 115 s | 126 | no |
+
+More mesh and more deletion do not produce the wall.  The reason is
+structural, and it is a difference from the target deck that this generator
+does not yet reproduce: in `s3rad` the cohesive facets **wrap the eroding
+phase** - `MATRIX` (ZR) and `PLATETANGENTIAL` (ZRH) with `INTERFACE` between
+them - so when the hydride erodes, the facets around it fail and a node is
+left without support.  Here the interface merely cuts the section, so the
+crack runs through it cleanly and never isolates anything.
+
+**Next step for this deck: put a ZRH inclusion inside the bar and wrap its
+boundary in cohesive facets**, rather than making the mesh bigger.  That is
+the geometry that manufactures fragments.
