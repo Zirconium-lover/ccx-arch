@@ -8,10 +8,11 @@ convergence criteria and PARDISO all unchanged:
 
 | | stock | fix |
 |---|---|---|
-| last committed increment | 554 | **604 and continuing** |
-| grip displacement `theta` | 0.2555742 then death | **0.2635** |
-| deletion batches | 415, last at inc 551 | **434** |
-| `dtime` | 1.95e-06 then death | **2.00e-03, the deck maximum** |
+| last committed increment | 554 | **930** |
+| grip displacement `theta` | 0.2555742 then death | **0.5575** (2.18x) |
+| deletion batches | 415, last at inc 551 | **455** |
+| elements destroyed | 3734 | **3781** |
+| grip reaction | - | **0.056%** of its value at `theta=0.1955` |
 
 `dtime` has recovered by a factor of 1000 and sits at `dtmax`; the run is
 healthy, not limping.  The pre-wall history is bit-identical to stock over
@@ -52,6 +53,30 @@ smaller increment.
   resolved.  Every excluded residual is printed next to the criterion it was
   excluded from.  **If that number stops returning to zero, the fix has
   become a fiction and must be revisited.**
+
+## The third wall, where the run now stops
+
+`theta=0.5575`, increment 931, `rc=201` too many cutbacks.  **It is the same
+fragment mechanism at a node the AUTOSPC gate does not catch.**  The peak
+residual sits on node 3053 and contracts 0.1% per iteration - 0.006408,
+0.006400, 0.006393, 0.006387, `iest=1255` - which is the signature of the
+second wall exactly.  The exclusion is inert there (largest excluded residual
+1.2e-14 at node 1363), so node 3053's diagonal has not fallen below `1e-3` of
+its own intact value.
+
+**Do not lower the threshold to catch it.**  76 nodes sit below `1e-3`, 166
+below `1e-2`, 381 below `1e-1`; tuning that number until node 3053 is
+included is the chain of thresholds this project exists to avoid.  Make the
+gate physical and binary instead: a node with at most one live bulk element
+whose cohesive facets have all failed is a fragment whatever its diagonal
+happens to be.  First measurement, and it is cheap: node 3053's live-element
+count and facet state, which `CCX_DAMAGE_WALL_THETA` already prints.
+
+Keep separate from this a genuinely different region at the same `theta`,
+where the peak was node 1177 contracting 2% per iteration with the
+slow-Newton extension arming normally (`est_total=12`, `cap=40`).  That is a
+cost problem, not a deadlock, and `DAMAGE_SLOW_NEWTON_MAX_EXTRA=20` is the
+parameter that bounds it.
 
 ## The task
 

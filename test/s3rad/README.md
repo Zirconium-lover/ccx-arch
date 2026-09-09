@@ -1308,6 +1308,64 @@ measurement here rather than an assumption.
 facets - and they exist only because the wall was passed: stock stopped at
 3734.
 
+## Final result of the fixed run, and the third wall
+
+`CCX_DAMAGE_AUTOSPC_FORCE=1`, one flag, everything else the recorded
+environment:
+
+| | stock | fix |
+|---|---|---|
+| last committed increment | 554 | **930** |
+| grip displacement `theta` | 0.2555742 | **0.5575** (2.18x) |
+| attempts | 1147 | 1637 |
+| deletion batches | 415 | **455** |
+| elements destroyed | 3734 | **3781** |
+| grip reaction | - | **0.056% of its value at `theta=0.1955`** |
+| wall seconds | 7439 | 8808 |
+| stop | `rc=201` increment below minimum | `rc=201` too many cutbacks |
+
+The run more than doubles the grip displacement and takes the specimen to
+**0.056% of its load-carrying capacity** - 2676.81 down to 1.51 - which is
+loss of load-carrying capacity in the sense the brief asks for, though the
+mesh is not topologically severed.
+
+### The third wall is the SAME mechanism at a node the threshold misses
+
+Increment 931, final attempt, is not a new phenomenon:
+
+```
+ time avg. forc= 0.332053
+ largest residual force= 0.006408 in node 3053 and dof 2
+ largest residual force= 0.006400 in node 3053
+ largest residual force= 0.006393 in node 3053
+ largest residual force= 0.006387 in node 3053
+ estimated number of iterations till convergence = 1255
+```
+
+**0.1% per iteration and `iest=1255`** is the exact signature of the second
+wall at node 1246.  The difference is that node 3053 is NOT in the AUTOSPC
+set - the exclusion at that iteration reports a largest excluded residual of
+`1.2e-14` at node 1363, machine zero, so the switch is inert here - and
+`ram[0]=6.387e-03` stands at 3.85x the tolerance `0.005*qam=1.660e-03`.
+
+So the fragment mechanism recurs at a node whose assembled diagonal has NOT
+fallen below `1e-3` of its own intact value.  That is the boundary of the
+present gate, and it is the thing to attack next.
+
+**Do not simply lower the threshold.**  `[DAMAGE STIFFNESS]` counts 76 nodes
+below `1e-3`, 166 below `1e-2` and 381 below `1e-1`; picking a number until
+node 3053 is caught is the chain of thresholds this project exists to avoid.
+The gate should be physical and binary - a node with at most one live bulk
+element whose cohesive facets have all failed is a fragment regardless of
+what its diagonal happens to be - and the first measurement is simply node
+3053's own live-element count and facet state, which `CCX_DAMAGE_WALL_THETA`
+already prints.
+
+An intermediate region at `theta ~ 0.5575` is genuinely different and worth
+separating from this: there the peak sat on node 1177 and contracted 2% per
+iteration - slow but real - with the slow-Newton extension arming normally
+(`est_total=12`, `cap=40`).  That part is a cost problem, not a deadlock.
+
 ## The open question that is still open
 
 Independently of the wall, `damageq` - the forward-difference `dD/d(eps)` in
