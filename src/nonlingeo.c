@@ -2110,7 +2110,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     *damage_nk_res=NULL,*damage_nk_hh=NULL,*damage_nk_cs=NULL,
     *damage_nk_sn=NULL,*damage_nk_gg=NULL,*damage_nk_yy=NULL,
     *damage_nk_dam=NULL,*damage_nk_visc=NULL,*damage_nk_xs=NULL,
-    *damage_nk_p0=NULL,*damage_nk_zc=NULL,damage_nk_qa[4]={0.,0.,0.,0.},
+    *damage_nk_p0=NULL,damage_nk_qa[4]={0.,0.,0.,0.},
     damage_nk_cam[5]={0.,0.,0.,0.,0.},damage_nk_uam[2]={0.,0.},
     damage_nk_eta=0.1;
   double damage_nl_ell=0.;
@@ -9697,7 +9697,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          (nasym==1)&&(symmetryflag==2)&&(neq[0]==neq[1])){
 
         ITG nkj,nki,nkm,nkst;
-        double nksig,nkpinf,nkdinf,nknorm,nktmp,nkc,nksc,nkzinf=0.;
+        double nksig,nkpinf,nkdinf,nknorm,nktmp,nkc,nksc;
         double *nkd=NULL;
 
         nkm=damage_nk_m;
@@ -9716,7 +9716,6 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           NNEW(damage_nk_visc,double,mi[0]**ne);
           if(nkst>0) NNEW(damage_nk_xs,double,nkst*mi[0]**ne);
           NNEW(damage_nk_p0,double,neq[1]);
-          NNEW(damage_nk_zc,double,neq[1]);
           nkgmres_reset(&damage_nkg);
         }
         nkgmres_attach(&damage_nkg,neq[1],damage_nk_mmax,damage_nk_v,
@@ -9760,25 +9759,21 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
               if(fabs(nkd[nki])>nkdinf) nkdinf=fabs(nkd[nki]);
             if(!(nkdinf>0.)) break;
 
-            /* SAMPLE WHERE THE STEP IS GOING TO LAND.
+            /* The probe scale is |p_N| and stays there.
 
-               A finite-difference matvec is a measurement, and it is only
-               a measurement of the range it was taken over.  Sampling
-               everything at |p_N| and then handing back a step 50 or 180
-               times longer - which the first version of this did, in 3% of
-               its iterations - extrapolates that measurement far outside
-               its own range, and the line search then spent the extra
-               evaluations only to damp the answer back to about |p_N|.
+               It is inside the range the response was MEASURED linear over
+               - the defect ratio is constant from 6.1e-05 to 1 in units of
+               |p_N| - so the difference quotient taken here is the
+               derivative and not an artefact of curvature.
 
-               So the probe scale tracks the solution the inner iteration
-               currently has on the table: it starts at |p_N| and grows with
-               |z|.  There is no threshold in that - it is the statement
-               that the operator is probed where it is about to be used, and
-               it is a fixed point: a step that is too long is measured
-               against the stiffness that actually resists it and comes back
-               shorter. */
+               Letting the scale grow with the solution instead was tried
+               and is REFUTED: the probes then land in the region where the
+               response is not linear, the measured operator stops being the
+               Jacobian, and the corrector returns directions with
+               cos(z,p_N) = -0.33 that do not descend at all.  That arm
+               stopped at theta=0.191821, against 0.255574 with the
+               corrector off.  The reverted variant is not kept. */
             nksc=nkpinf;
-            if(nkzinf>nksc) nksc=nkzinf;
             nksig=nksc/nkdinf;
 
             for(nki=0;nki<3;nki++) cam[nki]=0.;
@@ -9834,12 +9829,6 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
               damage_nk_w[nki]=(damage_nk_r0[nki]-damage_nk_res[nki])/nksig;
 
             if(nkgmres_absorb(&damage_nkg,damage_nk_w)==0) break;
-
-            /* the scale the NEXT probe will use */
-            nkgmres_solution(&damage_nkg,damage_nk_zc);
-            nkzinf=0.;
-            for(nki=0;nki<neq[1];nki++)
-              if(fabs(damage_nk_zc[nki])>nkzinf) nkzinf=fabs(damage_nk_zc[nki]);
           }
         }
 

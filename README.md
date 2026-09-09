@@ -46,6 +46,30 @@ explanations - orphan degrees of freedom, a detached component, and
 amplification of the near-null space - were each refuted by measurement
 first.  See `test/s3rad/README.md`.
 
+**The second wall has now been measured at the second wall.**  It is
+reproduced exactly - increment 554, `theta=0.255574`, 6780 live bulk
+elements, 415 batches, 3734 elements deleted, 566 line-search activations -
+and there the tangent is CONSISTENT: the linear-model defect falls like
+`O(eps)` over five halvings.  What is wrong is the step.  It is
+`|p_N|inf = 1.08`, a displacement of order one on a specimen whose grip has
+moved 0.2556, because the front now carries 76 nodes that have lost 99.9%
+of their diagonal stiffness and the residual sits on one of them - node
+1244, held by ONE live bulk element and six fully failed cohesive facets.
+Along that step **6069 integration points change branch, 4511 of them UC6
+loading/unloading**, all between `eps=0.03` and `eps=1`, so the linear model
+is good over about 3% of it - which is exactly the `alpha ~ 0.004` the
+search finds.  The topology is sound there, re-measured and not carried
+over: one component, no floating piece, no orphan dof, no isolated equation,
+and the residual orthogonal to the near-null space to twenty-one digits.
+
+A SEPARATE first-order tangent defect was found and quantified around
+increment 92, where the run first cuts back: there the defect ratio is
+constant instead of `O(eps)`, the Newton iteration's linear rate equals it
+to six decimals, and its size is exactly the viscous factor
+`dtime/(eta+dtime)` - the operator behaves as if `dDvis/d(eps)` were zero.
+It costs iterations and cutbacks all the way up, and it is NOT what stops
+the run at `theta=0.2556`: by then the viscosity has damped it to 1.7%.
+
 ## Repository map
 
 - `src/` — CalculiX 2.23 sources and the experimental path-following code.
@@ -53,6 +77,10 @@ first.  See `test/s3rad/README.md`.
 - `src/crackcontrol.c` — the mixed-mode control coordinate and its self test.
 - `src/lsladder.c` — the backtracking ladder of the damage line search,
   extracted with a regression test that pins the defect it used to have.
+- `src/nkgmres.c` — the inner Krylov solve of the Newton-Krylov corrector,
+  with a regression test on operators whose answer is known.  It repairs
+  the increment-92 tangent defect and does NOT pass the second wall; see
+  `test/s3rad/README.md` for its own A/B.
 - `src/topodiag.c` — connectivity, orphan-dof, rank and residual-projection
   measurements; diagnostic only, nothing on a solution path.
 - `src/Makefile.ubuntu2404` — reproducible open build using SPOOLES.

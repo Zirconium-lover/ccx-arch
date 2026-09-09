@@ -446,187 +446,207 @@ finished.
 
 ---
 
-# The second wall: root cause and fix
+# The second wall, measured at the second wall
 
-The first fix passed the recorded wall and stopped at a new one, and the
-symptom there was not the ladder: it found a contracting trial at every
-iteration, at step lengths of 0.0035 to 0.0067, and the residual contracted
-by 0.2% per iteration anyway.  This section is what that turned out to be.
+The first thing this investigation got wrong is worth recording, because
+`NEXT_TASK.md` warned about it in advance: *"Those topology measurements
+apply to the old wall only.  Re-measure rather than assuming they also
+describe the new wall."*  The same caution turned out to apply to the
+linearisation.  Measurements taken where the run first misbehaves - around
+increment 92, `theta=0.1795` - describe a real defect that is **not** what
+stops the calculation at `theta=0.255574`.  Both are reported below, in
+that order of importance.
 
-## The hypothesis, and the measurement that rejected it
+## Reproduction
+
+Unmodified HEAD, the committed deck through `mkpilotdeck.py --every 200`,
+the recorded environment, `CCX_DAMAGE_DEADALL=1.e-2`, PARDISO, 2 threads:
+
+| | recorded | reproduced here |
+|---|---|---|
+| stop | `rc=201` "increment size smaller than minimum" | same |
+| last committed increment | 554 | **554** |
+| load factor `theta` | 0.255574 | **0.255574** |
+| live bulk elements | 6780 | **6780** |
+| deletion batches | 415 | **415** |
+| elements deleted | 3734 | **3734** |
+| line-search activations | 566 | **566** |
+| wall time | 4697 s | 7439 s (shared cores) |
+
+Every physical measure agrees.  A second run of the same binary family with
+the diagnostics armed stops at `theta=0.255576`.  The wall is reproducible
+in `theta` to six decimals and in the front state exactly.
+
+## The hypothesis, and what the wall says about it
 
 Stated before any code was changed:
 
 > **H1 (non-smooth active set).**  The assembled tangent is a correct
 > one-sided directional derivative, but the residual is non-smooth at the
-> iterate: a large share of the live UC6 process-zone points sits on the
-> loading/unloading kink `deff == dmax0`, many cross it inside the step, and
-> the radius of validity of the linear model is set by the first crossing
-> rather than by curvature.
+> iterate: UC6 points sit on the loading/unloading kink `deff == dmax0`,
+> many cross it inside the step, and the radius of validity of the linear
+> model is set by the first crossing rather than by curvature.
 
-and the one measurement that can reject it: from one restored state, walk
-`eps` down a ladder along the Newton direction and record BOTH
+The measurement that decides it: from one restored state, walk `eps` down a
+ladder along the Newton direction and record BOTH the linear-model defect
+`|R(u+eps p) - (R(u) - eps J p)| / (eps |J p|)` and the number of
+integration points whose branch differs from the reference.  H1 is rejected
+if the defect ratio stays constant over an `eps` range in which the branch
+count does not move; it is supported if the defect falls like `O(eps)`
+while the branch count is large.
 
-* the linear-model defect `|R(u+eps p) - (R(u) - eps J p)| / (eps |J p|)`, and
-* the number of integration points whose branch differs from the reference.
+`CCX_DAMAGE_TR_LINCHECK` now walks fifteen rungs to `eps=6.1e-05` instead of
+seven to `1/64`, reports both norms and a per-category active-set census at
+every rung, and is armed by LOAD FACTOR (`CCX_DAMAGE_WALL_THETA`) rather
+than by increment number - the wall is reproducible in `theta` and the
+increment index is not.
 
-H1 is rejected if the defect ratio stays constant over an `eps` range in
-which the branch count does not move.
+**At the wall - increment 556, iteration 8, `theta=0.255576`:**
 
-`CCX_DAMAGE_TR_LINCHECK` already walked seven rungs to `eps=1/64`.  It now
-walks fifteen, to `eps=6.1e-05` - six of them below the step the search
-actually takes - and each rung also reports both norms and a per-category
-active-set census.  `CCX_DAMAGE_WALL_THETA` arms it by LOAD FACTOR instead
-of by increment number, because the wall is reproducible in theta and not in
-the increment index: the same binary on the same deck lands on the recorded
-wall at increment 348 with two threads and 353 with four.
+| eps | `\|R\|2/\|r0\|2` | defect ratio | branch transitions | UC6 loading/unloading | bulk plastic |
+|---|---|---|---|---|---|
+| 1.00e+00 | 32.470 | 32.470 | 0 (reference) | 0 | 0 |
+| 5.00e-01 | 1.999 | 4.899 | 5480 | 4420 | 1057 |
+| 2.50e-01 | 1.219 | 2.162 | 6016 | 4502 | 1510 |
+| 6.25e-02 | 1.013 | 1.297 | 6062 | 4511 | 1547 |
+| 3.13e-02 | 0.990 | 0.712 | 6067 | 4511 | 1552 |
+| 1.56e-02 | 0.990 | 0.370 | 6068 | 4511 | 1553 |
+| 7.81e-03 | 0.994 | 0.186 | 6069 | 4511 | 1554 |
+| 3.91e-03 | 0.996 | 0.0920 | 6069 | 4511 | 1554 |
+| 9.77e-04 | 0.999 | 0.0242 | 6069 | 4511 | 1554 |
+| 6.10e-05 | 1.000 | 0.0171 | 6069 | 4511 | 1554 |
 
-## What the ladder says
+**H1 is confirmed at the wall.**  The defect ratio HALVES with `eps` from
+`3.1e-02` down to `4.9e-04` - 0.712, 0.370, 0.186, 0.092, 0.045, 0.024,
+0.017 - which is `O(eps)`, the signature of a consistent tangent.  (The
+0.017 it settles on is a genuine first-order remainder, not roundoff: the
+cancellation floor here is `1e-16/eps`, eleven orders below it.)  And the
+census is enormous: **6069 integration points change branch across the full
+Newton step, 4511 of them UC6 loading/unloading and 1554 bulk plastic**, and
+every one of those crossings happens between `eps=0.03` and `eps=1`.
 
-Increment 92, iteration 1, `theta=0.1795`, PARDISO, one thread, stock rescue,
-crack control not engaged:
+So the tangent at the wall is right and the step is far too long for it.
+The step is not marginally too long - it is `|p_N|inf = 1.0806`, a
+displacement of order ONE on a specimen whose grip has moved 0.2556 - and
+the full step multiplies the residual by 32.
 
-| eps | `\|R\|2/\|r0\|2` | `\|R\|inf/\|r0\|inf` | defect ratio | branch transitions |
-|---|---|---|---|---|
-| 1.00e+00 | 0.391687 | 0.450642 | **0.3917** | 0 (reference) |
-| 2.50e-01 | 0.821974 | 0.837674 | **0.3649** | 196 |
-| 3.12e-02 | 0.977331 | 0.979566 | **0.3592** | 255 |
-| 1.95e-03 | 0.998581 | 0.998722 | **0.3591** | 264 |
-| 1.22e-04 | 0.999911 | 0.999920 | **0.3590** | 264 |
-| 6.10e-05 | 0.999956 | 0.999960 | **0.3590** | 264 |
+## Why the step is that long, and it is not the topology
 
-Increment 93, iteration 12, where the iteration has settled onto its
-asymptotic rate:
+Re-measured at the wall with `CCX_TOPODIAG`, exactly as `NEXT_TASK.md`
+requires rather than carried over from the old wall:
 
-| eps | `\|R\|2/\|r0\|2` | defect ratio | branch transitions |
-|---|---|---|---|
-| 1.00e+00 | 0.873724 | **0.87372** | 0 (reference) |
-| 2.50e-01 | 0.967659 | **0.87076** | 9 |
-| 3.12e-02 | 0.995930 | **0.86990** | 9 |
-| 1.95e-03 | 0.999745 | **0.86978** | 9 |
+| quantity | value at increment 556 |
+|---|---|
+| connected components | **1** (9924 nodes) |
+| FLOATING components (no prescribed dof, no MPC) | **0** |
+| ORPHAN dofs (active dof, no live element) | **0** |
+| ISOLATED equations (no off-diagonal coupling) | **0** |
+| exactly zero diagonals | **0** |
+| smallest diagonal | 2.848e-03 |
+| `1/sigma_min`, three deflated inverse iterations | **6.0e13** |
+| `\|cos(R, soft mode)\|` | 1.4e-21, 2.4e-21, 6.8e-22 |
+| share of `\|R\|2` in the span of the three softest modes | 2.8e-21 (random control 7.2e-03) |
+| share of the CORRECTION in that span | 1.6e-05 down to 6.5e-07 |
+| residual peak node 1244 | **1 live bulk element, 6 live facets** |
 
-**The defect ratio is constant over three to five decades.**  For a
-consistent tangent it must fall like `O(eps)`.  A constant ratio is a
-FIRST-ORDER error: the assembled `J` is not `dR/du`.
+The topological verdict of the old wall therefore survives re-measurement at
+the new one: one component, no orphan degree of freedom, no floating piece,
+no isolated equation.  The operator IS nearly singular - `1/sigma_min` is
+6.0e13, against 3.3 at increment 92, so the front has produced the
+conditioning between them - but the near-null space is again irrelevant:
+the residual is orthogonal to it to twenty-one digits and the correction
+carries at most 1.6e-05 of itself there.
 
-**H1 is rejected by its own test.**  The census counts nine integration
-points that differ in branch between `u` and `u+p` at increment 93 - four
-UC6 loading/unloading and five bulk plastic - and none of them crosses below
-`eps=0.25`, while the defect ratio is already flat there and stays flat four
-decades further down.  No active set moves inside the window in which the
-defect is measured.
+What HAS changed is the support of the front.  `CCX_DAMAGE_AUTOSPC`'s
+stiffness census counts **76 nodes whose assembled diagonal has fallen below
+1e-3 of its own intact value** at increment 548, against 3 at increment 140.
+The residual peaks at node 1244, which is held by ONE live bulk element and
+six cohesive facets that are all fully failed (`g = gmin = 1e-05`), and the
+correction peaks at its neighbour 1244/1245 with the same support.  Those
+nodes are nearly free, their equations are nearly compliant, and the Newton
+step through them is of order one.
 
-Three other explanations were measured and rejected at the same time:
+**That is the second wall.**  The corrector solves a tangent that is right,
+gets a step of order one because the front is nearly compliant there, and
+that step crosses six thousand branch switches - so the linear model holds
+over about 3% of it, the line search is forced down to `alpha ~ 0.004`, the
+residual falls by 0.2% per iteration, `checkconvergence` reports "too slow
+convergence", and `dtheta` is cut until it passes `tmin`.  Cutting `dtheta`
+does not help because the compliance of those nodes and the number of
+crossings do not shrink with it.
 
-* **the merit function.**  `|R|2` and `|R|inf` fall by the same factor to
-  three digits (0.873724 against 0.872733), so the search is not rejecting a
-  direction that is improving a norm it does not watch.
-* **the solve.**  The transpose identity `dot(J^T R, p_N)/|R|^2` is
-  `1.000000000000` and the operator asymmetry is `1.06e-03`, so `J p_N = r0`
-  holds to machine precision and the direction is the assembled tangent's
-  own answer.
-* **the topology.**  Three deflated inverse iterations give `1/sigma_min >=
-  3.30` here - the operator is not nearly singular at all - and the largest
-  components of the defect sit on nodes with 32 to 36 live bulk elements and
-  **no cohesive facet whatsoever**.
+## A second, different defect - real, quantified, and NOT the wall
 
-## The consequence, measured iteration by iteration
+Around increment 92, where the run first starts cutting back, the same
+ladder says something else entirely.  There the defect ratio is CONSTANT -
+0.359 at increment 92 iteration 1, 0.870 at increment 93 iteration 12 - from
+`eps=1` down to `eps=6.1e-05`, and over the range where it is already flat
+the census does not move at all (nine points differ between `u` and `u+p`,
+none below `eps=0.25`).  A constant ratio is a first-order error: **there,
+the assembled `J` is not `dR/du`.**
 
-The linear convergence rate of the whole Newton iteration IS that ratio.
-Increment 93, one thread, no line-search activation on any of these
-iterations, so the full step was taken every time:
+The consequence is an identity, measured iteration by iteration at
+increment 93 with the full step taken every time:
 
 | iteration | `\|R\|2` | `\|R_k\|/\|R_k-1\|` | defect ratio at k-1 |
 |---|---|---|---|
-| 1 | 2.153560e-01 | - | 0.347210 |
-| 2 | 7.477380e-02 | **0.347210** | 0.656329 |
-| 3 | 4.907619e-02 | **0.656329** | 0.754053 |
-| 4 | 3.700607e-02 | **0.754053** | 0.793277 |
-| 5 | 2.935607e-02 | **0.793277** | 0.814850 |
-| 6 | 2.392079e-02 | **0.814850** | 0.829745 |
-| 7 | 1.984815e-02 | **0.829745** | 0.841508 |
-| 8 | 1.670237e-02 | **0.841508** | 0.851520 |
-| 9 | 1.422240e-02 | **0.851520** | 0.860104 |
-| 10 | 1.223274e-02 | **0.860104** | 0.867641 |
-| 11 | 1.061364e-02 | **0.867642** | 0.873022 |
-| 12 | 9.265939e-03 | **0.873022** | 0.873724 |
+| 2 | 7.477380e-02 | **0.347210** | 0.347210 |
+| 3 | 4.907619e-02 | **0.656329** | 0.656329 |
+| 4 | 3.700607e-02 | **0.754053** | 0.754053 |
+| 6 | 2.392079e-02 | **0.814850** | 0.814850 |
+| 9 | 1.422240e-02 | **0.851520** | 0.851520 |
+| 12 | 9.265939e-03 | **0.873022** | 0.873022 |
 
-Six decimals, every iteration.  This is not a correlation, it is the
-identity `R_{k+1} = (J - dR/du) p_k` with `J p_k = r0` - and it closes the
-chain from the operator to the wall:
+Six decimals, every iteration: the Newton iteration's linear convergence
+rate IS the tangent's relative error along its own step.  Not a correlation
+- `R_{k+1} = (J - dR/du) p_k` with `J p_k = r0`.
 
-* the rate is a property of the OPERATOR, not of the step, so no step length
-  along that direction can repair it and no ladder depth can either;
-* it does not shrink when `dtheta` shrinks, which is why every cutback fails
-  and `dtheta` walks down to `tmin`;
-* it grows as the crack grows - 0.36 at increment 92, 0.87 at increment 93,
-  and at the second wall the increment needs more iterations than `ic`
-  allows, `checkconvergence` reports "too slow convergence", and the run
-  stops for "increment size smaller than minimum".
+**Which term is missing, and why it is absent at the wall.**  The
+asymptotic defect ratio equals the viscous damage-rate factor
+`beta = dtime/(eta + dtime)` that `resultsmech.f` applies to `dDvis/d(eps)`:
 
-The whole calculation has been running on this: over the arm without the fix
-the line search accepted a median step of 0.012 of the Newton step and sat
-on its floor in 40% of its activations.
+| state | `dtime` | `beta` | measured defect | ratio |
+|---|---|---|---|---|
+| increment 93, iteration 12 | 5.0e-04 | 0.833 | 0.870 | **1.04** |
+| increment 556, iteration 8 (the wall) | 1.95e-06 | 0.0192 | 0.0171 | **0.89** |
 
-## Which term is missing
+The operator behaves as if `dDvis/d(eps)` were zero, and the size of that
+omission relative to `J p` is exactly `beta`.  That is confirmed
+independently: the bulk damage-consistent rank-1 term
+`- sigma_eff (x) dDvis/d(eps)`, assembled alone into a zeroed operator and
+applied to `p_N` at the same iterate, has `|E p_N| = 4.66e-03` against
+`|J p_N| = 1.71` - **0.27% of the operator's action** - and the defect is
+132 to 1126 times larger than it and only weakly aligned with it
+(`cos = -0.29 to -0.19`).  The term is present in the assembly and
+numerically negligible, so `damageq`, the forward-difference `dD/d(eps)` in
+`resultsmech.f`, is not delivering the derivative the residual actually
+has.  Rescaling it cannot supply what is missing, so
+`CCX_DAMAGE_UNSYM_SCALE` was left alone.
 
-Not the one that was suspected.  The bulk damage-consistent rank-1 term
-`- sigma_eff (x) dDvis/d(eps)` was assembled into a zeroed operator on its
-own and applied to `p_N` at the same iterate:
+And this is why that defect is NOT the second wall: at the wall `dtime` is
+1.95e-06, `beta` is 0.019, and the omission is worth 1.7%.  It is worth 87%
+at increment 93 - it costs the calculation iterations and cutbacks all the
+way up - but by the time the run reaches `theta=0.2556` the viscosity has
+damped it away and something else stops the run.
 
-| quantity | value |
-|---|---|
-| elements carrying the term | 6850 |
-| `\|E p_N\|` | 4.66e-03 |
-| `\|J p_N\| = \|r0\|` | 1.71 |
-| `\|defect\|/eps` | 0.614 |
-| `\|defect\| / (eps \|E p_N\|)` | **132 to 1126** |
-| `cos(defect, E p_N)` | **-0.29 to -0.19** |
+## The corrector, and the two variants it went through
 
-If the rank-1 term were the right shape and the wrong size, the defect would
-be exactly anti-parallel to it and the ratio would be the missing factor.
-It is neither: the whole assembled term is two to three orders of magnitude
-too small to be the missing derivative, and it is only weakly aligned with
-it.  **Rescaling that term cannot supply what is missing**, so
-`CCX_DAMAGE_UNSYM_SCALE` was not touched.
-
-What IS known about the missing term: it is first order, it survives every
-`eps` down to `6.1e-05`, it carries 99.999% of its norm on nodes attached to
-softening bulk elements, its largest components are on nodes with no
-cohesive facet, and along a direction that is not the Newton one the same
-defect ratio is 0.008 to 0.05 rather than 0.36 to 0.87.  The error operator
-is therefore concentrated in a few soft directions rather than spread over
-the mesh - which is exactly the spectrum a preconditioned Krylov method
-clears in a handful of iterations, and that is what the fix uses.
-
-Naming the missing derivative exactly was NOT achieved.  That is the honest
-state: the cause is established and localised, the term itself is not named.
-
-## The fix
-
-`src/nkgmres.c` and one block in the Newton loop.  The corrector stops
-asking the assembled tangent for the Jacobian and asks it only to
-precondition, taking the Jacobian action from the residual - the one
-quantity in the calculation that is not in doubt:
+`src/nkgmres.c` and one block in the Newton loop stop asking the assembled
+tangent for the Jacobian and ask it only to precondition, taking the
+Jacobian action from the residual:
 
     solve  A z = r0   by GMRES right-preconditioned with J,
     matvec  A d = ( r0 - b(u + sigma d) ) / sigma
 
-`calcresidual` fills `fext - f`, so `b(u + s d) = r0 - s A d` to first order
-and the matvec is exact in the sense that matters.  One matvec is one
-residual evaluation plus one back-substitution against the LU PARDISO has
-already computed and cached; it costs **no factorisation**.  `sigma` puts
-the probe on the same displacement scale as the step the solver would have
-taken, which is inside the range over which the response was measured
-linear.
+One matvec is one residual evaluation and one back-substitution against the
+LU PARDISO has already cached - no extra factorisation.  `sigma` puts the
+probe at `|p_N|`, inside the range over which the response was MEASURED
+linear.  Nothing physical is touched: not a material constant, not the deck,
+not the deletion rule, not the viscosity, not the tangent mode, not AUTOSPC,
+and not what `checkconvergence` requires of an increment.
 
-Nothing physical is touched: not a material constant, not the deck, not the
-deletion rule, not the viscosity, not the tangent mode, not AUTOSPC, and not
-what `checkconvergence` requires of an increment.  The corrector chooses a
-direction, exactly as the line search chooses a length.
-
-`nkgmres.c` is a unit with its own regression test, run at arm time, and the
-corrector REFUSES TO ARM if it fails - the same discipline as `lsladder.c`:
+`nkgmres.c` carries its own regression test, run at arm time, and the
+corrector refuses to arm on a failure - the discipline `lsladder.c` set:
 
 ```
 [NKGMRES] self test
@@ -639,14 +659,50 @@ corrector REFUSES TO ARM if it fails - the same discipline as `lsladder.c`:
 [NKGMRES] self test PASSED (0 failure(s))
 ```
 
-Test A is the one that matters for feature-off behaviour: where the
-preconditioner IS the operator the method takes one iteration and returns
-the plain step exactly.  The target run shows the same thing - through the
-elastic and early damage phase every Newton iteration reports
-`krylov=1/6 ... |z|/|p_N|=1.0000 cos(z,p_N)=+1.0000`, one extra residual
-evaluation and no change of direction.  Tests B and C are the property the
-measurement predicted the model needs: a rank-r preconditioner error is
-cleared in r+1 iterations.
+**A variant was tried and is REFUTED, and it is not kept.**  Letting the
+probe scale grow with the inner solution - "sample where the step is going
+to land" - puts the probes in the region where the response is not linear.
+The measured operator then stops being the Jacobian and the corrector
+returns directions that do not descend at all (`cos(z,p_N) = -0.33`, the
+residual stalling at 1.59e-01 over three consecutive iterations).  That arm
+stopped at `theta=0.191821`, against 0.255574 with the corrector off.  The
+probe scale stays at `|p_N|`.
 
-`CCX_DAMAGE_NK=0` restores the plain assembled step exactly and is the arm
-of the A/B without the fix.
+**Feature-off equivalence.**  The A/B binary with `CCX_DAMAGE_NK=0`
+reproduces the unmodified HEAD binary attempt for attempt over 114 attempts
+and 101 accepted increments - through the increments 92 to 100 where the
+tangent defect is worst - with zero corrector activity in the log.
+
+## What the wall measurement says to do next
+
+The wall is now characterised, and it is an event problem, not a
+linearisation problem:
+
+* the tangent there is a correct one-sided derivative (`O(eps)` defect);
+* the step is of order one because 76 front nodes have lost 99.9% of their
+  stiffness and the residual sits on one held by a single bulk element;
+* 6069 integration points change branch along that step, 4511 of them UC6
+  loading/unloading, all between `eps=0.03` and `eps=1`.
+
+The smallest discriminating experiment that follows is therefore **an
+event-aware corrector on the ORDINARY Newton path**: stop the step at the
+first branch crossing, re-assemble on the new branch, and continue - rather
+than damping a step that is valid over 3% of its length.  The machinery is
+already in the tree but only on the same-load re-equilibration path
+(`[DAMAGE EVT]`, `nonlingeo.c`, which locates the first UC6
+tension/compression crossing and takes that event step); what the wall needs
+is the same idea keyed on the loading/unloading set, which is where the 4511
+crossings are, and on the ordinary path where the wall actually is.
+
+The falsifiable statement to test first, before writing that: **if the step
+is truncated at the first crossing of the loading/unloading set, the
+residual falls by the full `alpha` of the truncated step rather than by a
+fraction of it.**  The ladder above already measures both quantities, so the
+experiment is one armed increment, not a run.
+
+The other thing worth doing, independently of the wall, is to find why
+`damageq` - the forward-difference `dD/d(eps)` in `resultsmech.f` - delivers
+a rank-1 term worth 0.27% of the operator when the residual behaves as if
+the full `dDvis/d(eps)` were there.  `CCX_DAMAGE_WALL_THETA` now prints a
+census of `damjac`'s two halves at the armed increment, which separates
+"the derivative is tiny" from "the assembly loses it".
