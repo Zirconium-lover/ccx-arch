@@ -3,9 +3,12 @@
 ## Objective
 
 The second wall has been measured AT the second wall. It is not a
-linearisation problem and it is not an event-ordering problem: it is a
-CONDITIONING problem localised on a single nearly-detached node. The
-remaining task is to act on that diagnosis and drive `s3rad` to normal step
+linearisation problem and it is not an event-ordering problem. It is a
+CONDITIONING problem localised on nearly-detached nodes - and, measured
+directly, that accounts for most but NOT all of it: removing 100% of the
+collapsed-node motion from the Newton step still leaves a direction that
+cannot reduce the residual by more than 5% per iteration at the wall. The
+remaining task is to explain that last 5% and drive `s3rad` to normal step
 termination or to loss of load-carrying connectivity.
 
 The engineering objective is a physically credible complete `s3rad`
@@ -111,30 +114,58 @@ That is correct for what it was built for. This wall is the same pathology
 one level down - the collapsed node poisons the STEP, and the run dies on
 `ram[0]`.
 
-## The first experiment
+## The first experiment has been RUN.  Read this before designing another
 
-**Hypothesis.** The step is unusable because it is spent on nodes whose
-assembled diagonal has collapsed. If those degrees of freedom are removed
-from it, what remains reduces the residual by substantially more than 1.03%.
+`CCX_DAMAGE_WALL_MASKSTEP=1` walks the linearisation ladder a second time
+along `p_N` with the AUTOSPC-masked nodes zeroed.  It was armed at
+`theta=0.2554` and fired eighteen times.  Full table in
+`test/s3rad/README.md`; the result in three lines:
 
-**The one measurement that can reject it.** At the wall, form `p_N`, zero its
-components on the nodes AUTOSPC's census already masks, and walk the SAME eps
-ladder. If the best reduction is still about 1%, the masked nodes are not
-what is wasting the step and the hypothesis is dead - and since the event
-reading is already rejected, the next place to look is the
-`|p_N|2/|R|2 = 3.93` amplification itself.
+* **Controls are clean.** Where the mask carries only 0.2%, 2.8%, 4.2%,
+  40.6% or 88.8% of the step, the masked and full ladders agree to three or
+  four digits at every rung.
+* **Where the collapsed nodes carry the step, removing them transforms it.**
+  At increments 552 and 553 the full step multiplies the residual by 723.4,
+  6.403, 4.071 at `eps=1` while the masked step reduces it to 0.5784, 0.4556,
+  0.5508 there - best available reduction from 11%, 7%, 10% to 42%, 54%, 45%,
+  and the best rung moves from `eps=0.125` to full length.
+* **At the wall it is not enough.** At increments 554 and 555 the mask
+  removes 99.9999% to 100.0000% of `|p_N|^2` and the best rung improves only
+  from 0.9924 to 0.9491 - 0.76% per iteration against 5.1%.  A 6.7x gain that
+  still needs ~130 iterations per order of magnitude, which `iest > ic` never
+  allows.
 
-This is one armed increment on the existing `CCX_DAMAGE_TR_LINCHECK`
-machinery, which already evaluates an arbitrary direction on `pass 2`. It is
-not a run. **Measure before building.**
+**So the hypothesis is confirmed in mechanism and rejected as a cure.**  Do
+not spend a run proving it again, and do not build a fix that only projects
+out the collapsed dofs and expect it to pass: after removing 100% of the
+step, what remains still cannot reduce the residual by more than 5%.
 
-If it survives, the question becomes what to DO with those degrees of
-freedom, and that choice is physical, not numerical. A node held by one
-tetrahedron and six dead facets is very nearly detached; the honest options
-are to constrain it explicitly and say so in the output - never silently -
-or to let the deletion rule take its last element and orphan it properly,
-where `topodiag` and the existing orphan handling will see it. A damping
-threshold on the step is not one of the options.
+Projecting them out is still worth building - it is cheap, physically
+honest, and it is the difference between a usable and an unusable direction
+in the increments before the wall.  If you do, constrain them explicitly and
+SAY SO in the output; never silently.  But it is the first half of a fix.
+
+## What the next experiment has to explain
+
+The open quantity is now sharp and it is not about node 1244: **after the
+entire collapsed-node motion is removed, why can the remaining direction
+still not reduce the residual by more than 5%?**
+
+Whatever answers that is the wall.  Candidates, in the order the evidence
+supports them:
+
+1. The advancing UC6 set collapses 4490 -> 137 exactly when the residual
+   stalls, and stays collapsed.  With the whole cohesive zone unloading, every
+   facet reverts to its stiff positive secant.  Measure whether the masked
+   direction's poor reduction coincides with that collapse, and whether an
+   iterate that keeps the zone loading has a usable masked direction - the
+   increments 552 and 553 rows suggest it does.
+2. The unnamed first-order defect around increment 92, which is NOT the wall
+   but has never been named, and whose size tracks `beta`.
+3. Something in how `checkconvergence` and the rescue ladder interact with a
+   direction that is right but slow.
+
+Measure before building, and state the rejection criterion first.
 
 ## Validation and success
 

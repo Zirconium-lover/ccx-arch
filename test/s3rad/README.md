@@ -973,6 +973,73 @@ or to let the deletion rule take the last element and orphan it properly,
 where `topodiag` and the existing orphan handling will see it.  A damping
 threshold on the step is not one of the options.
 
+## The masked-step measurement: mechanism confirmed, cure insufficient
+
+The experiment the previous section asked for has been run.
+`CCX_DAMAGE_WALL_MASKSTEP=1`, armed at `theta=0.2554`, walks the same fifteen
+rungs a second time along `p_N` with every component on an AUTOSPC-masked
+node zeroed.  Same deck, same `DEADALL=1.e-2`, same viscosity, tangent,
+AUTOSPC and convergence criteria, PARDISO, 2 threads; `rc=201`, 4791 s, 1151
+attempts, last committed increment 555 at `theta=0.2555761718750` with 6780
+live bulk elements.  Eighteen firings.
+
+`|res|2/|r0|2` at the BEST rung of each direction, and what the mask removed:
+
+| inc | mask removes | best full step | at `eps` | best masked | at `eps` |
+|---|---|---|---|---|---|
+| 552 | 2.8352% | 0.2527 | 1 | 0.2528 | 1 |
+| 552 | 4.1972% | 0.4197 | 1 | 0.4196 | 1 |
+| 552 | 40.6189% | 0.6548 | 1 | 0.6549 | 1 |
+| 552 | 88.7510% | 0.5062 | 0.5 | 0.5063 | 0.5 |
+| 556 | 0.1981% | 0.5309 | 1 | 0.5403 | 1 |
+| 552 | 99.9475% | 0.8907 | 0.125 | **0.5784** | **1** |
+| 553 | 99.9956% | 0.9262 | 0.125 | **0.4556** | **1** |
+| 553 | 99.9972% | 0.9048 | 0.25 | **0.5508** | **1** |
+| 553 | 99.9958% | 0.8799 | 0.25 | 0.7126 | 0.5 |
+| 553 | 99.9935% | 0.8892 | 0.25 | 0.7940 | 0.5 |
+| **554** | 99.9999% | 0.9924 | 0.0156 | **0.9494** | 0.125 |
+| **554** | 99.9999% | 0.9956 | 0.0078 | 0.9755 | 0.0625 |
+| **555** | 100.0000% | 0.9924 | 0.0156 | **0.9491** | 0.125 |
+| **555** | 99.9999% | 0.9953 | 0.0078 | 0.9659 | 0.125 |
+
+**The five top rows are controls and they are clean.**  Where the mask does
+not carry the step - it removes 0.2%, 2.8%, 4.2%, 40.6%, 88.8% - the two
+ladders agree to three or four digits at every rung.  The probe is inert when
+it should be inert, which is what makes the rest of the table mean something.
+
+**Where the collapsed nodes DO carry the step, removing them changes the
+answer.**  At increments 552 and 553 it converts a direction that is
+catastrophic at full length into one whose BEST rung is full length: the full
+step multiplies the residual by 723.4, 6.403 and 4.071 at `eps=1` while the
+masked step reduces it to 0.5784, 0.4556 and 0.5508 there.  Best available
+reduction goes from 11%, 7% and 10% to 42%, 54% and 45%.
+
+**And at the wall itself it is not enough.**  At increments 554 and 555,
+where the run actually dies, the mask removes 99.9999% to 100.0000% of
+`|p_N|^2` - essentially the entire Newton step is on collapsed-diagonal nodes
+- and the best rung improves only from 0.9924 to 0.9491.  That is 0.76% per
+iteration against 5.1%: a genuine 6.7x, and still nowhere near enough.  A 5%
+contraction needs about 130 iterations per order of magnitude and
+`checkconvergence`'s `iest > ic` test ends the increment long before that.
+The masked direction is no longer usable at full length there either - it is
+2.22x worse than `|r0|` at `eps=1` and best at `eps=0.125`.
+
+So the verdict is neither of the two the experiment was set up to give:
+
+* the collapsed-diagonal degrees of freedom ARE where the step goes, ARE
+  what makes it unusable at full length, and taking them out IS a real
+  improvement - 6.7x at the wall, and the difference between a usable and an
+  unusable direction one increment earlier;
+* and taking them out does NOT pass the wall.  After removing 100% of the
+  step, what remains still cannot reduce the residual by more than 5%.
+
+That last number is the one to carry forward.  It says the wall is not ONLY
+the nearly-detached nodes.  Something else limits the achievable reduction to
+a few percent once they are gone, and no amount of work on the collapsed dofs
+will reach it.  Projecting them out is worth doing - it is cheap, it is
+physically honest, and it buys the increments before the wall - but it must
+be the first half of a fix, not the whole of one.
+
 ## The open question that is still open
 
 Independently of the wall, `damageq` - the forward-difference `dD/d(eps)` in

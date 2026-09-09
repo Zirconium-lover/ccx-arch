@@ -71,6 +71,19 @@ imbalance, which is at healthy nodes 1245 and 5282, hardly moves.  **The best
 residual reduction available along the exact Newton direction, at ANY step
 length, is 1.03%.**
 
+**That was then measured directly, and the answer is half a fix.**  A third
+pass on the linearisation ladder walks the same rungs along `p_N` with the
+AUTOSPC-masked nodes zeroed.  Five controls, where the mask carries 0.2% to
+88.8% of the step, show the two ladders agreeing to three or four digits - so
+the probe is inert when it should be.  Where the collapsed nodes DO carry the
+step, removing them converts a direction that multiplies the residual by
+723.4 at full length into one whose best rung IS full length, reducing it to
+0.5784.  But **at the wall itself, where the mask removes 99.9999% to 100% of
+the step, the best available reduction only improves from 0.76% to 5.1%** -
+a real 6.7x that still cannot converge an increment.  The nearly-detached
+nodes are therefore where the step goes and part of why it is unusable, and
+removing them is not by itself enough to pass the wall.
+
 The 6069 integration points that change branch along the step - 4511 of them
 UC6 loading/unloading - are a consequence of dragging that node's
 neighbourhood an order-one distance, not an independent cause: none of them
