@@ -381,3 +381,65 @@ fallback exactly.
 `lsladder_selftest()` runs whenever the adaptive line search arms, and the
 search refuses to arm if it fails.  Test B asserts that the OLD rule hands
 back 0.1 when 0.5 was measurably better - the defect itself, pinned.
+
+## The honest A/B
+
+One binary, one flag.  Same deck, same environment, `DEADALL=1.e-2`
+unchanged, PARDISO, 2 threads each, run concurrently.  The only
+functional difference is the backtracking ladder; `CCX_DAMAGE_LS_LEGACY=1`
+selects the old one.
+
+```sh
+CCX_EXE=$PWD/build-mkl/ccx_2.23_pardiso S3RAD_DECK=/tmp/pilot.inp \
+  ./test/s3rad/run_s3rad.sh /tmp/ab-A CCX_DAMAGE_LS_LEGACY=1 \
+  CCX_DAMAGE_BATCH_TRACE=1
+CCX_EXE=$PWD/build-mkl/ccx_2.23_pardiso S3RAD_DECK=/tmp/pilot.inp \
+  ./test/s3rad/run_s3rad.sh /tmp/ab-B CCX_DAMAGE_BATCH_TRACE=1
+```
+
+| | A, legacy ladder | B, fixed ladder |
+|---|---|---|
+| stop | `rc=201` "increment size smaller than minimum" | `rc=201`, same message, **at a different state** |
+| last committed increment | 347 | **554** |
+| load factor `theta` | 0.212177 | **0.255574** |
+| live bulk elements | 7577 | **6780** |
+| bulk integration points with `D>0.9` | 195 | 104 |
+| deletion batches committed | 234 | **415** |
+| elements deleted | 2416 | **3734** |
+| terminal events | 252 | **434** |
+| line-search activations | 175 | 566 |
+| wall time | 2690 s | 4697 s |
+| committed states revisited from a different increment | **0** | **0** |
+
+A reproduces the recorded wall (the 4-thread reference stops at increment
+353, `theta=0.212194`; at 2 threads the same failure lands at 348,
+`theta=0.212179`).  B passes it and goes on for another 207 increments,
+deleting 1318 more elements in 181 more batches - front advance, not a
+different increment number.  Neither run ever returns to a committed state
+it has already left.
+
+### B stops at a NEW wall, and it is a different one
+
+At increment 555 the deepened ladder is working exactly as intended: it
+finds a contracting step at every iteration, at step lengths of 0.0035 to
+0.0067 - far below the old floor of 0.1, which is why the old ladder could
+not have found them.  But the contraction is minute:
+
+```
+iter 5  res_old 1.995449e-03 -> 1.992073e-03   alpha 0.003704  contracted
+iter 6  res_old 1.992073e-03 -> 1.988678e-03   alpha 0.003504  contracted
+iter 7  res_old 1.988678e-03 -> 1.988215e-03   alpha 0.006670  contracted
+iter 8  res_old 1.988215e-03 -> 1.987038e-03   alpha 0.006187  contracted
+```
+
+0.2% per iteration, with the full Newton step 150x worse than the damped
+one.  The Newton direction is usable over 0.4% of its length and no
+further.  That is a property of the problem in that state, not a defect in
+the search: the old wall was the search REFUSING a step it had measured to
+be better, this one is the search FINDING the best step there is and the
+best step being tiny.  A deeper ladder cannot help here, and stacking
+another fix on this measurement would be guesswork.
+
+**The specimen is not separated.**  `theta` reaches 0.2556 of the 1.0 the
+step asks for.  The recorded wall is passed and the calculation is not
+finished.
