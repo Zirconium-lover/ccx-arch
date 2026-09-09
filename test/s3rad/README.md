@@ -516,19 +516,32 @@ increment index is not.
 | 9.77e-04 | 0.999 | 0.0242 | 6069 | 4511 | 1554 |
 | 6.10e-05 | 1.000 | 0.0171 | 6069 | 4511 | 1554 |
 
-**H1 is confirmed at the wall.**  The defect ratio HALVES with `eps` from
-`3.1e-02` down to `4.9e-04` - 0.712, 0.370, 0.186, 0.092, 0.045, 0.024,
-0.017 - which is `O(eps)`, the signature of a consistent tangent.  (The
-0.017 it settles on is a genuine first-order remainder, not roundoff: the
-cancellation floor here is `1e-16/eps`, eleven orders below it.)  And the
+**H1's two observable predictions both hold.**  The defect ratio HALVES with
+`eps` from `3.1e-02` down to `4.9e-04` - 0.712, 0.370, 0.186, 0.092, 0.045,
+0.024, 0.017 - which is `O(eps)`, the signature of a consistent tangent.
+(The 0.017 it settles on is a genuine first-order remainder, not roundoff:
+the cancellation floor here is `1e-16/eps`, eleven orders below it.)  And the
 census is enormous: **6069 integration points change branch across the full
-Newton step, 4511 of them UC6 loading/unloading and 1554 bulk plastic**, and
-every one of those crossings happens between `eps=0.03` and `eps=1`.
+Newton step, 4511 of them UC6 loading/unloading and 1554 bulk plastic**.
+
+Two cautions about that census, both of which matter later.  It is referenced
+to the FULL step, not to the base state - `transitions(eps=1)=0` and the count
+RISES as `eps` falls - so a crossing sits ABOVE the `eps` at which the count
+changes: they run from just under `eps=0.0625` up to `eps=1`, with 5480 of
+the 6069 in the last half of the step alone, and NONE below `eps=0.0078`.
+And a large crossing count is not by itself a cause; it is equally a
+consequence of a step that is too long.
 
 So the tangent at the wall is right and the step is far too long for it.
 The step is not marginally too long - it is `|p_N|inf = 1.0806`, a
 displacement of order ONE on a specimen whose grip has moved 0.2556 - and
 the full step multiplies the residual by 32.
+
+**H1's implied remedy - stop at the first crossing - is nevertheless refuted
+by this same table**, once the residual column is read rather than the defect
+column: below the first crossing the linear model is exact and still buys
+only 0.64%, and the best rung of any length buys 1.03%.  The reason is not in
+this table at all; it is in where the step lives, measured further down.
 
 ## Why the step is that long, and it is not the topology
 
@@ -744,36 +757,130 @@ The functional patch is therefore reverted rather than kept behind a flag,
 per the working brief.  What stays is every measurement that produced this
 conclusion, and the diagnostics that took them.
 
-## What the wall measurement says to do next
+## Where the step actually goes, and it is ONE node
 
-The wall is now characterised, and it is an event problem, not a
-linearisation problem:
+The census above is referenced to the FULL step, not to the base state -
+`transitions(eps=1)=0` in every block, and the count rises monotonically as
+`eps` falls.  Read in that direction it says a point whose branch differs
+from the full-step branch has crossed somewhere above that `eps`, so
 
-* the tangent there is a correct one-sided derivative (`O(eps)` defect);
-* the step is of order one because 76 front nodes have lost 99.9% of their
-  stiffness and the residual sits on one held by a single bulk element;
-* 6069 integration points change branch along that step, 4511 of them UC6
-  loading/unloading, all between `eps=0.03` and `eps=1`.
+| crossings in | count |
+|---|---|
+| `eps` in (0.5, 1] | 5480 |
+| `eps` in (0.0625, 0.5] | 582 |
+| `eps` in (0.0078, 0.0625] | 7 |
+| `eps` in (0, 0.0078] | **0** |
 
-The smallest discriminating experiment that follows is therefore **an
-event-aware corrector on the ORDINARY Newton path**: stop the step at the
-first branch crossing, re-assemble on the new branch, and continue - rather
-than damping a step that is valid over 3% of its length.  The machinery is
-already in the tree but only on the same-load re-equilibration path
-(`[DAMAGE EVT]`, `nonlingeo.c`, which locates the first UC6
-tension/compression crossing and takes that event step); what the wall needs
-is the same idea keyed on the loading/unloading set, which is where the 4511
-crossings are, and on the ordinary path where the wall actually is.
+**Below `eps=0.0078` not one integration point changes branch**, and there
+the linear model is essentially exact: `|res|/((1-eps)|r0|)` is 1.001383 at
+`eps=0.0078`, 1.000338 at 0.0039, 1.000079 at 0.00195, 1.000017 at 0.00098.
+Newton is behaving perfectly on the smooth branch.  It is simply not buying
+anything, and the reason is visible in the localisation of the correction:
 
-The falsifiable statement to test first, before writing that: **if the step
-is truncated at the first crossing of the loading/unloading set, the
-residual falls by the full `alpha` of the truncated step rather than by a
-fraction of it.**  The ladder above already measures both quantities, so the
-experiment is one armed increment, not a run.
+```
+[WALLDIAG] inc=556 iter=8 base state: |p_N|inf=1.080571e+00 |p_N|2=1.216410e+00 |R|2=3.094649e-01
+  residual   #1: node 1245 dir 3  2.225861e-01   live bulk 7  live UC6 7
+  residual   #2: node 5282 dir 3 -1.840142e-01   live bulk 3  live UC6 0
+  residual   #5: node 1244 dir 3 -2.783027e-02   live bulk 1  live UC6 6  facet g in [0,0]
+  correction #1: node 1244 dir 2  1.080571e+00   live bulk 1  live UC6 6  facet g in [0,0]
+  correction #2: node 1244 dir 3 -4.098008e-01   live bulk 1  live UC6 6  facet g in [0,0]
+  correction #3: node 1244 dir 1 -3.787836e-01   live bulk 1  live UC6 6  facet g in [0,0]
+  correction #4: node 1246 dir 2  1.858016e-02   live bulk 1  live UC6 6
+```
 
-The other thing worth doing, independently of the wall, is to find why
-`damageq` - the forward-difference `dD/d(eps)` in `resultsmech.f` - delivers
-a rank-1 term worth 0.27% of the operator when the residual behaves as if
-the full `dDvis/d(eps)` were there.  `CCX_DAMAGE_WALL_THETA` now prints a
-census of `damjac`'s two halves at the armed increment, which separates
-"the derivative is tiny" from "the assembly loses it".
+Those three components are `sqrt(1.080571^2 + 0.4098008^2 + 0.3787836^2) =
+1.216161` against `|p_N|2 = 1.216410`.  **Node 1244's three degrees of
+freedom carry 99.96% of `|p_N|^2`.  The other 29405 degrees of freedom carry
+0.04% between them**, and the next node down is 58x smaller.
+
+Node 1244 is held by **ONE live bulk element** and six cohesive facets that
+are still in the mesh with `g=0` on every one of them - fully failed, zero
+stiffness.  Its assembled diagonal has collapsed, and it is one of the 76
+nodes AUTOSPC's census counts.  The residual there is 2.78e-02, **12% of the
+peak**: the force imbalance is at nodes 1245 and 5282, which are healthy (7
+and 3 live bulk elements).
+
+So the operator inverts a small residual on a nearly-free node into an
+order-one displacement, and that displacement IS the Newton direction.  The
+direction is legitimate - the transpose identity `dot(J^T R,p_N)/|R|^2` holds
+to twelve digits, so it descends `0.5|R|^2` with directional derivative
+exactly `-|R|^2` - but essentially all of the descent is spent moving one
+node that is barely attached, while the imbalance that has to be fixed sits
+two nodes away and hardly moves.
+
+That is why no step length works.  Over the whole 15-rung ladder:
+
+| `eps` | `|res|2/|r0|2` |
+|---|---|
+| 1.0 | **32.47** |
+| 0.5 | 2.00 |
+| 0.25 | 1.219 |
+| 0.125 | 1.116 |
+| 0.0625 | 1.0135 |
+| **0.03125** | **0.98968**  <- the best step of any length |
+| 0.015625 | 0.98982 |
+| 0.0078125 | 0.99356 |
+| 0.00390625 | 0.99643 |
+| 0.00098 | 0.99904 |
+
+**The best residual reduction available along the exact Newton direction, at
+any step length, is 1.03%.**  The 6069 branch crossings are a CONSEQUENCE of
+dragging node 1244's neighbourhood an order-one distance, not an independent
+cause: they begin only above `eps=0.0078` and 90% of them are in the last
+half of the step.
+
+### This rejects the event-truncation idea, before it was built
+
+The obvious reading of "6069 crossings" is to truncate the step at the first
+one and re-assemble.  The table rejects it with data already in hand.  The
+first crossing is between `eps=0.0078` and `eps=0.0625`; truncating there
+buys 0.64% and the best rung anywhere buys 1.03%, against the roughly 0.4%
+the ladder's accepted `alpha ~ 0.004` already gets.  A factor of two or three
+on a residual that has to fall by orders of magnitude is not a fix, and
+`checkconvergence`'s `iest > ic` test ends the increment long before 700
+iterations at 1% each.  **Event ordering is not the wall.**  An event-aware
+corrector on this direction would be a correct answer to the wrong question.
+
+AUTOSPC is not the answer as it stands either, and for a documented reason:
+it excludes a collapsed-diagonal node from the DISPLACEMENT convergence norm
+`cam[0]` and deliberately touches neither the solve nor the force residual.
+That is right for what it was built for - the run it fixed died on `cam[0]`
+at a node with no stiffness left.  This wall is the same pathology
+expressing itself one level down: the collapsed node poisons the STEP, and
+the run dies on `ram[0]`.
+
+## The next experiment
+
+**Hypothesis.** The step is unusable because it is spent on nodes whose
+diagonal has collapsed.  If those degrees of freedom are removed from it,
+what remains reduces the residual by substantially more than 1.03%.
+
+**The one measurement that rejects it.** At the wall, form `p_N`, zero its
+components on the nodes AUTOSPC's census already masks, and walk the SAME
+eps ladder.  If the best reduction is still about 1%, the masked nodes are
+not what is wasting the step and the hypothesis is dead - and with the event
+reading already rejected above, the next place to look would be the
+`|p_N|/|R| = 3.93` amplification itself.
+
+This is one armed increment on the existing LINCHECK machinery, which
+already evaluates an arbitrary direction on `pass 2`.  It is not a run.
+**Measure before building.**
+
+If it survives, the question becomes what to DO with those degrees of
+freedom, and that choice is physical, not numerical.  A node held by one
+tetrahedron and six dead facets is very nearly detached; the honest options
+are to constrain it explicitly (and say so in the output, never silently),
+or to let the deletion rule take the last element and orphan it properly,
+where `topodiag` and the existing orphan handling will see it.  A damping
+threshold on the step is not one of the options.
+
+## The open question that is still open
+
+Independently of the wall, `damageq` - the forward-difference `dD/d(eps)` in
+`resultsmech.f` - delivers a rank-1 term worth 0.27% of the operator while
+the residual around increment 92 behaves as if the full `dDvis/d(eps)` were
+missing.  The `damjac` census says the derivative IS there (max 36.4, mean
+4.18 over 6850 elements, none below 1e-12), so the next place to look is
+between what `damageq` computes and what `mafilldamas.f` assembles from it.
+That defect costs iterations and cutbacks all the way up.  It is not the
+wall: by `theta=0.2556` the viscosity has damped it to 1.7%.

@@ -53,12 +53,27 @@ and there the tangent is CONSISTENT: the linear-model defect falls like
 `O(eps)` over five halvings.  What is wrong is the step.  It is
 `|p_N|inf = 1.08`, a displacement of order one on a specimen whose grip has
 moved 0.2556, because the front now carries 76 nodes that have lost 99.9%
-of their diagonal stiffness and the residual sits on one of them - node
-1244, held by ONE live bulk element and six fully failed cohesive facets.
-Along that step **6069 integration points change branch, 4511 of them UC6
-loading/unloading**, all between `eps=0.03` and `eps=1`, so the linear model
-is good over about 3% of it - which is exactly the `alpha ~ 0.004` the
-search finds.  The topology is sound there, re-measured and not carried
+of their diagonal stiffness.
+
+**99.96% of that step sits on the three degrees of freedom of ONE of them.**
+Node 1244 is held by one live bulk element and six cohesive facets that are
+still in the mesh with zero stiffness; its assembled diagonal has collapsed,
+its own residual is only 12% of the peak, and the operator inverts that small
+residual into a displacement of 1.08.  The remaining 29405 degrees of
+freedom carry 0.04% of the step between them.  The direction is a genuine
+descent direction - the transpose identity holds to twelve digits - but the
+descent is spent moving a node that is barely attached, while the force
+imbalance, which is at healthy nodes 1245 and 5282, hardly moves.  **The best
+residual reduction available along the exact Newton direction, at ANY step
+length, is 1.03%.**
+
+The 6069 integration points that change branch along the step - 4511 of them
+UC6 loading/unloading - are a consequence of dragging that node's
+neighbourhood an order-one distance, not an independent cause: none of them
+crosses below `eps=0.0078`, and 5480 are in the last half of the step.  That
+also refutes the obvious remedy before it was built: truncating at the first
+crossing buys 0.64% against the 1.03% best and the ~0.4% the line search
+already gets.  The topology is sound there, re-measured and not carried
 over: one component, no floating piece, no orphan dof, no isolated equation,
 and the residual orthogonal to the near-null space to twenty-one digits.
 

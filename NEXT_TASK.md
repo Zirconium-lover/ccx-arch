@@ -2,11 +2,11 @@
 
 ## Objective
 
-The second wall has been measured AT the second wall and it is an EVENT
-problem, not a linearisation problem. The remaining task is to act on that
-diagnosis: make the corrector event-aware on the ordinary Newton path, and
-drive `s3rad` to normal step termination or to loss of load-carrying
-connectivity.
+The second wall has been measured AT the second wall. It is not a
+linearisation problem and it is not an event-ordering problem: it is a
+CONDITIONING problem localised on a single nearly-detached node. The
+remaining task is to act on that diagnosis and drive `s3rad` to normal step
+termination or to loss of load-carrying connectivity.
 
 The engineering objective is a physically credible complete `s3rad`
 fracture/separation, not merely a larger increment number. **The specimen has
@@ -32,17 +32,35 @@ assumptions.
 - **The step is wrong.** `|p_N|inf = 1.0806`, an order-one displacement on a
   specimen whose grip has moved 0.2556. The full step multiplies the residual
   by 32.
-- **6069 integration points change branch along that step** - 4511 UC6
-  loading/unloading, 1554 bulk plastic - and every one of them between
-  `eps=0.03` and `eps=1`. The linear model is therefore good over about 3% of
-  the step, which is exactly the `alpha ~ 0.004` the search finds.
+- **99.96% of that step sits on the three degrees of freedom of ONE node.**
+  Node 1244 is held by one live bulk element and six cohesive facets that are
+  still in the mesh with zero stiffness. Its assembled diagonal has collapsed
+  and it is one of the 76 AUTOSPC counts. Its own residual is 12% of the
+  peak; the operator inverts that small residual into a displacement of 1.08.
+  The other 29405 degrees of freedom carry 0.04% of the step between them,
+  and the next node down is 58x smaller.
+- The direction is legitimate - the transpose identity
+  `dot(J^T R,p_N)/|R|^2` holds to twelve digits, so it descends `0.5|R|^2`
+  with directional derivative exactly `-|R|^2`. The descent is simply spent
+  moving a node that is barely attached, while the force imbalance, which is
+  at healthy nodes 1245 (7 live bulk) and 5282 (3 live bulk), hardly moves.
+- **The best residual reduction available along the exact Newton direction,
+  at ANY step length, is 1.03%**, at `eps=0.031`. Below that the model is
+  exact and buys `eps`; above it the residual grows, to 32x at `eps=1`.
+- 6069 integration points change branch along the step - 4511 UC6
+  loading/unloading, 1554 bulk plastic - but that census is referenced to the
+  FULL step (`transitions(eps=1)=0`, the count RISES as `eps` falls). Read
+  correctly: no crossing below `eps=0.0078`, and 5480 of the 6069 in the last
+  half of the step. They are a CONSEQUENCE of the order-one motion of node
+  1244's neighbourhood, not an independent cause.
 - The topology at the new wall is sound, re-measured and not carried over:
   one component, no floating piece, no orphan dof, no isolated equation, and
   the residual orthogonal to the near-null space to twenty-one digits while
-  the correction carries at most 1.6e-05 of itself there.
+  the correction carries at most 1.6e-05 of itself there. Node 1244 is a SOFT
+  mode, not a null mode - it still has one element - which is why the
+  near-null probes do not see it.
 - What HAS changed is the support: 76 nodes have lost 99.9% of their
-  assembled diagonal (3 at increment 140), and the residual peaks at node
-  1244, held by ONE live bulk element and six fully failed cohesive facets.
+  assembled diagonal, against 3 at increment 140.
 - The deletion loop is refuted at the new wall too, re-measured with
   `CCX_DAMAGE_BATCH_TRACE=1`: the last committed batch is 415 at increment
   551, so increments 552-555 commit no deletion at all.
@@ -72,34 +90,51 @@ it". That census is already taken and says the derivative is present, so the
 next place to look is between `damageq` in `resultsmech.f` and what
 `mafilldamas.f` actually assembles from it.
 
+## Two remedies that are REFUTED before you spend anything on them
+
+**Event truncation.** "6069 crossings, so stop the step at the first one and
+re-assemble" is the obvious reading and the eps ladder already rejects it.
+The first crossing is just under `eps=0.0625`; truncating there buys 0.64%,
+the best rung of any length buys 1.03%, and the ladder's accepted
+`alpha ~ 0.004` already gets about 0.4%. A factor of two or three on a
+residual that must fall by orders of magnitude is not a fix, and
+`checkconvergence`'s `iest > ic` test ends the increment long before 700
+iterations at 1% each. Do not build an event-aware corrector for this wall.
+
+**The Newton-Krylov corrector.** Already built, measured, refuted, reverted;
+see above and the A/B table in `test/s3rad/README.md`.
+
+**AUTOSPC as it stands** is not a remedy either, for a documented reason: it
+excludes a collapsed-diagonal node from the DISPLACEMENT convergence norm
+`cam[0]` and deliberately touches neither the solve nor the force residual.
+That is correct for what it was built for. This wall is the same pathology
+one level down - the collapsed node poisons the STEP, and the run dies on
+`ram[0]`.
+
 ## The first experiment
 
-**Hypothesis.** The wall is the line search damping a step that is valid over
-3% of its length. If the step is truncated at the FIRST crossing of the
-loading/unloading set instead of scaled by a scalar `alpha`, the residual
-falls by the full `alpha` of the truncated step rather than by a fraction of
-it.
+**Hypothesis.** The step is unusable because it is spent on nodes whose
+assembled diagonal has collapsed. If those degrees of freedom are removed
+from it, what remains reduces the residual by substantially more than 1.03%.
 
-**The one measurement that can reject it.** Arm `CCX_DAMAGE_WALL_THETA` at the
-wall and compare, on the same restored base state, the residual reduction of
-the truncated step against the reduction the ladder achieves at its accepted
-rung. If truncation buys no more than the ladder does, the hypothesis is
-dead and the wall is not an event-ordering problem after all.
+**The one measurement that can reject it.** At the wall, form `p_N`, zero its
+components on the nodes AUTOSPC's census already masks, and walk the SAME eps
+ladder. If the best reduction is still about 1%, the masked nodes are not
+what is wasting the step and the hypothesis is dead - and since the event
+reading is already rejected, the next place to look is the
+`|p_N|2/|R|2 = 3.93` amplification itself.
 
-This is one armed increment, not a run. Both quantities are already printed
-by the existing ladder instrumentation. **Measure before building.**
+This is one armed increment on the existing `CCX_DAMAGE_TR_LINCHECK`
+machinery, which already evaluates an arbitrary direction on `pass 2`. It is
+not a run. **Measure before building.**
 
-If it survives, the implementation is an event-aware corrector on the
-ORDINARY Newton path: stop the step at the first branch crossing, re-assemble
-on the new branch, continue. The machinery exists in the tree but only on the
-same-load re-equilibration path (`[DAMAGE EVT]` in `nonlingeo.c`, which
-locates the first UC6 tension/compression crossing and takes that event
-step). What the wall needs is the same idea keyed on the loading/unloading
-set - which is where the 4511 crossings are - and on the ordinary path, which
-is where the wall is.
-
-Do not disguise an event corrector as another damping threshold. If it needs
-a threshold to work, it is not the fix.
+If it survives, the question becomes what to DO with those degrees of
+freedom, and that choice is physical, not numerical. A node held by one
+tetrahedron and six dead facets is very nearly detached; the honest options
+are to constrain it explicitly and say so in the output - never silently -
+or to let the deletion rule take its last element and orphan it properly,
+where `topodiag` and the existing orphan handling will see it. A damping
+threshold on the step is not one of the options.
 
 ## Validation and success
 
