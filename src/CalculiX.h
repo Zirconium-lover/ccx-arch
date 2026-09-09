@@ -4925,41 +4925,6 @@ ITG lsladder_step(lsladder *l,double res);
 double lsladder_final(const lsladder *l);
 ITG lsladder_selftest(void);
 
-/* ---- the inner Krylov solve of the corrector (nkgmres.c) ------------
-   The assembled tangent is not the derivative of the residual on this
-   model - measured, and the Newton iteration's linear rate equals the
-   relative error exactly.  This is the arithmetic that lets the residual
-   itself supply the Jacobian action while the tangent only preconditions.
-   Storage is the caller's; the unit is pure arithmetic so it can be tested
-   against operators with a known answer. */
-
-typedef struct{
-  ITG n;            /* equations                                         */
-  ITG mmax;         /* iterations the storage allows                     */
-  ITG m;            /* iterations allowed on this solve                  */
-  ITG j;            /* iterations completed                              */
-  ITG conv;         /* the inner tolerance was reached                   */
-  double beta;      /* |r0|                                              */
-  double eta;       /* inner tolerance, relative to |r0|                 */
-  double *v;        /* (mmax+1)*n  orthonormal Krylov basis              */
-  double *z;        /* mmax*n      preconditioned directions             */
-  double *hh;       /* (mmax+1)*mmax  Hessenberg, rotated in place       */
-  double *cs,*sn;   /* mmax        Givens rotations                      */
-  double *gg;       /* mmax+1      rotated right-hand side               */
-  double *yy;       /* mmax        the least-squares coefficients        */
-}nkgmres;
-
-void nkgmres_reset(nkgmres *g);
-void nkgmres_attach(nkgmres *g,ITG n,ITG mmax,double *v,double *z,double *hh,
-                    double *cs,double *sn,double *gg,double *yy);
-ITG nkgmres_start(nkgmres *g,const double *r0,ITG m,double eta);
-const double *nkgmres_basis(const nkgmres *g);
-double *nkgmres_slot(nkgmres *g);
-ITG nkgmres_absorb(nkgmres *g,double *w);
-double nkgmres_residual(const nkgmres *g);
-void nkgmres_solution(nkgmres *g,double *x);
-ITG nkgmres_selftest(void);
-
 /* ---- topology diagnostic (topodiag.c) -------------------------------
    Measurement only: nothing here decides anything or is on a solution
    path.  It exists to tell a true orphan degree of freedom, a physically

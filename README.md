@@ -74,6 +74,17 @@ is therefore still unnamed.  It costs iterations and cutbacks all the way
 up, and it is NOT what stops the run at `theta=0.2556`: by then the
 viscosity has damped it to 1.7%.
 
+**A Newton-Krylov corrector was built for that defect, and it is REFUTED.**
+Taking the Jacobian action from the residual and using the assembled tangent
+only as a preconditioner does repair the increment-92 defect - it holds
+`dtime` at maximum where the plain arm cuts it 16x, and it is ahead in
+`theta` at every increment from 91 to 141 - but the same binary with the
+flag on stops the run at `theta=0.191828`, against `0.255574` with it off,
+short of even the old wall.  It helps where the defect is large and costs
+where the defect is small, and the hard part of this run is where the defect
+is small.  The functional patch is reverted; the A/B table is in
+`test/s3rad/README.md`.  **No fix in this tree passes the second wall.**
+
 ## Repository map
 
 - `src/` — CalculiX 2.23 sources and the experimental path-following code.
@@ -81,10 +92,6 @@ viscosity has damped it to 1.7%.
 - `src/crackcontrol.c` — the mixed-mode control coordinate and its self test.
 - `src/lsladder.c` — the backtracking ladder of the damage line search,
   extracted with a regression test that pins the defect it used to have.
-- `src/nkgmres.c` — the inner Krylov solve of the Newton-Krylov corrector,
-  with a regression test on operators whose answer is known.  It repairs
-  the increment-92 tangent defect and does NOT pass the second wall; see
-  `test/s3rad/README.md` for its own A/B.
 - `src/topodiag.c` — connectivity, orphan-dof, rank and residual-projection
   measurements; diagnostic only, nothing on a solution path.
 - `src/Makefile.ubuntu2404` — reproducible open build using SPOOLES.

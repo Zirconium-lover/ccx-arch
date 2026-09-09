@@ -557,6 +557,17 @@ conditioning between them - but the near-null space is again irrelevant:
 the residual is orthogonal to it to twenty-one digits and the correction
 carries at most 1.6e-05 of itself there.
 
+And it is not the deletion loop either, re-measured at the new wall with
+`CCX_DAMAGE_BATCH_TRACE=1` rather than carried over.  Over 1145 traced
+attempts and 434 batches: the last committed batch is number 415 at
+increment 551, so **increments 552 to 555 commit no deletion at all** and
+the wall increment has no topology activity whatsoever.  What repeats at the
+wall is the rescue ladder - increment 555 is retried five times from the one
+committed state `bc563d6b3bbd64ce`, with `dtheta` halving 7.8e-06, 3.9e-06,
+1.95e-06 toward `tmin` - which is the ladder working as designed.  Over the
+whole run only two `(committed state, batch)` pairs ever repeat, at
+increments 167 and 231, and the run continued past both.
+
 What HAS changed is the support of the front.  `CCX_DAMAGE_AUTOSPC`'s
 stiffness census counts **76 nodes whose assembled diagonal has fallen below
 1e-3 of its own intact value** at increment 548, against 3 at increment 140.
@@ -653,49 +664,85 @@ at increment 93 - it costs the calculation iterations and cutbacks all the
 way up - but by the time the run reaches `theta=0.2556` the viscosity has
 damped it away and something else stops the run.
 
-## The corrector, and the two variants it went through
+## The corrector was tried and is REFUTED
 
-`src/nkgmres.c` and one block in the Newton loop stop asking the assembled
-tangent for the Jacobian and ask it only to precondition, taking the
-Jacobian action from the residual:
+It is written down here, with its numbers, so the next session does not
+spend its budget on it again.  **The functional patch is not in the tree.**
+
+**What it was.**  Stop asking the assembled tangent for the Jacobian and ask
+it only to precondition, taking the Jacobian action from the residual
+itself:
 
     solve  A z = r0   by GMRES right-preconditioned with J,
     matvec  A d = ( r0 - b(u + sigma d) ) / sigma
 
 One matvec is one residual evaluation and one back-substitution against the
-LU PARDISO has already cached - no extra factorisation.  `sigma` puts the
+LU PARDISO has already cached - no extra factorisation.  `sigma` put the
 probe at `|p_N|`, inside the range over which the response was MEASURED
-linear.  Nothing physical is touched: not a material constant, not the deck,
-not the deletion rule, not the viscosity, not the tangent mode, not AUTOSPC,
-and not what `checkconvergence` requires of an increment.
+linear.  Nothing physical was touched: not a material constant, not the
+deck, not the deletion rule, not the viscosity, not the tangent mode, not
+AUTOSPC, and not what `checkconvergence` requires of an increment.  It
+carried its own regression test, run at arm time, and refused to arm on a
+failure - the discipline `lsladder.c` set.
 
-`nkgmres.c` carries its own regression test, run at arm time, and the
-corrector refuses to arm on a failure - the discipline `lsladder.c` set:
+**Why it looked right.**  It is inert where the tangent IS the derivative:
+through the elastic phase every iteration reported `krylov=1/6`,
+`|z|/|p_N|=1.0000`, `cos(z,p_N)=+1.0000`.  And where the tangent is wrong it
+did what the increment-92 measurement predicted.  At increments 88 to 93 the
+arm with it on held `dtime` at the 2e-03 maximum and converged in 2 to 6
+iterations where the arm without it collapsed `dtime` by 16x and needed 17.
+Its median accepted line-search step was 0.04403 against 0.01449.  It was
+ahead in `theta` at **every** increment from 91 to 141.
 
-```
-[NKGMRES] self test
-   A exact preconditioner             iterations=1 |r0-Ax|/|r0|=1.373e-16  ok
-   B rank-1 preconditioner error      iterations=2 |r0-Ax|/|r0|=5.419e-16  ok
-   C rank-2 preconditioner error      iterations=3 |r0-Ax|/|r0|=1.925e-15  ok
-   D residual estimate is exact       reported=2.787995e+00 measured=2.787995e+00  ok
-   E more iterations never hurt       m=1 gives 7.9836e-01, m=3 gives 1.9246e-15  ok
-   F eta is honoured                  iterations=3 residual/|r0|<=0.5  ok
-[NKGMRES] self test PASSED (0 failure(s))
-```
+**Why it is refuted.**  It does not survive the run.  Same deck, same
+`DEADALL=1.e-2`, same viscosity, same UNSYM tangent, same AUTOSPC, same
+convergence criteria, same PARDISO, 2 threads, one binary
+(`38b4d96cfedb708ecee8d64c4dff5bba9998b996b5197afc01b950ad40b87324`) and one
+flag:
 
-**A variant was tried and is REFUTED, and it is not kept.**  Letting the
-probe scale grow with the inner solution - "sample where the step is going
-to land" - puts the probes in the region where the response is not linear.
-The measured operator then stops being the Jacobian and the corrector
-returns directions that do not descend at all (`cos(z,p_N) = -0.33`, the
-residual stalling at 1.59e-01 over three consecutive iterations).  That arm
-stopped at `theta=0.191821`, against 0.255574 with the corrector off.  The
-probe scale stays at `|p_N|`.
+| | A: `CCX_DAMAGE_NK=0` | B: `CCX_DAMAGE_NK=6` |
+|---|---|---|
+| stop | `rc=201` "increment size smaller than minimum" | same |
+| last committed increment | **554** | **148** |
+| load factor `theta` | **0.255574** | **0.191828** |
+| wall seconds | 7439 | 801 |
+| deletion batches committed | 415 | 43 |
+| elements deleted | 3734 | 298 |
+| `too slow convergence` | 71 | 14 |
+| line-search activations | 566 | 128 |
+| median accepted `alpha` | 0.01449 | 0.04403 |
 
-**Feature-off equivalence.**  The A/B binary with `CCX_DAMAGE_NK=0`
-reproduces the unmodified HEAD binary attempt for attempt over 114 attempts
-and 101 accepted increments - through the increments 92 to 100 where the
-tangent defect is worst - with zero corrector activity in the log.
+The corrector stops the run **earlier than no fix at all** - short of even
+the old `theta=0.212177` wall the line-search fix had already passed.  Being
+ahead at increment 141 bought nothing at increment 149.
+
+A second variant - letting the probe scale grow with the inner solution,
+"sample where the step is going to land" - fails the same way at
+`theta=0.191821`, and there the mechanism is visible: the probes land where
+the response is not linear, the measured operator stops being the Jacobian,
+and the corrector returns directions with `cos(z,p_N) = -0.33` while the
+residual stalls at 1.59e-01 over three consecutive iterations.
+
+Both variants stop at `theta ~ 0.1918`, which is where `dtime` has fallen to
+a few times 1e-06 and the viscous factor `beta = dtime/(eta + dtime)` has
+damped the tangent defect the corrector exists to repair down to a few
+percent.  At that point the corrector is correcting almost nothing and is
+still spending up to six residual evaluations per Newton iteration on a
+difference quotient whose signal has shrunk with `beta` - and it is the
+corrector's arm, not the plain one, that cannot get through.  **A remedy
+that only helps where the defect is large, and costs where the defect is
+small, does not survive a run whose hard part is where the defect is
+small.**
+
+**Feature-off equivalence, measured before the verdict.**  The A/B binary
+with `CCX_DAMAGE_NK=0` reproduced the unmodified HEAD binary attempt for
+attempt over 114 attempts and 101 accepted increments - through the
+increments 92 to 100 where the tangent defect is worst - with zero corrector
+activity in the log.  So the table above is the flag, not the build.
+
+The functional patch is therefore reverted rather than kept behind a flag,
+per the working brief.  What stays is every measurement that produced this
+conclusion, and the diagnostics that took them.
 
 ## What the wall measurement says to do next
 

@@ -1911,8 +1911,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_dl_selfrec=0,damage_dl_lincheck=0,damage_dl_lc_due=0,
     damage_dl_lc_it=1,damage_dl_lc_nit=1,damage_ls_probe=0,
     damage_wall_armed=0,*damage_wall_cat=NULL,damage_wall_nb[8],
-    damage_wall_null=0,damage_nk_m=0,damage_nk_mmax=12,damage_nk_have=0,
-    damage_nk_neval=0,damage_nk_used=0,damage_nk_report=1,
+    damage_wall_null=0,
     damage_dl_lasthelp=0,damage_dl_recdone=-1,
     damage_aba_mode=0,damage_aba_done=0,damage_bt_nring=0,
     damage_aba_ninc=0,damage_aba_hit=0,damage_aba_inc[4]={0,0,0,0},
@@ -2105,14 +2104,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_reeq_uam_floor=0.,damage_reeq_uam_peak[2]={0.,0.},
     damage_linesearch_oldnorm=0.,damage_linesearch_fullnorm=0.,
     damage_linesearch_dampednorm=0.,damage_linesearch_maxdd=0.,
-    damage_wall_theta=-1.,*damage_wall_def=NULL,
-    *damage_nk_r0=NULL,*damage_nk_v=NULL,*damage_nk_z=NULL,*damage_nk_w=NULL,
-    *damage_nk_res=NULL,*damage_nk_hh=NULL,*damage_nk_cs=NULL,
-    *damage_nk_sn=NULL,*damage_nk_gg=NULL,*damage_nk_yy=NULL,
-    *damage_nk_dam=NULL,*damage_nk_visc=NULL,*damage_nk_xs=NULL,
-    *damage_nk_p0=NULL,damage_nk_qa[4]={0.,0.,0.,0.},
-    damage_nk_cam[5]={0.,0.,0.,0.,0.},damage_nk_uam[2]={0.,0.},
-    damage_nk_eta=0.1;
+    damage_wall_theta=-1.,*damage_wall_def=NULL;
   double damage_nl_ell=0.;
   ITG damage_nl_mode=0;
   double damage_qam_floor=0.,damage_qam_peak=0.;
@@ -2140,7 +2132,6 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
   topodiag_report td_rep;
 
   lsladder damage_lsl;
-  nkgmres damage_nkg;
 
   char *pf_env=NULL;
   ITG pf_on=0,pf_engaged=0,pf_pending=0,pf_reason=0,pf_applied=0,
@@ -4440,50 +4431,6 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
       }else{
         printf("[DAMAGE SOLVER BK3] disabled; set "
                "CCX_DAMAGE_LINESEARCH=ADAPTIVE for damage globalization\n");
-      }
-      /* ---- CCX_DAMAGE_NK --------------------------------------------
-
-         Krylov iterations allowed per Newton iteration for the corrector
-         above.  0 restores the plain assembled step exactly and is what the
-         A/B arm without the fix uses.  CCX_DAMAGE_NK_ETA sets how far the
-         inner solve has to reduce the linear residual before it stops
-         early: the outer iteration is inexact-Newton, so 0.1 is enough for
-         fast local convergence and buys the budget back. */
-
-      if((damage_de13_env=getenv("CCX_DAMAGE_NK"))!=NULL){
-        damage_nk_m=atoi(damage_de13_env);
-        if(damage_nk_m<0) damage_nk_m=0;
-        if(damage_nk_m>damage_nk_mmax) damage_nk_m=damage_nk_mmax;
-      }
-      if((damage_de13_env=getenv("CCX_DAMAGE_NK_ETA"))!=NULL){
-        damage_nk_eta=atof(damage_de13_env);
-        if(!(damage_nk_eta>0.)) damage_nk_eta=0.1;
-        if(damage_nk_eta>=1.) damage_nk_eta=0.1;
-      }
-      if(getenv("CCX_DAMAGE_NK_QUIET")!=NULL) damage_nk_report=0;
-      /* Prove the inner solve before using it, on every run, the way
-         pathfollow, crackcontrol, topodiag and lsladder do.  A corrector
-         whose Krylov arithmetic is wrong would quietly hand the Newton loop
-         a direction that is neither the assembled step nor the true one. */
-
-      if((damage_nk_m>0)&&(nkgmres_selftest()!=0)){
-        printf("[DAMAGE NK] *ERROR: the inner Krylov self test failed; the "
-               "corrector is DISARMED and the run takes the plain assembled "
-               "step, rather than running with arithmetic that is not the "
-               "arithmetic that was tested.%s","\n");
-        damage_nk_m=0;
-      }
-      if(damage_nk_m>0){
-        printf("[DAMAGE NK] Newton-Krylov corrector armed: up to %"
-               ITGFORMAT " GMRES iterations per Newton iteration, "
-               "right-preconditioned by the assembled tangent, inner "
-               "tolerance %.3f of |r0|.  The Jacobian action is MEASURED "
-               "from the residual, one evaluation and one back-substitution "
-               "per iteration and no extra factorisation.  Nothing physical, "
-               "no deletion rule and no convergence criterion is touched; "
-               "CCX_DAMAGE_NK=0 gives the plain assembled step.%s",
-               damage_nk_m,damage_nk_eta,"\n");
-        fflush(stdout);
       }
       if(damage_topology_deferred_mode==1){
         printf("[DAMAGE TOPOLOGY BK4] deferred sparse-structure compaction "
@@ -8603,14 +8550,6 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           if(damage_dl_r0==NULL) NNEW(damage_dl_r0,double,neq[1]);
           isiz=neq[1];cpypardou(damage_dl_r0,b,&isiz,&num_cpus);
         }
-        /* [DAMAGE NK] b holds fext-f here, before the solve overwrites it.
-           That IS r0 in the convention the probes below measure in. */
-        damage_nk_have=0;
-        if(damage_nk_m>0){
-          if(damage_nk_r0==NULL) NNEW(damage_nk_r0,double,neq[1]);
-          isiz=neq[1];cpypardou(damage_nk_r0,b,&isiz,&num_cpus);
-          damage_nk_have=1;
-        }
         /* [DAMAGE CT] b holds fext-f = -R here; the solve overwrites it.
            The FULL read-before-write set is snapshotted HERE, at the current
            iterate, BEFORE the solve and before the stock results() applies
@@ -9625,257 +9564,6 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	  
 	SFREE(auc2);SFREE(adc2);SFREE(irowc2);SFREE(icolc2);SFREE(jqc2);
 	SFREE(au);SFREE(ad);	  
-      }
-
-      /* ==== [DAMAGE NK] the corrector solves against the tangent it has,
-         and the tangent it has is not the derivative of the residual ======
-
-         MEASURED, on the committed deck with PARDISO and the recorded
-         environment, by CCX_DAMAGE_TR_LINCHECK from one restored state:
-
-           |R(u+eps p) - (R(u) - eps J p)| / (eps |J p|)
-
-         is CONSTANT - 0.359 at increment 92 iteration 1, 0.870 at increment
-         93 iteration 12 - from eps=1 down to eps=6.1e-05, five decades.  A
-         consistent tangent makes that ratio fall like O(eps).  A constant
-         ratio is a first-order error: J is not dR/du.
-
-         It is not non-smoothness.  Over the eps range where the ratio is
-         already flat the branch census does not move at all (9 integration
-         points differ between u and u+p, none of them below eps=0.25), so no
-         active set crosses inside the window in which the defect is
-         measured.  It is not the merit function either: |R|2 and |R|inf fall
-         by the same factor to three digits.  It is not the solve: the
-         transpose identity dot(J^T R,p_N)/|R|^2 is 1.000000000000 and the
-         operator is factorised, not iterated.  And it is not the topology:
-         the defect is largest on nodes with 32 to 36 live bulk elements and
-         no cohesive facet at all.
-
-         The consequence is exact and was measured iteration by iteration:
-         the linear convergence rate of the whole Newton iteration EQUALS
-         that ratio.  At increment 93 the residual ratios are 0.347, 0.656,
-         0.754, 0.793, 0.815, 0.830, 0.842, 0.852, 0.860, 0.868, 0.873 and
-         the defect ratios at the same iterations are 0.347, 0.656, 0.754,
-         0.793, 0.815, 0.830, 0.842, 0.852, 0.860, 0.868, 0.873.  Nothing
-         else is involved.  As the crack grows the ratio approaches one, the
-         iteration count needed grows without bound, and the step-size
-         controller cuts back until dtheta falls below tmin.  THAT is the
-         wall, and it is why cutting the increment does not help: the ratio
-         is a property of the operator, not of the step.
-
-         WHAT THIS DOES.  It does not invent a better tangent.  It uses the
-         residual itself - the one quantity in the code that is not in
-         doubt - as the authority on the Jacobian action, and asks the
-         assembled tangent only to precondition:
-
-             solve  A z = r0   by GMRES right-preconditioned with J,
-             matvec  A d = ( r0 - b(u + sigma d) ) / sigma ,
-
-         where b is the fext-f convention calcresidual fills, so that
-         b(u+s d) = r0 - s A d exactly to first order.  One matvec costs one
-         residual evaluation plus one back-substitution against the LU
-         PARDISO has already computed and cached; it costs no factorisation.
-         With z = p_N the method reproduces the present step exactly, so the
-         change is inert wherever the tangent IS the derivative.
-
-         The measurement says this is worth doing: along a direction that is
-         not the Newton one the same defect ratio is 0.008 to 0.05, against
-         0.36 to 0.87 along p_N.  The error operator is therefore not a
-         uniform mis-scaling - it is concentrated in a few soft directions,
-         which is exactly the spectrum a preconditioned Krylov method clears
-         in a handful of iterations.
-
-         Nothing here touches a physical parameter, the deck, the deletion
-         rule, the viscosity, the tangent mode, AUTOSPC or what
-         checkconvergence requires of an increment.  It chooses a direction.
-         CCX_DAMAGE_NK=0 restores the plain assembled step exactly. */
-
-      if((damage_nk_m>0)&&(damage_de12_enabled)&&(idamagereeq==0)&&
-         (ncont==0)&&(*nmethod!=4)&&(*nmethod!=5)&&(*ithermal<2)&&
-         (*idrct==0)&&(*mortar<=1)&&(*isolver==7)&&(damage_nk_r0!=NULL)&&
-         (damage_nk_have==1)&&(damage_dl_on==0)&&(damage_ct_on==0)&&
-         (nasym==1)&&(symmetryflag==2)&&(neq[0]==neq[1])){
-
-        ITG nkj,nki,nkm,nkst;
-        double nksig,nkpinf,nkdinf,nknorm,nktmp,nkc,nksc;
-        double *nkd=NULL;
-
-        nkm=damage_nk_m;
-        nkst=*nstate_;
-        if(damage_nk_v==NULL){
-          NNEW(damage_nk_v,double,(damage_nk_mmax+1)*neq[1]);
-          NNEW(damage_nk_z,double,damage_nk_mmax*neq[1]);
-          NNEW(damage_nk_w,double,neq[1]);
-          NNEW(damage_nk_res,double,neq[1]);
-          NNEW(damage_nk_hh,double,(damage_nk_mmax+1)*damage_nk_mmax);
-          NNEW(damage_nk_cs,double,damage_nk_mmax);
-          NNEW(damage_nk_sn,double,damage_nk_mmax);
-          NNEW(damage_nk_gg,double,damage_nk_mmax+1);
-          NNEW(damage_nk_yy,double,damage_nk_mmax);
-          NNEW(damage_nk_dam,double,mi[0]**ne);
-          NNEW(damage_nk_visc,double,mi[0]**ne);
-          if(nkst>0) NNEW(damage_nk_xs,double,nkst*mi[0]**ne);
-          NNEW(damage_nk_p0,double,neq[1]);
-          nkgmres_reset(&damage_nkg);
-        }
-        nkgmres_attach(&damage_nkg,neq[1],damage_nk_mmax,damage_nk_v,
-                       damage_nk_z,damage_nk_hh,damage_nk_cs,damage_nk_sn,
-                       damage_nk_gg,damage_nk_yy);
-
-        /* the assembled step, kept so the method can fall back to it and so
-           the probe scale is the scale the solver would have stepped at */
-        isiz=neq[1];cpypardou(damage_nk_p0,b,&isiz,&num_cpus);
-        nkpinf=0.;
-        for(nki=0;nki<neq[1];nki++)
-          if(fabs(damage_nk_p0[nki])>nkpinf) nkpinf=fabs(damage_nk_p0[nki]);
-
-        /* the state every probe is rolled back to */
-        isiz=mi[0]**ne;cpypardou(damage_nk_dam,dam,&isiz,&num_cpus);
-        if(damage_damvisc!=NULL){
-          isiz=mi[0]**ne;
-          cpypardou(damage_nk_visc,damage_damvisc,&isiz,&num_cpus);
-        }
-        if((nkst>0)&&(damage_nk_xs!=NULL)){
-          isiz=nkst*mi[0]**ne;
-          cpypardou(damage_nk_xs,xstate,&isiz,&num_cpus);
-        }
-        for(nki=0;nki<4;nki++) damage_nk_qa[nki]=qa[nki];
-        for(nki=0;nki<5;nki++) damage_nk_cam[nki]=cam[nki];
-        for(nki=0;nki<2;nki++) damage_nk_uam[nki]=uam[nki];
-
-        if((nkpinf>0.)&&
-           (nkgmres_start(&damage_nkg,damage_nk_r0,nkm,damage_nk_eta)!=0)){
-          while(1){
-            const double *nkb=nkgmres_basis(&damage_nkg);
-            nkd=nkgmres_slot(&damage_nkg);
-
-            /* d_j = J^{-1} v_j, on the LU PARDISO already holds */
-            for(nki=0;nki<neq[1];nki++) nkd[nki]=nkb[nki];
-#ifdef PARDISO
-            pardiso_solve(nkd,&neq[0],&symmetryflag,&inputformat,&nrhs);
-#endif
-            nkdinf=0.;
-            for(nki=0;nki<neq[1];nki++)
-              if(fabs(nkd[nki])>nkdinf) nkdinf=fabs(nkd[nki]);
-            if(!(nkdinf>0.)) break;
-
-            /* The probe scale is |p_N| and stays there.
-
-               It is inside the range the response was MEASURED linear over
-               - the defect ratio is constant from 6.1e-05 to 1 in units of
-               |p_N| - so the difference quotient taken here is the
-               derivative and not an artefact of curvature.
-
-               Letting the scale grow with the solution instead was tried
-               and is REFUTED: the probes then land in the region where the
-               response is not linear, the measured operator stops being the
-               Jacobian, and the corrector returns directions with
-               cos(z,p_N) = -0.33 that do not descend at all.  That arm
-               stopped at theta=0.191821, against 0.255574 with the
-               corrector off.  The reverted variant is not kept. */
-            nksc=nkpinf;
-            nksig=nksc/nkdinf;
-
-            for(nki=0;nki<3;nki++) cam[nki]=0.;
-            for(nki=3;nki<5;nki++) cam[nki]=0.5;
-            isiz=mi[0]**ne;cpypardou(dam,damage_nk_dam,&isiz,&num_cpus);
-            if(damage_damvisc!=NULL){
-              isiz=mi[0]**ne;
-              cpypardou(damage_damvisc,damage_nk_visc,&isiz,&num_cpus);
-            }
-            if((nkst>0)&&(damage_nk_xs!=NULL)){
-              isiz=nkst*mi[0]**ne;
-              cpypardou(xstate,damage_nk_xs,&isiz,&num_cpus);
-            }
-            for(nki=0;nki<neq[1];nki++) b[nki]=nksig*nkd[nki];
-            MNEW(v,double,mt**nk);
-            isiz=mt**nk;cpypardou(v,vold,&isiz,&num_cpus);
-            NNEW(stx,double,6*mi[0]**ne);
-            MNEW(fn,double,mt**nk);
-            if(ne1d2d==1)NNEW(inum,ITG,*nk);
-            results(co,nk,kon,ipkon,lakon,ne,v,stn,inum,stx,
-                elcon,nelcon,rhcon,nrhcon,alcon,nalcon,alzero,ielmat,
-                ielorien,norien,orab,ntmat_,t0,t1act,ithermal,
-                prestr,iprestr,filab,eme,emn,een,iperturb,
-                f,fn,nactdof,&iout,qa,vold,b,nodeboun,
-                ndirboun,xbounact,nboun,ipompc,
-                nodempc,coefmpc,labmpc,nmpc,nmethod,cam,&neq[1],veold,accold,
-                &bet,&gam,&dtime,&time,ttime,plicon,nplicon,plkcon,nplkcon,
-                xstateini,xstiff,xstate,npmat_,epn,matname,mi,&ielas,
-                &icmd,ncmat_,nstate_,stiini,vini,ikboun,ilboun,ener,enern,
-                emeini,xstaten,eei,enerini,cocon,ncocon,set,nset,istartset,
-                iendset,ialset,nprint,prlab,prset,qfx,qfn,trab,inotr,ntrans,
-                fmpc,nelemload,nload,ikmpc,ilmpc,istep,&iinc,springarea,
-                &reltime,&ne0,thicke,shcon,nshcon,
-                sideload,xloadact,xloadold,&icfd,inomat,pslavsurf,pmastsurf,
-                mortar,islavact,cdn,islavnode,nslavnode,ntie,clearini,
-                islavsurf,ielprop,prop,energyini,energy,&kscale,iponoeln,
-                inoeln,nener,orname,network,ipobody,xbodyact,ibody,typeboun,
-                itiefac,tieset,smscale,&mscalmethod,nbody,t0g,t1g,
-                islavquadel,aut,irowt,jqt,&mortartrafoflag,
-                &intscheme,physcon,dam,damn,iponoel);
-            if(ne1d2d==1)SFREE(inum);
-            calcresidual(nmethod,neq,damage_nk_res,fext,f,iexpl,nactdof,aux2,
-                         vold,vini,&dtime,accold,nk,adb,aub,jq,irow,nzl,alpha,
-                         fextini,fini,islavnode,nslavnode,mortar,ntie,mi,
-                         nzs,&nasym,&idamping,veold,adc,auc,cvini,cv,&alpham,
-                         &num_cpus);
-            SFREE(v);SFREE(stx);SFREE(fn);
-            damage_nk_neval++;
-
-            /* w = A d_j , MEASURED.  calcresidual fills fext-f, so
-               b(u+s d) = r0 - s A d to first order and this is A d. */
-            for(nki=0;nki<neq[1];nki++)
-              damage_nk_w[nki]=(damage_nk_r0[nki]-damage_nk_res[nki])/nksig;
-
-            if(nkgmres_absorb(&damage_nkg,damage_nk_w)==0) break;
-          }
-        }
-
-        nkj=damage_nkg.j;
-        if(nkj>0){
-          nkgmres_solution(&damage_nkg,b);
-          damage_nk_used++;
-        }else{
-          isiz=neq[1];cpypardou(b,damage_nk_p0,&isiz,&num_cpus);
-        }
-
-        /* restore everything the probes touched */
-        isiz=mi[0]**ne;cpypardou(dam,damage_nk_dam,&isiz,&num_cpus);
-        if(damage_damvisc!=NULL){
-          isiz=mi[0]**ne;
-          cpypardou(damage_damvisc,damage_nk_visc,&isiz,&num_cpus);
-        }
-        if((nkst>0)&&(damage_nk_xs!=NULL)){
-          isiz=nkst*mi[0]**ne;
-          cpypardou(xstate,damage_nk_xs,&isiz,&num_cpus);
-        }
-        for(nki=0;nki<4;nki++) qa[nki]=damage_nk_qa[nki];
-        for(nki=0;nki<5;nki++) cam[nki]=damage_nk_cam[nki];
-        for(nki=0;nki<2;nki++) uam[nki]=damage_nk_uam[nki];
-
-        if(damage_nk_report!=0){
-          nknorm=0.;nktmp=0.;nkc=0.;
-          for(nki=0;nki<neq[1];nki++){
-            nknorm+=b[nki]*b[nki];
-            nktmp+=damage_nk_p0[nki]*damage_nk_p0[nki];
-            nkc+=b[nki]*damage_nk_p0[nki];
-          }
-          nknorm=sqrt(nknorm);nktmp=sqrt(nktmp);
-          printf("[DAMAGE NK] inc=%" ITGFORMAT " iter=%" ITGFORMAT
-                 " krylov=%" ITGFORMAT "/%" ITGFORMAT " %s"
-                 " |r0|=%.6e inner residual=%.6e (%.4f of |r0|)"
-                 "  |z|/|p_N|=%.4f  cos(z,p_N)=%+.4f  evaluations=%"
-                 ITGFORMAT "%s",
-                 iinc,iit,nkj,nkm,damage_nkg.conv?"converged":"budget",
-                 damage_nkg.beta,nkgmres_residual(&damage_nkg),
-                 (damage_nkg.beta>0.)?
-                   nkgmres_residual(&damage_nkg)/damage_nkg.beta:0.,
-                 (nktmp>0.)?nknorm/nktmp:0.,
-                 ((nknorm>0.)&&(nktmp>0.))?nkc/(nknorm*nktmp):0.,
-                 damage_nk_neval,"\n");
-          fflush(stdout);
-        }
       }
 
       /* calculating the displacements, stresses and forces */
