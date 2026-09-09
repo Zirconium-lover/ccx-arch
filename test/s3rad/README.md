@@ -693,6 +693,7 @@ source, not carried over from an earlier build.
 | mixed-mode, stock | stops early | `rc=201`, 62 attempts |
 | mixed-mode, crack control | `check_mixed.py` passes | **PASSED, 0 failures**: 4999 accepted, 2400 post-peak, reaction on the closed form to 4.975e-07, displacement to 4.374e-07, `\|g\|=2.2e-18` |
 | feature-off equivalence | the delivered tree reproduces the baseline | **336 attempts / 204 increments bit-identical** to the unmodified-HEAD `.sta` |
+| feature-off, delivered fix | `CCX_DAMAGE_AUTOSPC_FORCE` unset reproduces stock | **bit-identical over all 1147 pre-wall attempts**; first divergence is attempt 1148, the wall itself |
 | old-wall line search A/B | `CCX_DAMAGE_LS_LEGACY=1` stops at the OLD wall | **stops at the old wall exactly**: last committed increment **347**, `theta=0.2121773704067`, `rc=201`, 2756 s, **2416 elements in 234 batches** - every recorded figure |
 
 The Mode-I and mixed-mode numbers reproduce the recorded table to every digit

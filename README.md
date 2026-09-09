@@ -46,7 +46,31 @@ explanations - orphan degrees of freedom, a detached component, and
 amplification of the near-null space - were each refuted by measurement
 first.  See `test/s3rad/README.md`.
 
-**The second wall has now been measured at the second wall.**  It is
+**The second wall is passed.**  `CCX_DAMAGE_AUTOSPC_FORCE=1`, one flag, with
+the deck, `DEADALL=1.e-2`, viscosity, tangent, AUTOSPC threshold, convergence
+criteria and PARDISO all unchanged, takes the run from increment 554 at
+`theta=0.2555742` to increment 598 at `theta=0.2606` and still going, with
+**15 new deletion batches** where stock had committed none for the last four
+increments of its life.  The run reproduces the stock `.sta` attempt for
+attempt over all 1147 pre-wall attempts and diverges for the first time at
+the wall itself.
+
+What the wall was: the peak force residual sat on **node 1246, a fragment
+held by ONE live bulk element with all six of its cohesive facets failed and
+open**.  Equilibrating it needs a displacement of order one against a grip
+that has moved 0.2556, so its residual fell 0.1% per Newton iteration and was
+irreducible in practice.  That component was inherited by every following
+increment and accumulated - 15.7, 50.4, 74.9, 94.5, then 105.7% of the
+convergence tolerance over increments 551 to 555 - **while `dtheta` collapsed
+48x**.  Cutting the step 48x made the converged equilibrium 6x worse, because
+the part that will not reduce is not proportional to the step.  It was also a
+deadlock: the increment that could not converge was the one in which that
+fragment's last element would damage and delete.  AUTOSPC already identified
+such nodes and already removed them from the DISPLACEMENT norm; the fix
+extends that one judgement to the force residual and nothing else.  Full
+evidence, including the two honest qualifications, in `test/s3rad/README.md`.
+
+**How the second wall was measured, before it was passed.**  It is
 reproduced exactly - increment 554, `theta=0.255574`, 6780 live bulk
 elements, 415 batches, 3734 elements deleted, 566 line-search activations -
 and there the tangent is CONSISTENT: the linear-model defect falls like
