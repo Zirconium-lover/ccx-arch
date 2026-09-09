@@ -31,11 +31,28 @@ On `s3rad` the front was measured, not assumed: 63% of the process-zone
 integration points carry more than half of `deff^2` in shear and 39%
 carry more than 90%, so normal opening is not the coordinate there.
 
+**The `s3rad` wall itself turned out not to be a continuation problem at
+all.**  It is the adaptive damage line search: its backtracking ladder is
+`{1.0, 0.5, 0.1}`, in 46.5% of its activations the best step lies below
+that floor, and when nothing contracts it takes the last rung anyway - at
+the wall that rung raises the residual for five iterations running while a
+step of 0.03 lowers it every time.  With the ladder deepened and the best
+rung taken, the same binary on the same deck with `DEADALL=1.e-2`
+unchanged goes from `theta=0.212177` to `theta=0.255574`, deleting 3734
+elements in 415 batches against 2416 in 234.  Three topological
+explanations - orphan degrees of freedom, a detached component, and
+amplification of the near-null space - were each refuted by measurement
+first.  See `test/s3rad/README.md`.
+
 ## Repository map
 
 - `src/` — CalculiX 2.23 sources and the experimental path-following code.
 - `src/pathfollow.c` — the bordered algebra and its self test.
 - `src/crackcontrol.c` — the mixed-mode control coordinate and its self test.
+- `src/lsladder.c` — the backtracking ladder of the damage line search,
+  extracted with a regression test that pins the defect it used to have.
+- `src/topodiag.c` — connectivity, orphan-dof, rank and residual-projection
+  measurements; diagnostic only, nothing on a solution path.
 - `src/Makefile.ubuntu2404` — reproducible open build using SPOOLES.
 - `src/Makefile.ubuntu2404.mkl`, `src/build_mkl.sh` — reproducible
   PARDISO/MKL build, out of tree so its objects can never be mixed with
