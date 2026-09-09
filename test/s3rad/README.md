@@ -1342,24 +1342,40 @@ Increment 931, final attempt, is not a new phenomenon:
  estimated number of iterations till convergence = 1255
 ```
 
-**0.1% per iteration and `iest=1255`** is the exact signature of the second
-wall at node 1246.  The difference is that node 3053 is NOT in the AUTOSPC
-set - the exclusion at that iteration reports a largest excluded residual of
-`1.2e-14` at node 1363, machine zero, so the switch is inert here - and
-`ram[0]=6.387e-03` stands at 3.85x the tolerance `0.005*qam=1.660e-03`.
+**0.1% per iteration and `iest=1255`** is the same signature as the second
+wall at node 1246, and `ram[0]=6.387e-03` stands at 3.85x the tolerance
+`0.005*qam=1.660e-03`.  The exclusion is inert there - largest excluded
+residual `1.2e-14` at node 1363 - so node 3053 is not in the AUTOSPC set.
 
-So the fragment mechanism recurs at a node whose assembled diagonal has NOT
-fallen below `1e-3` of its own intact value.  That is the boundary of the
-present gate, and it is the thing to attack next.
+**It is NOT the fragment mechanism, and the signature alone was not enough to
+say so.**  Counting node neighbourhoods offline from the mesh in the deck and
+the committed deletion list:
 
-**Do not simply lower the threshold.**  `[DAMAGE STIFFNESS]` counts 76 nodes
-below `1e-3`, 166 below `1e-2` and 381 below `1e-1`; picking a number until
-node 3053 is caught is the chain of thresholds this project exists to avoid.
-The gate should be physical and binary - a node with at most one live bulk
-element whose cohesive facets have all failed is a fragment regardless of
-what its diagonal happens to be - and the first measurement is simply node
-3053's own live-element count and facet state, which `CCX_DAMAGE_WALL_THETA`
-already prints.
+| node | live bulk | deleted bulk | live facets |
+|---|---|---|---|
+| **3053** (third wall) | **4** | 20 | **0** |
+| 1246 (second wall) | 0 | 6 | 5 |
+| 1244 | 0 | 8 | 4 |
+| 1177 | 1 | 7 | 4 |
+
+Node 3053 has **four live bulk elements and no cohesive facets at all**.  It
+is an interior matrix node at the crack front that has lost 20 of its 24
+elements - not a piece hanging by one tetrahedron.  A gate of the form "at
+most one live bulk element with all facets failed" would not catch it, and
+proposing one from the residual signature alone was wrong.
+
+What the two walls share is that the peak sits where the SUPPORT has
+collapsed; what they do not share is the topology of that collapse.  So the
+gate should be neither a stiffness ratio (arbitrary: 76 nodes below `1e-3`,
+166 below `1e-2`, 381 below `1e-1` - picking a number until node 3053 is
+caught is the chain of thresholds this project exists to avoid) nor an
+element count (refuted above).  The dimensionally sound criterion is
+**whether the node can be equilibrated by a physically meaningful
+displacement at all**: compare `need_du = |R|/k`, which the `Rpeak` probe
+already prints, against a length scale such as the local element size or the
+current grip displacement.  A node needing a displacement of order one on a
+specimen whose grip has moved 0.5575 cannot be equilibrated, whatever its
+element count and whatever fraction of its intact diagonal survives.
 
 An intermediate region at `theta ~ 0.5575` is genuinely different and worth
 separating from this: there the peak sat on node 1177 and contracted 2% per
