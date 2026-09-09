@@ -1253,6 +1253,61 @@ element 32313 at `D=0.99908` - and four more batches follow by increment 582.
 `dtime` recovers from 1.95e-06 to 1.47e-04.  The specimen is fracturing
 again rather than being held at a numerically frozen front.
 
+## Loss of load-carrying capacity, measured
+
+The grip reaction, from the deck's own `*Node Print, Nset=FACE_XL_NSET,
+Totals=Yes` (the per-node block is not the load - the `total force` line is):
+
+| `theta` | total `Fx` | share |
+|---|---|---|
+| 0.195500 | 2676.81 | 100% |
+| 0.217098 | 1038.78 | 38.8% |
+| 0.260859 | 27.3197 | 1.02% |
+| 0.406363 | **1.51158** | **0.056%** |
+
+**The specimen has lost its load-carrying capacity by a factor of 1770.**
+Past `theta=0.26` it transmits essentially nothing, and everything else
+measured agrees: damage growth stops (`D>0.5` fixed at 1183, `D>0.9` at 105),
+the crack speed falls from a peak of 190,600 bulk elements per unit `theta`
+to about 2,000, and `dtime` sits at the deck maximum because there is nothing
+left to break.  The residual 1.51 is the cohesive residual-stiffness floor
+(`gmin=1e-5` in the deck) plus ligaments, not a load path.
+
+### What was destroyed
+
+3781 elements terminally deleted:
+
+| phase | deleted | in model | share |
+|---|---|---|---|
+| ZR (matrix) | 3006 | 27939 | 10.8% |
+| ZRH (hydride) | 691 | 9468 | 7.3% |
+| COHESIVE facet | 84 | 5400 | 1.6% |
+| bulk total | 3697 | 37407 | 9.9% |
+
+Bulk elements destroyed per unit of grip displacement, which is the crack
+speed:
+
+| increments | `theta` | bulk deleted | per unit `theta` |
+|---|---|---|---|
+| 150-199 | 0.1955 | 595 | 121,400 |
+| 200-249 | 0.1988 | 633 | **190,600 (peak)** |
+| 350-399 | 0.2171 | 625 | 100,900 |
+| 450-499 | 0.2381 | 285 | 20,700 |
+| 500-549 | 0.2551 | 126 | 7,500 |
+| 600-649 | 0.2725 | 23 | 2,000 |
+
+Two physically meaningful facts fall out of the material breakdown.
+
+**The hydride is spent before the wall.**  All 691 ZRH deletions happen at or
+below increment 449 (`theta ~ 0.224`) and **not one after**.  The brittle
+hydride plate cracks first and the crack then runs in the ductile Zr matrix -
+which is the expected picture for hydride embrittlement, and it is a
+measurement here rather than an assumption.
+
+**47 elements are destroyed beyond the stock wall** - 45 ZR and 2 cohesive
+facets - and they exist only because the wall was passed: stock stopped at
+3734.
+
 ## The open question that is still open
 
 Independently of the wall, `damageq` - the forward-difference `dD/d(eps)` in
