@@ -677,6 +677,35 @@ at increment 93 - it costs the calculation iterations and cutbacks all the
 way up - but by the time the run reaches `theta=0.2556` the viscosity has
 damped it away and something else stops the run.
 
+## Regressions on the delivered head
+
+Every one of these was re-run on a PARDISO binary built from the delivered
+source, not carried over from an earlier build.
+
+| regression | required behaviour | measured |
+|---|---|---|
+| `pathfollow_selftest` | passes | PASSED, 0 failures |
+| `crackcontrol_selftest` | passes | PASSED, 0 failures |
+| `topodiag_selftest` | passes | PASSED, 0 failures |
+| `lsladder_selftest` | passes | PASSED, 0 failures |
+| Mode-I, stock control | stops at the limit point | `rc=201`, 55 attempts |
+| Mode-I, COD control | follows the post-peak branch | `rc=0`, 1000 increments, peak `lambda=0.80561271`, descends to `0.70525904` |
+| mixed-mode, stock | stops early | `rc=201`, 62 attempts |
+| mixed-mode, crack control | `check_mixed.py` passes | **PASSED, 0 failures**: 4999 accepted, 2400 post-peak, reaction on the closed form to 4.975e-07, displacement to 4.374e-07, `\|g\|=2.2e-18` |
+| feature-off equivalence | the delivered tree reproduces the baseline | **336 attempts / 204 increments bit-identical** to the unmodified-HEAD `.sta` |
+| old-wall line search A/B | `CCX_DAMAGE_LS_LEGACY=1` stops at the OLD wall | **stops at the old wall exactly**: last committed increment **347**, `theta=0.2121773704067`, `rc=201`, 2756 s, **2416 elements in 234 batches** - every recorded figure |
+
+The Mode-I and mixed-mode numbers reproduce the recorded table to every digit
+it records, which is the point of quoting them here rather than a pass/fail.
+
+The last row is the one that matters most, because it is the regression the
+whole branch rests on.  With `CCX_DAMAGE_LS_LEGACY=1` the delivered binary
+reproduces the OLD wall to seven digits and to the exact deletion count;
+with the fixed ladder the same binary on the same deck with `DEADALL=1.e-2`
+unchanged reaches `theta=0.255574` with 3734 elements in 415 batches.  The
+line-search fix is therefore still doing exactly what it was measured to do,
+and nothing in this session's work disturbed it.
+
 ## The corrector was tried and is REFUTED
 
 It is written down here, with its numbers, so the next session does not
