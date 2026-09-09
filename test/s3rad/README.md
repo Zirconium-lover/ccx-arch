@@ -1398,6 +1398,24 @@ mesh and the committed deletion list:
 **The metal is severed.**  The two halves are joined by 430 cohesive facets
 and by nothing else.
 
+### When it severed, and why stock could never have seen it
+
+Replaying the committed deletion history increment by increment and testing
+bulk-only connectivity at each step (binary search, offline):
+
+| | |
+|---|---|
+| last increment still connected through solid material | **752** |
+| first increment NOT connected | **753** |
+| grip displacement `theta` there | **0.3411981** |
+| stock run died at | increment 554, `theta=0.2555742` |
+
+**The metal severs at `theta=0.3412`, which is beyond the stock wall.**  The
+stock run stopped 0.086 of grip displacement short of it and could never have
+reached severance, whatever it was given.  Passing the second wall is what
+made the specimen's separation reachable at all - it is not merely a longer
+run.
+
 They cannot let go, and it is not the solver:
 
 * `cohesive_uc6.f:189` - `g = max(gmin, 1.d0-dvisc)`.  The degradation factor

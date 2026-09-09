@@ -46,6 +46,16 @@ explanations - orphan degrees of freedom, a detached component, and
 amplification of the near-null space - were each refuted by measurement
 first.  See `test/s3rad/README.md`.
 
+**The metal severs at `theta=0.3412`, and only past the second wall.**
+Replaying the committed deletion history against bulk-only connectivity puts
+the last increment with a solid-material path between the grips at 752 and
+the first without one at 753.  Stock died at increment 554, `theta=0.2555742`
+- 0.086 of grip displacement short - so it could never have reached severance
+whatever it was given.  What still joins the halves afterwards is 430
+cohesive facets, and they cannot let go because `cohesive_uc6.f` pins
+`g = max(gmin, 1-D)` at `gmin=1.e-5` while terminal deletion scans `C3D4`
+only; `CCX_FRACTURE_DEADFACET=1` is the switch that lets the run say so.
+
 **The second wall is passed.**  `CCX_DAMAGE_AUTOSPC_FORCE=1`, one flag, with
 the deck, `DEADALL=1.e-2`, viscosity, tangent, AUTOSPC threshold, convergence
 criteria and PARDISO all unchanged, takes the run from increment 554 at
