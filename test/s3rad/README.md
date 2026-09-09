@@ -443,3 +443,210 @@ another fix on this measurement would be guesswork.
 **The specimen is not separated.**  `theta` reaches 0.2556 of the 1.0 the
 step asks for.  The recorded wall is passed and the calculation is not
 finished.
+
+---
+
+# The second wall: root cause and fix
+
+The first fix passed the recorded wall and stopped at a new one, and the
+symptom there was not the ladder: it found a contracting trial at every
+iteration, at step lengths of 0.0035 to 0.0067, and the residual contracted
+by 0.2% per iteration anyway.  This section is what that turned out to be.
+
+## The hypothesis, and the measurement that rejected it
+
+Stated before any code was changed:
+
+> **H1 (non-smooth active set).**  The assembled tangent is a correct
+> one-sided directional derivative, but the residual is non-smooth at the
+> iterate: a large share of the live UC6 process-zone points sits on the
+> loading/unloading kink `deff == dmax0`, many cross it inside the step, and
+> the radius of validity of the linear model is set by the first crossing
+> rather than by curvature.
+
+and the one measurement that can reject it: from one restored state, walk
+`eps` down a ladder along the Newton direction and record BOTH
+
+* the linear-model defect `|R(u+eps p) - (R(u) - eps J p)| / (eps |J p|)`, and
+* the number of integration points whose branch differs from the reference.
+
+H1 is rejected if the defect ratio stays constant over an `eps` range in
+which the branch count does not move.
+
+`CCX_DAMAGE_TR_LINCHECK` already walked seven rungs to `eps=1/64`.  It now
+walks fifteen, to `eps=6.1e-05` - six of them below the step the search
+actually takes - and each rung also reports both norms and a per-category
+active-set census.  `CCX_DAMAGE_WALL_THETA` arms it by LOAD FACTOR instead
+of by increment number, because the wall is reproducible in theta and not in
+the increment index: the same binary on the same deck lands on the recorded
+wall at increment 348 with two threads and 353 with four.
+
+## What the ladder says
+
+Increment 92, iteration 1, `theta=0.1795`, PARDISO, one thread, stock rescue,
+crack control not engaged:
+
+| eps | `\|R\|2/\|r0\|2` | `\|R\|inf/\|r0\|inf` | defect ratio | branch transitions |
+|---|---|---|---|---|
+| 1.00e+00 | 0.391687 | 0.450642 | **0.3917** | 0 (reference) |
+| 2.50e-01 | 0.821974 | 0.837674 | **0.3649** | 196 |
+| 3.12e-02 | 0.977331 | 0.979566 | **0.3592** | 255 |
+| 1.95e-03 | 0.998581 | 0.998722 | **0.3591** | 264 |
+| 1.22e-04 | 0.999911 | 0.999920 | **0.3590** | 264 |
+| 6.10e-05 | 0.999956 | 0.999960 | **0.3590** | 264 |
+
+Increment 93, iteration 12, where the iteration has settled onto its
+asymptotic rate:
+
+| eps | `\|R\|2/\|r0\|2` | defect ratio | branch transitions |
+|---|---|---|---|
+| 1.00e+00 | 0.873724 | **0.87372** | 0 (reference) |
+| 2.50e-01 | 0.967659 | **0.87076** | 9 |
+| 3.12e-02 | 0.995930 | **0.86990** | 9 |
+| 1.95e-03 | 0.999745 | **0.86978** | 9 |
+
+**The defect ratio is constant over three to five decades.**  For a
+consistent tangent it must fall like `O(eps)`.  A constant ratio is a
+FIRST-ORDER error: the assembled `J` is not `dR/du`.
+
+**H1 is rejected by its own test.**  The census counts nine integration
+points that differ in branch between `u` and `u+p` at increment 93 - four
+UC6 loading/unloading and five bulk plastic - and none of them crosses below
+`eps=0.25`, while the defect ratio is already flat there and stays flat four
+decades further down.  No active set moves inside the window in which the
+defect is measured.
+
+Three other explanations were measured and rejected at the same time:
+
+* **the merit function.**  `|R|2` and `|R|inf` fall by the same factor to
+  three digits (0.873724 against 0.872733), so the search is not rejecting a
+  direction that is improving a norm it does not watch.
+* **the solve.**  The transpose identity `dot(J^T R, p_N)/|R|^2` is
+  `1.000000000000` and the operator asymmetry is `1.06e-03`, so `J p_N = r0`
+  holds to machine precision and the direction is the assembled tangent's
+  own answer.
+* **the topology.**  Three deflated inverse iterations give `1/sigma_min >=
+  3.30` here - the operator is not nearly singular at all - and the largest
+  components of the defect sit on nodes with 32 to 36 live bulk elements and
+  **no cohesive facet whatsoever**.
+
+## The consequence, measured iteration by iteration
+
+The linear convergence rate of the whole Newton iteration IS that ratio.
+Increment 93, one thread, no line-search activation on any of these
+iterations, so the full step was taken every time:
+
+| iteration | `\|R\|2` | `\|R_k\|/\|R_k-1\|` | defect ratio at k-1 |
+|---|---|---|---|
+| 1 | 2.153560e-01 | - | 0.347210 |
+| 2 | 7.477380e-02 | **0.347210** | 0.656329 |
+| 3 | 4.907619e-02 | **0.656329** | 0.754053 |
+| 4 | 3.700607e-02 | **0.754053** | 0.793277 |
+| 5 | 2.935607e-02 | **0.793277** | 0.814850 |
+| 6 | 2.392079e-02 | **0.814850** | 0.829745 |
+| 7 | 1.984815e-02 | **0.829745** | 0.841508 |
+| 8 | 1.670237e-02 | **0.841508** | 0.851520 |
+| 9 | 1.422240e-02 | **0.851520** | 0.860104 |
+| 10 | 1.223274e-02 | **0.860104** | 0.867641 |
+| 11 | 1.061364e-02 | **0.867642** | 0.873022 |
+| 12 | 9.265939e-03 | **0.873022** | 0.873724 |
+
+Six decimals, every iteration.  This is not a correlation, it is the
+identity `R_{k+1} = (J - dR/du) p_k` with `J p_k = r0` - and it closes the
+chain from the operator to the wall:
+
+* the rate is a property of the OPERATOR, not of the step, so no step length
+  along that direction can repair it and no ladder depth can either;
+* it does not shrink when `dtheta` shrinks, which is why every cutback fails
+  and `dtheta` walks down to `tmin`;
+* it grows as the crack grows - 0.36 at increment 92, 0.87 at increment 93,
+  and at the second wall the increment needs more iterations than `ic`
+  allows, `checkconvergence` reports "too slow convergence", and the run
+  stops for "increment size smaller than minimum".
+
+The whole calculation has been running on this: over the arm without the fix
+the line search accepted a median step of 0.012 of the Newton step and sat
+on its floor in 40% of its activations.
+
+## Which term is missing
+
+Not the one that was suspected.  The bulk damage-consistent rank-1 term
+`- sigma_eff (x) dDvis/d(eps)` was assembled into a zeroed operator on its
+own and applied to `p_N` at the same iterate:
+
+| quantity | value |
+|---|---|
+| elements carrying the term | 6850 |
+| `\|E p_N\|` | 4.66e-03 |
+| `\|J p_N\| = \|r0\|` | 1.71 |
+| `\|defect\|/eps` | 0.614 |
+| `\|defect\| / (eps \|E p_N\|)` | **132 to 1126** |
+| `cos(defect, E p_N)` | **-0.29 to -0.19** |
+
+If the rank-1 term were the right shape and the wrong size, the defect would
+be exactly anti-parallel to it and the ratio would be the missing factor.
+It is neither: the whole assembled term is two to three orders of magnitude
+too small to be the missing derivative, and it is only weakly aligned with
+it.  **Rescaling that term cannot supply what is missing**, so
+`CCX_DAMAGE_UNSYM_SCALE` was not touched.
+
+What IS known about the missing term: it is first order, it survives every
+`eps` down to `6.1e-05`, it carries 99.999% of its norm on nodes attached to
+softening bulk elements, its largest components are on nodes with no
+cohesive facet, and along a direction that is not the Newton one the same
+defect ratio is 0.008 to 0.05 rather than 0.36 to 0.87.  The error operator
+is therefore concentrated in a few soft directions rather than spread over
+the mesh - which is exactly the spectrum a preconditioned Krylov method
+clears in a handful of iterations, and that is what the fix uses.
+
+Naming the missing derivative exactly was NOT achieved.  That is the honest
+state: the cause is established and localised, the term itself is not named.
+
+## The fix
+
+`src/nkgmres.c` and one block in the Newton loop.  The corrector stops
+asking the assembled tangent for the Jacobian and asks it only to
+precondition, taking the Jacobian action from the residual - the one
+quantity in the calculation that is not in doubt:
+
+    solve  A z = r0   by GMRES right-preconditioned with J,
+    matvec  A d = ( r0 - b(u + sigma d) ) / sigma
+
+`calcresidual` fills `fext - f`, so `b(u + s d) = r0 - s A d` to first order
+and the matvec is exact in the sense that matters.  One matvec is one
+residual evaluation plus one back-substitution against the LU PARDISO has
+already computed and cached; it costs **no factorisation**.  `sigma` puts
+the probe on the same displacement scale as the step the solver would have
+taken, which is inside the range over which the response was measured
+linear.
+
+Nothing physical is touched: not a material constant, not the deck, not the
+deletion rule, not the viscosity, not the tangent mode, not AUTOSPC, and not
+what `checkconvergence` requires of an increment.  The corrector chooses a
+direction, exactly as the line search chooses a length.
+
+`nkgmres.c` is a unit with its own regression test, run at arm time, and the
+corrector REFUSES TO ARM if it fails - the same discipline as `lsladder.c`:
+
+```
+[NKGMRES] self test
+   A exact preconditioner             iterations=1 |r0-Ax|/|r0|=1.373e-16  ok
+   B rank-1 preconditioner error      iterations=2 |r0-Ax|/|r0|=5.419e-16  ok
+   C rank-2 preconditioner error      iterations=3 |r0-Ax|/|r0|=1.925e-15  ok
+   D residual estimate is exact       reported=2.787995e+00 measured=2.787995e+00  ok
+   E more iterations never hurt       m=1 gives 7.9836e-01, m=3 gives 1.9246e-15  ok
+   F eta is honoured                  iterations=3 residual/|r0|<=0.5  ok
+[NKGMRES] self test PASSED (0 failure(s))
+```
+
+Test A is the one that matters for feature-off behaviour: where the
+preconditioner IS the operator the method takes one iteration and returns
+the plain step exactly.  The target run shows the same thing - through the
+elastic and early damage phase every Newton iteration reports
+`krylov=1/6 ... |z|/|p_N|=1.0000 cos(z,p_N)=+1.0000`, one extra residual
+evaluation and no change of direction.  Tests B and C are the property the
+measurement predicted the model needs: a rank-r preconditioner error is
+cleared in r+1 iterations.
+
+`CCX_DAMAGE_NK=0` restores the plain assembled step exactly and is the arm
+of the A/B without the fix.

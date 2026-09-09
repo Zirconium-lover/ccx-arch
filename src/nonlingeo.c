@@ -210,6 +210,7 @@ ITG ccx_rescue_active=0,ccx_rescue_arm=0,ccx_rescue_req=0;
 #define DAMCAT_USOFT   8   /* UC6 : dmax > 0, law has left the elastic branch */
 #define DAMCAT_UVISC  16   /* UC6 : viscous damage active                     */
 #define DAMCAT_UFAIL  32   /* UC6 : fully failed flag set                     */
+#define DAMCAT_UADV   64   /* UC6 : dmax ADVANCED this trial, i.e. deff>dmax0  */
 #define DAMCAT_UCOMP 128   /* UC6 : traction(1)<0, the compression branch     */
 
 /* ==================================================================
@@ -661,6 +662,14 @@ static ITG damage_ray_catof(const double *xstate,const double *xstateini,
     if(nstate>0){ if(xstate[ix]>1.e-14)   c|=DAMCAT_USOFT; }
     if(nstate>1){ if(xstate[ix+1]>1.e-14) c|=DAMCAT_UVISC; }
     if(nstate>3){ if(xstate[ix+3]>0.5)    c|=DAMCAT_UFAIL; }
+    /* LOADING/UNLOADING.  cohesive_uc6.f stores dmax=max(dmax0,deff) in slot
+       1 and takes the softening tangent only while deff>=dmax0, so
+       xstate>xstateini in that slot IS "this point advanced its maximum on
+       this trial" - the one active-set indicator of the cohesive law that
+       the census did not carry.  A point sitting exactly on the kink has
+       xstate==xstateini and is counted as NOT advancing, which is what makes
+       a branch crossing along a search direction visible as a transition. */
+    if(nstate>0){ if(xstate[ix]>xstateini[ix]) c|=DAMCAT_UADV; }
     /* tension/compression: resultsmech_uc6.f:55 stores traction(1), and both
        branches multiply deltal(1) by a positive factor (kn or g*kn), so the
        sign of the stored traction IS the sign of the normal opening.  This
@@ -789,6 +798,183 @@ static ITG damage_ray_census_diff(const ITG *cat,const double *xstate,
           *firste=i+1;*firstip=j+1;*firsta=cat[mi0*i+j];*firstb=c;
         }
       }
+    }
+  }
+  return n;
+}
+
+/* [WALLDIAG] The same census difference, but resolved per category bit and
+   split between the two element families, because "the active set moved" and
+   "8000 cohesive points crossed their loading/unloading kink" are different
+   findings and the aggregate count cannot tell them apart.
+
+   nb[k] counts the integration points whose bit k differs from the reference
+   census cat.  Bits are the DAMCAT_ masks; the caller names them. */
+
+/* [WALLDIAG] WHERE the residual and the Newton correction live.
+
+   A norm says how big they are and nothing about what they touch, and the
+   two competing explanations of the second wall differ precisely in what
+   they touch: a globalisation defect spreads the correction over the mesh,
+   a branch-switching one concentrates it on the fracture front.  So the
+   probe reports the largest entries by NODE, and for each such node the
+   local state of the front - how much of its support is left, how soft its
+   cohesive facets are and how many of them are carrying compression.
+
+   nactdof is the post-SPC numbering (1-based, mt-strided) that b, ad and au
+   share, so inverting it is what turns an equation index back into a node
+   and a direction.  It is inverted here rather than assumed. */
+
+static void damage_wall_where(const char *tag,const double *x,ITG neq1,
+                              const ITG *nactdof,ITG mt,ITG nk,ITG ntop,
+                              const ITG *ipkon,const ITG *kon,
+                              const char *lakon,const double *xstate,
+                              const double *stx,const double *dam,
+                              ITG ne,ITG ne0,ITG mi0,ITG nstate)
+{
+  ITG *inode=NULL,*idir=NULL,i,j,k,t,ip,np,nb,nu,ncomp,ibest,idx;
+  double gmn,gmx,dv,a;
+
+  if((ntop<1)||(neq1<1)) return;
+  NNEW(inode,ITG,neq1);
+  NNEW(idir,ITG,neq1);
+  for(i=0;i<neq1;i++){inode[i]=-1;idir[i]=0;}
+  for(i=0;i<nk;i++){
+    for(j=1;j<mt;j++){
+      k=nactdof[mt*i+j];
+      if((k>0)&&(k<=neq1)){inode[k-1]=i;idir[k-1]=j;}
+    }
+  }
+
+  for(t=0;t<ntop;t++){
+    ibest=-1;a=-1.;
+    for(i=0;i<neq1;i++){
+      if(inode[i]<0) continue;          /* already reported, or unmapped */
+      if(fabs(x[i])>a){a=fabs(x[i]);ibest=i;}
+    }
+    if(ibest<0) break;
+    i=inode[ibest];
+    nb=0;nu=0;ncomp=0;gmn=2.;gmx=-1.;
+    for(j=0;j<ne;j++){
+      if(ipkon[j]<0) continue;
+      if(lakon[8*j]=='U') np=6; else if(lakon[8*j]=='C') np=4; else continue;
+      ip=0;
+      for(k=0;k<np;k++) if(kon[ipkon[j]+k]-1==i) ip=1;
+      if(ip==0) continue;
+      if(lakon[8*j]=='C'){nb++;continue;}
+      nu++;
+      if(j>=ne0) continue;
+      for(k=0;k<3;k++){
+        idx=mi0*j+k;
+        if(nstate>1){
+          dv=1.-xstate[nstate*idx+1];
+          if(dv<gmn) gmn=dv;
+          if(dv>gmx) gmx=dv;
+        }
+        if(stx[6*idx]<0.) ncomp++;
+      }
+    }
+    printf("[WALLDIAG]   %s #%" ITGFORMAT ": node %" ITGFORMAT " dir %"
+           ITGFORMAT " value %.6e   live bulk %" ITGFORMAT " live UC6 %"
+           ITGFORMAT " facet g in [%.3e,%.3e] UC6 ips in compression %"
+           ITGFORMAT "%s",tag,t+1,i+1,idir[ibest],x[ibest],nb,nu,
+           (gmn<=1.)?gmn:0.,(gmx>=0.)?gmx:0.,ncomp,"\n");
+    inode[ibest]=-1;                       /* do not report it twice */
+  }
+  SFREE(inode);SFREE(idir);
+}
+
+/* [WALLDIAG] WHERE a vector lives, split by what its node touches.
+
+   The linear-model defect at small eps IS eps*(J - dR/du)p, so localising it
+   localises the missing term: a defect that sits on nodes with cohesive
+   facets accuses the interface tangent, one that sits on nodes whose
+   elements are softening accuses the damage rank-1 term, and one spread over
+   ordinary plastic bulk accuses the return map.  Shares of |x|_2^2, so they
+   add to 1. */
+
+static void damage_wall_split(const char *tag,const double *x,ITG neq1,
+                              const ITG *nactdof,ITG mt,ITG nk,
+                              const ITG *ipkon,const ITG *kon,
+                              const char *lakon,const double *dam,
+                              const double *xstate,ITG ne,ITG ne0,ITG mi0,
+                              ITG nstate)
+{
+  ITG *touch=NULL,i,j,k,np,idx,nu=0,ns=0,np2=0;
+  double tot=0.,su=0.,ss=0.,sp=0.,v;
+
+  NNEW(touch,ITG,nk);
+  for(i=0;i<nk;i++) touch[i]=0;
+  for(i=0;i<ne;i++){
+    if(ipkon[i]<0) continue;
+    if(lakon[8*i]=='U') np=6;
+    else if(lakon[8*i]=='C') np=4;
+    else continue;
+    if(lakon[8*i]=='U'){
+      for(k=0;k<np;k++){
+        j=kon[ipkon[i]+k]-1;
+        if((j>=0)&&(j<nk)) touch[j]|=1;            /* bit0: a live facet   */
+      }
+    }else{
+      idx=mi0*i;
+      if((i<ne0)&&(dam[idx]>1.+1.e-12)){
+        for(k=0;k<np;k++){
+          j=kon[ipkon[i]+k]-1;
+          if((j>=0)&&(j<nk)) touch[j]|=2;          /* bit1: softening bulk */
+        }
+      }
+      if((i<ne0)&&(nstate>0)&&(xstate[nstate*idx]>1.e-14)){
+        for(k=0;k<np;k++){
+          j=kon[ipkon[i]+k]-1;
+          if((j>=0)&&(j<nk)) touch[j]|=4;          /* bit2: plastified     */
+        }
+      }
+    }
+  }
+  for(i=0;i<nk;i++){
+    if(touch[i]&1) nu++;
+    if(touch[i]&2) ns++;
+    if(touch[i]&4) np2++;
+    for(j=1;j<mt;j++){
+      k=nactdof[mt*i+j];
+      if((k<=0)||(k>neq1)) continue;
+      v=x[k-1]*x[k-1];
+      tot+=v;
+      if(touch[i]&1) su+=v;
+      if(touch[i]&2) ss+=v;
+      if(touch[i]&4) sp+=v;
+    }
+  }
+  if(tot<=0.) tot=1.;
+  printf("[WALLDIAG]   %s lives on: nodes with a live UC6 facet %.6f (%"
+         ITGFORMAT " nodes), nodes on softening bulk %.6f (%" ITGFORMAT
+         "), nodes on plastified bulk %.6f (%" ITGFORMAT
+         "); |x|2=%.6e%s",tag,su/tot,nu,ss/tot,ns,sp/tot,np2,sqrt(tot),"\n");
+  SFREE(touch);
+}
+
+static ITG damage_wall_setdiff(const ITG *cat,const double *xstate,
+                               const double *xstateini,const double *dam,
+                               const double *dambase,const double *visc,
+                               const double *stx,
+                               const ITG *ipkon,const char *lakon,
+                               ITG ne0,ITG mi0,ITG nstate,ITG *nb)
+{
+  ITG i,j,nip,c,d,k,n=0;
+
+  for(k=0;k<8;k++) nb[k]=0;
+  for(i=0;i<ne0;i++){
+    if(ipkon[i]<0) continue;
+    nip=damage_history_nip(&lakon[8*i],mi0);
+    if(nip<1) nip=1;
+    if(nip>mi0) nip=mi0;
+    for(j=0;j<nip;j++){
+      c=damage_ray_catof(xstate,xstateini,dam,dambase,visc,stx,
+                         &lakon[8*i],i,j,mi0,nstate);
+      d=c^cat[mi0*i+j];
+      if(d==0) continue;
+      n++;
+      for(k=0;k<8;k++) if(d&(1<<k)) nb[k]++;
     }
   }
   return n;
@@ -1723,6 +1909,10 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_dl_nnewt=0,damage_dl_ncau=0,damage_dl_ndog=0,
     damage_dl_nfail=0,damage_dl_banner=0,damage_dl_incarm=0,
     damage_dl_selfrec=0,damage_dl_lincheck=0,damage_dl_lc_due=0,
+    damage_dl_lc_it=1,damage_dl_lc_nit=1,damage_ls_probe=0,
+    damage_wall_armed=0,*damage_wall_cat=NULL,damage_wall_nb[8],
+    damage_wall_null=0,damage_nk_m=0,damage_nk_mmax=12,damage_nk_have=0,
+    damage_nk_neval=0,damage_nk_used=0,damage_nk_report=1,
     damage_dl_lasthelp=0,damage_dl_recdone=-1,
     damage_aba_mode=0,damage_aba_done=0,damage_bt_nring=0,
     damage_aba_ninc=0,damage_aba_hit=0,damage_aba_inc[4]={0,0,0,0},
@@ -1914,7 +2104,15 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_reeq_uam_ref[2]={0.,0.},damage_reeq_uam_actual[2]={0.,0.},
     damage_reeq_uam_floor=0.,damage_reeq_uam_peak[2]={0.,0.},
     damage_linesearch_oldnorm=0.,damage_linesearch_fullnorm=0.,
-    damage_linesearch_dampednorm=0.,damage_linesearch_maxdd=0.;
+    damage_linesearch_dampednorm=0.,damage_linesearch_maxdd=0.,
+    damage_wall_theta=-1.,*damage_wall_def=NULL,
+    *damage_nk_r0=NULL,*damage_nk_v=NULL,*damage_nk_z=NULL,*damage_nk_w=NULL,
+    *damage_nk_res=NULL,*damage_nk_hh=NULL,*damage_nk_cs=NULL,
+    *damage_nk_sn=NULL,*damage_nk_gg=NULL,*damage_nk_yy=NULL,
+    *damage_nk_dam=NULL,*damage_nk_visc=NULL,*damage_nk_xs=NULL,
+    *damage_nk_p0=NULL,*damage_nk_zc=NULL,damage_nk_qa[4]={0.,0.,0.,0.},
+    damage_nk_cam[5]={0.,0.,0.,0.,0.},damage_nk_uam[2]={0.,0.},
+    damage_nk_eta=0.1;
   double damage_nl_ell=0.;
   ITG damage_nl_mode=0;
   double damage_qam_floor=0.,damage_qam_peak=0.;
@@ -1942,6 +2140,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
   topodiag_report td_rep;
 
   lsladder damage_lsl;
+  nkgmres damage_nkg;
 
   char *pf_env=NULL;
   ITG pf_on=0,pf_engaged=0,pf_pending=0,pf_reason=0,pf_applied=0,
@@ -3198,6 +3397,12 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         if((damage_de13_env=getenv("CCX_DAMAGE_TR_LINCHECK"))!=NULL)
           damage_dl_lincheck=atoi(damage_de13_env);
         if(damage_dl_lincheck<0) damage_dl_lincheck=0;
+        if((damage_de13_env=getenv("CCX_DAMAGE_TR_LINCHECK_IT"))!=NULL)
+          damage_dl_lc_it=atoi(damage_de13_env);
+        if(damage_dl_lc_it<1) damage_dl_lc_it=1;
+        if((damage_de13_env=getenv("CCX_DAMAGE_TR_LINCHECK_NIT"))!=NULL)
+          damage_dl_lc_nit=atoi(damage_de13_env);
+        if(damage_dl_lc_nit<1) damage_dl_lc_nit=1;
         /* the geometry of the step is proved before the first increment, on
            a J whose dogleg is known in closed form.  A failure here is
            arithmetic, so the run must not start. */
@@ -3769,6 +3974,27 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 
   if(getenv("CCX_DAMAGE_BATCH_TRACE")!=NULL) td_trace=1;
   if(getenv("CCX_TOPODIAG")!=NULL) td_from=atoi(getenv("CCX_TOPODIAG"));
+  if(getenv("CCX_DAMAGE_LS_PROBE")!=NULL) damage_ls_probe=1;
+  if(getenv("CCX_DAMAGE_WALL_NULLVEC")!=NULL) damage_wall_null=1;
+
+  /* [WALLDIAG] Arm the increment-numbered probes by LOAD FACTOR instead.
+
+     The wall is reproducible in theta and NOT in the increment index: the
+     same binary on the same deck lands on it at increment 348 with two
+     threads and 353 with four, because MKL_CBWR fixes the instruction set
+     and not the reduction order.  Naming an increment therefore arms the
+     diagnostics at a state that the next run does not have.  theta is the
+     physical coordinate the wall is recorded in, so the gate takes it. */
+
+  if(getenv("CCX_DAMAGE_WALL_THETA")!=NULL){
+    damage_wall_theta=atof(getenv("CCX_DAMAGE_WALL_THETA"));
+    printf("[WALLDIAG] armed at theta >= %.9e: from the first attempt at or "
+           "beyond that load factor the linearisation check, the topology "
+           "diagnostic, the deflated null-vector probe and the line-search "
+           "ladder probe run on the CURRENT increment, whatever its "
+           "number.%s",damage_wall_theta,"\n");
+    fflush(stdout);
+  }
   if((td_trace!=0)||(td_from>0)){
     if(topodiag_selftest()!=0){
       printf("[TOPODIAG] *ERROR: self test failed; diagnostics disabled\n");
@@ -4210,9 +4436,54 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                damage_ls_min,DAMAGE_LINESEARCH_MIN,
                damage_ls_trials,DAMAGE_LINESEARCH_MAX_TRIALS);
       }
+
       }else{
         printf("[DAMAGE SOLVER BK3] disabled; set "
                "CCX_DAMAGE_LINESEARCH=ADAPTIVE for damage globalization\n");
+      }
+      /* ---- CCX_DAMAGE_NK --------------------------------------------
+
+         Krylov iterations allowed per Newton iteration for the corrector
+         above.  0 restores the plain assembled step exactly and is what the
+         A/B arm without the fix uses.  CCX_DAMAGE_NK_ETA sets how far the
+         inner solve has to reduce the linear residual before it stops
+         early: the outer iteration is inexact-Newton, so 0.1 is enough for
+         fast local convergence and buys the budget back. */
+
+      if((damage_de13_env=getenv("CCX_DAMAGE_NK"))!=NULL){
+        damage_nk_m=atoi(damage_de13_env);
+        if(damage_nk_m<0) damage_nk_m=0;
+        if(damage_nk_m>damage_nk_mmax) damage_nk_m=damage_nk_mmax;
+      }
+      if((damage_de13_env=getenv("CCX_DAMAGE_NK_ETA"))!=NULL){
+        damage_nk_eta=atof(damage_de13_env);
+        if(!(damage_nk_eta>0.)) damage_nk_eta=0.1;
+        if(damage_nk_eta>=1.) damage_nk_eta=0.1;
+      }
+      if(getenv("CCX_DAMAGE_NK_QUIET")!=NULL) damage_nk_report=0;
+      /* Prove the inner solve before using it, on every run, the way
+         pathfollow, crackcontrol, topodiag and lsladder do.  A corrector
+         whose Krylov arithmetic is wrong would quietly hand the Newton loop
+         a direction that is neither the assembled step nor the true one. */
+
+      if((damage_nk_m>0)&&(nkgmres_selftest()!=0)){
+        printf("[DAMAGE NK] *ERROR: the inner Krylov self test failed; the "
+               "corrector is DISARMED and the run takes the plain assembled "
+               "step, rather than running with arithmetic that is not the "
+               "arithmetic that was tested.%s","\n");
+        damage_nk_m=0;
+      }
+      if(damage_nk_m>0){
+        printf("[DAMAGE NK] Newton-Krylov corrector armed: up to %"
+               ITGFORMAT " GMRES iterations per Newton iteration, "
+               "right-preconditioned by the assembled tangent, inner "
+               "tolerance %.3f of |r0|.  The Jacobian action is MEASURED "
+               "from the residual, one evaluation and one back-substitution "
+               "per iteration and no extra factorisation.  Nothing physical, "
+               "no deletion rule and no convergence criterion is touched; "
+               "CCX_DAMAGE_NK=0 gives the plain assembled step.%s",
+               damage_nk_m,damage_nk_eta,"\n");
+        fflush(stdout);
       }
       if(damage_topology_deferred_mode==1){
         printf("[DAMAGE TOPOLOGY BK4] deferred sparse-structure compaction "
@@ -5530,6 +5801,36 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
              " theta=%.12e dtheta=%.12e committed_state=%016llx\n",
              iinc,icutb,theta,dtheta,td_state);
       fflush(stdout);
+    }
+
+    /* [WALLDIAG] theta is the increment's starting load factor here, before
+       dtheta is added, so the gate opens on the first attempt whose base
+       state is at or beyond the recorded wall. */
+
+    if((damage_wall_theta>=0.)&&(theta>=damage_wall_theta)){
+      if(damage_wall_armed==0){
+        damage_wall_armed=1;
+        printf("[WALLDIAG] GATE OPEN at inc=%" ITGFORMAT " icutb=%" ITGFORMAT
+               " theta=%.12e dtheta=%.12e%s",iinc,icutb,theta,dtheta,"\n");
+        fflush(stdout);
+      }
+      damage_dl_lincheck=iinc;
+      damage_ls_probe=1;
+      if(td_from<=0) td_from=iinc;
+
+      /* NOT the null-vector probe.  CCX_DAMAGE_NULLVEC ends with
+         stopwithout201() by design - it is a terminal measurement, taken
+         once, on a run that is not meant to continue.  Arming it from a
+         load-factor gate killed the run at the gate instead of at the wall
+         - measured, R0-early stopped at increment 92 with the ladder
+         unmeasured.  It stays opt-in and its terminal nature is stated. */
+      if((damage_wall_null!=0)&&(damage_null_inc<=0)){
+        damage_null_inc=iinc;
+        printf("[WALLDIAG] arming the deflated null-vector probe on this "
+               "increment.  IT IS TERMINAL: the run stops after it "
+               "prints.%s","\n");
+        fflush(stdout);
+      }
     }
 
     FORTRAN(uc6setinc,(&iinc));
@@ -8293,13 +8594,22 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
            Nothing between the calcresidual that filled b and this point
            writes b on the mortar<=1 path. */
         damage_dl_lc_due=0;
-        if((damage_dl_lincheck>0)&&(iinc==damage_dl_lincheck)&&(iit==1)&&
+        if((damage_dl_lincheck>0)&&(iinc==damage_dl_lincheck)&&
+           (iit>=damage_dl_lc_it)&&(iit<damage_dl_lc_it+damage_dl_lc_nit)&&
            (damage_dl_on==0)&&(damage_de12_enabled)&&(idamagereeq==0)&&
            (ncont==0)&&(*nmethod!=4)&&(*nmethod!=5)&&(*ithermal<2)&&
            (*idrct==0)&&(*mortar<=1)) damage_dl_lc_due=1;
         if((damage_dl_on==1)||(damage_dl_lc_due==1)){
           if(damage_dl_r0==NULL) NNEW(damage_dl_r0,double,neq[1]);
           isiz=neq[1];cpypardou(damage_dl_r0,b,&isiz,&num_cpus);
+        }
+        /* [DAMAGE NK] b holds fext-f here, before the solve overwrites it.
+           That IS r0 in the convention the probes below measure in. */
+        damage_nk_have=0;
+        if(damage_nk_m>0){
+          if(damage_nk_r0==NULL) NNEW(damage_nk_r0,double,neq[1]);
+          isiz=neq[1];cpypardou(damage_nk_r0,b,&isiz,&num_cpus);
+          damage_nk_have=1;
         }
         /* [DAMAGE CT] b holds fext-f = -R here; the solve overwrites it.
            The FULL read-before-write set is snapshotted HERE, at the current
@@ -9007,7 +9317,13 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	   The factorisation is already in PARDISO's hands, so the extra
 	   solves are back-substitutions. */
 
+	/* [WALLDIAG] Each deflated inverse iteration is a full factorisation
+	   and solve.  Armed by hand on ONE named increment that is affordable;
+	   armed by the load-factor gate it would run on every iteration of
+	   every increment from the wall on, so under that gate it is taken
+	   once per attempt.  CCX_DAMAGE_NULLVEC on its own is unchanged. */
 	if((damage_null_inc>0)&&(iinc>=damage_null_inc)&&
+	   ((damage_wall_armed==0)||(iit==1))&&
 	   (*isolver==7)&&(*ithermal<2)&&(*mortar<=1)){
 	  NNEW(damage_null_x,double,neq[1]);
 	  for(k=0;k<neq[1];k++){
@@ -9309,6 +9625,268 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	  
 	SFREE(auc2);SFREE(adc2);SFREE(irowc2);SFREE(icolc2);SFREE(jqc2);
 	SFREE(au);SFREE(ad);	  
+      }
+
+      /* ==== [DAMAGE NK] the corrector solves against the tangent it has,
+         and the tangent it has is not the derivative of the residual ======
+
+         MEASURED, on the committed deck with PARDISO and the recorded
+         environment, by CCX_DAMAGE_TR_LINCHECK from one restored state:
+
+           |R(u+eps p) - (R(u) - eps J p)| / (eps |J p|)
+
+         is CONSTANT - 0.359 at increment 92 iteration 1, 0.870 at increment
+         93 iteration 12 - from eps=1 down to eps=6.1e-05, five decades.  A
+         consistent tangent makes that ratio fall like O(eps).  A constant
+         ratio is a first-order error: J is not dR/du.
+
+         It is not non-smoothness.  Over the eps range where the ratio is
+         already flat the branch census does not move at all (9 integration
+         points differ between u and u+p, none of them below eps=0.25), so no
+         active set crosses inside the window in which the defect is
+         measured.  It is not the merit function either: |R|2 and |R|inf fall
+         by the same factor to three digits.  It is not the solve: the
+         transpose identity dot(J^T R,p_N)/|R|^2 is 1.000000000000 and the
+         operator is factorised, not iterated.  And it is not the topology:
+         the defect is largest on nodes with 32 to 36 live bulk elements and
+         no cohesive facet at all.
+
+         The consequence is exact and was measured iteration by iteration:
+         the linear convergence rate of the whole Newton iteration EQUALS
+         that ratio.  At increment 93 the residual ratios are 0.347, 0.656,
+         0.754, 0.793, 0.815, 0.830, 0.842, 0.852, 0.860, 0.868, 0.873 and
+         the defect ratios at the same iterations are 0.347, 0.656, 0.754,
+         0.793, 0.815, 0.830, 0.842, 0.852, 0.860, 0.868, 0.873.  Nothing
+         else is involved.  As the crack grows the ratio approaches one, the
+         iteration count needed grows without bound, and the step-size
+         controller cuts back until dtheta falls below tmin.  THAT is the
+         wall, and it is why cutting the increment does not help: the ratio
+         is a property of the operator, not of the step.
+
+         WHAT THIS DOES.  It does not invent a better tangent.  It uses the
+         residual itself - the one quantity in the code that is not in
+         doubt - as the authority on the Jacobian action, and asks the
+         assembled tangent only to precondition:
+
+             solve  A z = r0   by GMRES right-preconditioned with J,
+             matvec  A d = ( r0 - b(u + sigma d) ) / sigma ,
+
+         where b is the fext-f convention calcresidual fills, so that
+         b(u+s d) = r0 - s A d exactly to first order.  One matvec costs one
+         residual evaluation plus one back-substitution against the LU
+         PARDISO has already computed and cached; it costs no factorisation.
+         With z = p_N the method reproduces the present step exactly, so the
+         change is inert wherever the tangent IS the derivative.
+
+         The measurement says this is worth doing: along a direction that is
+         not the Newton one the same defect ratio is 0.008 to 0.05, against
+         0.36 to 0.87 along p_N.  The error operator is therefore not a
+         uniform mis-scaling - it is concentrated in a few soft directions,
+         which is exactly the spectrum a preconditioned Krylov method clears
+         in a handful of iterations.
+
+         Nothing here touches a physical parameter, the deck, the deletion
+         rule, the viscosity, the tangent mode, AUTOSPC or what
+         checkconvergence requires of an increment.  It chooses a direction.
+         CCX_DAMAGE_NK=0 restores the plain assembled step exactly. */
+
+      if((damage_nk_m>0)&&(damage_de12_enabled)&&(idamagereeq==0)&&
+         (ncont==0)&&(*nmethod!=4)&&(*nmethod!=5)&&(*ithermal<2)&&
+         (*idrct==0)&&(*mortar<=1)&&(*isolver==7)&&(damage_nk_r0!=NULL)&&
+         (damage_nk_have==1)&&(damage_dl_on==0)&&(damage_ct_on==0)&&
+         (nasym==1)&&(symmetryflag==2)&&(neq[0]==neq[1])){
+
+        ITG nkj,nki,nkm,nkst;
+        double nksig,nkpinf,nkdinf,nknorm,nktmp,nkc,nksc,nkzinf=0.;
+        double *nkd=NULL;
+
+        nkm=damage_nk_m;
+        nkst=*nstate_;
+        if(damage_nk_v==NULL){
+          NNEW(damage_nk_v,double,(damage_nk_mmax+1)*neq[1]);
+          NNEW(damage_nk_z,double,damage_nk_mmax*neq[1]);
+          NNEW(damage_nk_w,double,neq[1]);
+          NNEW(damage_nk_res,double,neq[1]);
+          NNEW(damage_nk_hh,double,(damage_nk_mmax+1)*damage_nk_mmax);
+          NNEW(damage_nk_cs,double,damage_nk_mmax);
+          NNEW(damage_nk_sn,double,damage_nk_mmax);
+          NNEW(damage_nk_gg,double,damage_nk_mmax+1);
+          NNEW(damage_nk_yy,double,damage_nk_mmax);
+          NNEW(damage_nk_dam,double,mi[0]**ne);
+          NNEW(damage_nk_visc,double,mi[0]**ne);
+          if(nkst>0) NNEW(damage_nk_xs,double,nkst*mi[0]**ne);
+          NNEW(damage_nk_p0,double,neq[1]);
+          NNEW(damage_nk_zc,double,neq[1]);
+          nkgmres_reset(&damage_nkg);
+        }
+        nkgmres_attach(&damage_nkg,neq[1],damage_nk_mmax,damage_nk_v,
+                       damage_nk_z,damage_nk_hh,damage_nk_cs,damage_nk_sn,
+                       damage_nk_gg,damage_nk_yy);
+
+        /* the assembled step, kept so the method can fall back to it and so
+           the probe scale is the scale the solver would have stepped at */
+        isiz=neq[1];cpypardou(damage_nk_p0,b,&isiz,&num_cpus);
+        nkpinf=0.;
+        for(nki=0;nki<neq[1];nki++)
+          if(fabs(damage_nk_p0[nki])>nkpinf) nkpinf=fabs(damage_nk_p0[nki]);
+
+        /* the state every probe is rolled back to */
+        isiz=mi[0]**ne;cpypardou(damage_nk_dam,dam,&isiz,&num_cpus);
+        if(damage_damvisc!=NULL){
+          isiz=mi[0]**ne;
+          cpypardou(damage_nk_visc,damage_damvisc,&isiz,&num_cpus);
+        }
+        if((nkst>0)&&(damage_nk_xs!=NULL)){
+          isiz=nkst*mi[0]**ne;
+          cpypardou(damage_nk_xs,xstate,&isiz,&num_cpus);
+        }
+        for(nki=0;nki<4;nki++) damage_nk_qa[nki]=qa[nki];
+        for(nki=0;nki<5;nki++) damage_nk_cam[nki]=cam[nki];
+        for(nki=0;nki<2;nki++) damage_nk_uam[nki]=uam[nki];
+
+        if((nkpinf>0.)&&
+           (nkgmres_start(&damage_nkg,damage_nk_r0,nkm,damage_nk_eta)!=0)){
+          while(1){
+            const double *nkb=nkgmres_basis(&damage_nkg);
+            nkd=nkgmres_slot(&damage_nkg);
+
+            /* d_j = J^{-1} v_j, on the LU PARDISO already holds */
+            for(nki=0;nki<neq[1];nki++) nkd[nki]=nkb[nki];
+#ifdef PARDISO
+            pardiso_solve(nkd,&neq[0],&symmetryflag,&inputformat,&nrhs);
+#endif
+            nkdinf=0.;
+            for(nki=0;nki<neq[1];nki++)
+              if(fabs(nkd[nki])>nkdinf) nkdinf=fabs(nkd[nki]);
+            if(!(nkdinf>0.)) break;
+
+            /* SAMPLE WHERE THE STEP IS GOING TO LAND.
+
+               A finite-difference matvec is a measurement, and it is only
+               a measurement of the range it was taken over.  Sampling
+               everything at |p_N| and then handing back a step 50 or 180
+               times longer - which the first version of this did, in 3% of
+               its iterations - extrapolates that measurement far outside
+               its own range, and the line search then spent the extra
+               evaluations only to damp the answer back to about |p_N|.
+
+               So the probe scale tracks the solution the inner iteration
+               currently has on the table: it starts at |p_N| and grows with
+               |z|.  There is no threshold in that - it is the statement
+               that the operator is probed where it is about to be used, and
+               it is a fixed point: a step that is too long is measured
+               against the stiffness that actually resists it and comes back
+               shorter. */
+            nksc=nkpinf;
+            if(nkzinf>nksc) nksc=nkzinf;
+            nksig=nksc/nkdinf;
+
+            for(nki=0;nki<3;nki++) cam[nki]=0.;
+            for(nki=3;nki<5;nki++) cam[nki]=0.5;
+            isiz=mi[0]**ne;cpypardou(dam,damage_nk_dam,&isiz,&num_cpus);
+            if(damage_damvisc!=NULL){
+              isiz=mi[0]**ne;
+              cpypardou(damage_damvisc,damage_nk_visc,&isiz,&num_cpus);
+            }
+            if((nkst>0)&&(damage_nk_xs!=NULL)){
+              isiz=nkst*mi[0]**ne;
+              cpypardou(xstate,damage_nk_xs,&isiz,&num_cpus);
+            }
+            for(nki=0;nki<neq[1];nki++) b[nki]=nksig*nkd[nki];
+            MNEW(v,double,mt**nk);
+            isiz=mt**nk;cpypardou(v,vold,&isiz,&num_cpus);
+            NNEW(stx,double,6*mi[0]**ne);
+            MNEW(fn,double,mt**nk);
+            if(ne1d2d==1)NNEW(inum,ITG,*nk);
+            results(co,nk,kon,ipkon,lakon,ne,v,stn,inum,stx,
+                elcon,nelcon,rhcon,nrhcon,alcon,nalcon,alzero,ielmat,
+                ielorien,norien,orab,ntmat_,t0,t1act,ithermal,
+                prestr,iprestr,filab,eme,emn,een,iperturb,
+                f,fn,nactdof,&iout,qa,vold,b,nodeboun,
+                ndirboun,xbounact,nboun,ipompc,
+                nodempc,coefmpc,labmpc,nmpc,nmethod,cam,&neq[1],veold,accold,
+                &bet,&gam,&dtime,&time,ttime,plicon,nplicon,plkcon,nplkcon,
+                xstateini,xstiff,xstate,npmat_,epn,matname,mi,&ielas,
+                &icmd,ncmat_,nstate_,stiini,vini,ikboun,ilboun,ener,enern,
+                emeini,xstaten,eei,enerini,cocon,ncocon,set,nset,istartset,
+                iendset,ialset,nprint,prlab,prset,qfx,qfn,trab,inotr,ntrans,
+                fmpc,nelemload,nload,ikmpc,ilmpc,istep,&iinc,springarea,
+                &reltime,&ne0,thicke,shcon,nshcon,
+                sideload,xloadact,xloadold,&icfd,inomat,pslavsurf,pmastsurf,
+                mortar,islavact,cdn,islavnode,nslavnode,ntie,clearini,
+                islavsurf,ielprop,prop,energyini,energy,&kscale,iponoeln,
+                inoeln,nener,orname,network,ipobody,xbodyact,ibody,typeboun,
+                itiefac,tieset,smscale,&mscalmethod,nbody,t0g,t1g,
+                islavquadel,aut,irowt,jqt,&mortartrafoflag,
+                &intscheme,physcon,dam,damn,iponoel);
+            if(ne1d2d==1)SFREE(inum);
+            calcresidual(nmethod,neq,damage_nk_res,fext,f,iexpl,nactdof,aux2,
+                         vold,vini,&dtime,accold,nk,adb,aub,jq,irow,nzl,alpha,
+                         fextini,fini,islavnode,nslavnode,mortar,ntie,mi,
+                         nzs,&nasym,&idamping,veold,adc,auc,cvini,cv,&alpham,
+                         &num_cpus);
+            SFREE(v);SFREE(stx);SFREE(fn);
+            damage_nk_neval++;
+
+            /* w = A d_j , MEASURED.  calcresidual fills fext-f, so
+               b(u+s d) = r0 - s A d to first order and this is A d. */
+            for(nki=0;nki<neq[1];nki++)
+              damage_nk_w[nki]=(damage_nk_r0[nki]-damage_nk_res[nki])/nksig;
+
+            if(nkgmres_absorb(&damage_nkg,damage_nk_w)==0) break;
+
+            /* the scale the NEXT probe will use */
+            nkgmres_solution(&damage_nkg,damage_nk_zc);
+            nkzinf=0.;
+            for(nki=0;nki<neq[1];nki++)
+              if(fabs(damage_nk_zc[nki])>nkzinf) nkzinf=fabs(damage_nk_zc[nki]);
+          }
+        }
+
+        nkj=damage_nkg.j;
+        if(nkj>0){
+          nkgmres_solution(&damage_nkg,b);
+          damage_nk_used++;
+        }else{
+          isiz=neq[1];cpypardou(b,damage_nk_p0,&isiz,&num_cpus);
+        }
+
+        /* restore everything the probes touched */
+        isiz=mi[0]**ne;cpypardou(dam,damage_nk_dam,&isiz,&num_cpus);
+        if(damage_damvisc!=NULL){
+          isiz=mi[0]**ne;
+          cpypardou(damage_damvisc,damage_nk_visc,&isiz,&num_cpus);
+        }
+        if((nkst>0)&&(damage_nk_xs!=NULL)){
+          isiz=nkst*mi[0]**ne;
+          cpypardou(xstate,damage_nk_xs,&isiz,&num_cpus);
+        }
+        for(nki=0;nki<4;nki++) qa[nki]=damage_nk_qa[nki];
+        for(nki=0;nki<5;nki++) cam[nki]=damage_nk_cam[nki];
+        for(nki=0;nki<2;nki++) uam[nki]=damage_nk_uam[nki];
+
+        if(damage_nk_report!=0){
+          nknorm=0.;nktmp=0.;nkc=0.;
+          for(nki=0;nki<neq[1];nki++){
+            nknorm+=b[nki]*b[nki];
+            nktmp+=damage_nk_p0[nki]*damage_nk_p0[nki];
+            nkc+=b[nki]*damage_nk_p0[nki];
+          }
+          nknorm=sqrt(nknorm);nktmp=sqrt(nktmp);
+          printf("[DAMAGE NK] inc=%" ITGFORMAT " iter=%" ITGFORMAT
+                 " krylov=%" ITGFORMAT "/%" ITGFORMAT " %s"
+                 " |r0|=%.6e inner residual=%.6e (%.4f of |r0|)"
+                 "  |z|/|p_N|=%.4f  cos(z,p_N)=%+.4f  evaluations=%"
+                 ITGFORMAT "%s",
+                 iinc,iit,nkj,nkm,damage_nkg.conv?"converged":"budget",
+                 damage_nkg.beta,nkgmres_residual(&damage_nkg),
+                 (damage_nkg.beta>0.)?
+                   nkgmres_residual(&damage_nkg)/damage_nkg.beta:0.,
+                 (nktmp>0.)?nknorm/nktmp:0.,
+                 ((nknorm>0.)&&(nktmp>0.))?nkc/(nknorm*nktmp):0.,
+                 damage_nk_neval,"\n");
+          fflush(stdout);
+        }
       }
 
       /* calculating the displacements, stresses and forces */
@@ -9750,10 +10328,20 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          would have had, and puts cam/qa/uam back first. */
 
       if((damage_dl_lc_due==1)&&(damage_dl_have==1)){
-        static const double lcE[7]={1.,0.5,0.25,0.125,0.0625,0.03125,
-                                    0.015625};
+        /* [WALLDIAG] The ladder has to reach BELOW the step the search
+           actually takes, or it cannot tell a consistent tangent with a
+           small radius of validity from an inconsistent one: the second
+           wall's best rung is alpha~0.004, and the old ladder stopped at
+           0.0156.  1/2^k down to k=14 puts six rungs below 0.004 while the
+           defect is still far above the cancellation floor, which for
+           |J p|=|r0| sits at about 1e-16/eps. */
+        static const double lcE[15]={1.,0.5,0.25,0.125,0.0625,0.03125,
+                                     0.015625,0.0078125,0.00390625,
+                                     0.001953125,0.0009765625,
+                                     0.00048828125,0.000244140625,
+                                     0.0001220703125,0.00006103515625};
         ITG lnst,lii,ljj,lpass,lact,lspc,lmpcd;
-        double le,lsc,lnum,lden,lnjp,lnres,lmv,ldv;
+        double le,lsc,lnum,lden,lnjp,lnres,lmv,ldv,linf,linf0;
         double lqas[4],luams[2];
         double *lp=NULL,*ljp=NULL;
 
@@ -9809,6 +10397,39 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         for(ljj=0;ljj<4;ljj++) lqas[ljj]=qa[ljj];
         for(ljj=0;ljj<2;ljj++) luams[ljj]=uam[ljj];
 
+        /* [WALLDIAG] The active set AT THE CURRENT ITERATE.  xstate, dam and
+           stx here belong to u, because the iteration's own results() call
+           built them and nothing has stepped yet.  Every rung below is
+           compared against this one census, so a transition count is the
+           number of integration points the step moved across a branch. */
+
+        if(damage_wall_cat==NULL) NNEW(damage_wall_cat,ITG,mi[0]**ne);
+        damage_ray_census(damage_wall_cat,xstate,xstateini,dam,damdamageini,
+                          damage_damvisc,stx,ipkon,lakon,ne0,mi[0],*nstate_);
+        {
+          ITG wj,wnadv=0,wnlive=0;
+          double wpinf=0.;
+          for(wj=0;wj<mi[0]*ne0;wj++){
+            if(damage_wall_cat[wj]&DAMCAT_USOFT) wnlive++;
+            if(damage_wall_cat[wj]&DAMCAT_UADV) wnadv++;
+          }
+          for(wj=0;wj<neq[1];wj++)
+            if(fabs(damage_dl_pn[wj])>wpinf) wpinf=fabs(damage_dl_pn[wj]);
+          printf("[WALLDIAG] inc=%" ITGFORMAT " iter=%" ITGFORMAT
+                 " base state: UC6 points past initiation %" ITGFORMAT
+                 ", of which ADVANCING (deff>dmax0) %" ITGFORMAT
+                 "; |p_N|inf=%.6e |p_N|2=%.6e |R|2=%.6e%s",
+                 iinc,iit,wnlive,wnadv,wpinf,sqrt(damage_dl_npn2),
+                 sqrt(damage_dl_nb2),"\n");
+          damage_wall_where("residual",damage_dl_r0,neq[1],nactdof,mt,*nk,5,
+                            ipkon,kon,lakon,xstate,stx,dam,*ne,ne0,mi[0],
+                            *nstate_);
+          damage_wall_where("correction",damage_dl_pn,neq[1],nactdof,mt,*nk,
+                            5,ipkon,kon,lakon,xstate,stx,dam,*ne,ne0,mi[0],
+                            *nstate_);
+          fflush(stdout);
+        }
+
         for(lpass=0;lpass<2;lpass++){
           if(lpass==0){
             for(ljj=0;ljj<neq[1];ljj++){
@@ -9833,7 +10454,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           lnjp=0.;
           for(ljj=0;ljj<neq[1];ljj++) lnjp+=ljp[ljj]*ljp[ljj];
           lnjp=sqrt(lnjp);
-          for(lii=0;lii<7;lii++){
+          for(lii=0;lii<15;lii++){
             le=lcE[lii];
           /* [DAMAGE TR LINCHECK] cam starts clean for every probe, for the
              same reason as in the trust-region block. */
@@ -9884,12 +10505,25 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                        &num_cpus);
 
             damage_dl_neval++;
-            lnum=0.;lnres=0.;
+            lnum=0.;lnres=0.;linf=0.;linf0=0.;
+            if(damage_wall_def==NULL) NNEW(damage_wall_def,double,neq[1]);
             for(ljj=0;ljj<neq[1];ljj++){
               lmv=damage_dl_r0[ljj]-le*ljp[ljj];
               ldv=damage_dl_res[ljj]-lmv;
+              damage_wall_def[ljj]=ldv;
               lnum+=ldv*ldv;
               lnres+=damage_dl_res[ljj]*damage_dl_res[ljj];
+            }
+            /* [WALLDIAG] The line search judges a trial by max|res| over the
+               MECHANICAL block neq[0] (nonlingeo.c, damage_linesearch_*norm),
+               while the direction it damps is only guaranteed to descend the
+               2-norm merit - the transpose identity dot(J^T R,p_N)=|R|^2 is
+               what makes that guarantee exact.  The two norms are therefore
+               measured on the SAME rung here, or the disagreement between
+               them stays an inference. */
+            for(ljj=0;ljj<neq[0];ljj++){
+              if(fabs(damage_dl_res[ljj])>linf) linf=fabs(damage_dl_res[ljj]);
+              if(fabs(damage_dl_r0[ljj])>linf0) linf0=fabs(damage_dl_r0[ljj]);
             }
             lnum=sqrt(lnum);lnres=sqrt(lnres);
             lden=le*lnjp;
@@ -9898,11 +10532,126 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                    "defect/eps=%.6e%s",lpass+1,le,lnres,
                    (lden>0.)?lnum/lden:0.,
                    (lden>0.)?lnum/(lden*le):0.,"\n");
+            printf("[WALLDIAG] pass %" ITGFORMAT " eps=%.9f  TWO NORMS: "
+                   "|res|2/|r0|2=%.12f  |res|inf/|r0|inf=%.12f  "
+                   "(|r0|2=%.6e |r0|inf=%.6e)%s",lpass+1,le,
+                   (damage_dl_nb2>0.)?lnres/sqrt(damage_dl_nb2):0.,
+                   (linf0>0.)?linf/linf0:0.,sqrt(damage_dl_nb2),linf0,"\n");
             if(lpass==0)
               printf("[DAMAGE TR LINCHECK]          ratio "
                      "|res|/((1-eps)|r0|) = %.12f  (must go to 1)%s",
                      ((1.-le)>0.)?lnres/((1.-le)*sqrt(damage_dl_nb2)):0.,
                      "\n");
+            {
+              ITG wtot;
+              wtot=damage_wall_setdiff(damage_wall_cat,xstate,xstateini,dam,
+                                       damdamageini,damage_damvisc,stx,
+                                       ipkon,lakon,ne0,mi[0],*nstate_,
+                                       damage_wall_nb);
+              printf("[WALLDIAG] pass %" ITGFORMAT " eps=%.9f  active-set "
+                     "transitions %" ITGFORMAT " = UC6 loading/unloading %"
+                     ITGFORMAT " + UC6 initiation %" ITGFORMAT
+                     " + UC6 viscous %" ITGFORMAT " + UC6 failure %"
+                     ITGFORMAT " + UC6 tension/compression %" ITGFORMAT
+                     " + bulk plastic %" ITGFORMAT " + bulk initiation %"
+                     ITGFORMAT " + bulk damage growth %" ITGFORMAT "%s",
+                     lpass+1,le,wtot,damage_wall_nb[6],damage_wall_nb[3],
+                     damage_wall_nb[4],damage_wall_nb[5],damage_wall_nb[7],
+                     damage_wall_nb[0],damage_wall_nb[1],damage_wall_nb[2],
+                     "\n");
+            }
+            /* [WALLDIAG] IS THE MISSING TERM THE DAMAGE RANK-1 TERM?
+
+               J = K0 + E, where E is exactly what mafilldamas.f adds from
+               damjac.  Assemble E ALONE into a zeroed pair and apply it to
+               p_N.  If the true operator is A = K0 + (1+c)E - that is, if
+               the rank-1 damage term is the right shape and the wrong size -
+               then (J-A)p = -c*E*p, so the measured defect must be
+               ANTI-PARALLEL to E*p and |defect|/(eps*|E p|) must equal |c|.
+               A cosine of zero says the missing term is a different term,
+               and no scaling of this one can supply it. */
+            if(lii==14){
+              ITG e1i,e1c,e1k,e1r;
+              double *e1ad=NULL,*e1au=NULL,*e1y=NULL,e1n=0.,e1d=0.,e1w=0.;
+              ITG e1nd,e1sk,e1ad2,e1ho,e1fl;
+              NNEW(e1ad,double,neq[1]);
+              NNEW(e1au,double,(nasym+1)*nzs[1]);
+              NNEW(e1y,double,neq[1]);
+              e1nd=0;e1sk=0;e1ad2=0;e1ho=0;e1fl=0;
+              FORTRAN(mafilldamas,(co,kon,ipkon,lakon,&ne0,nactdof,jq,irow,
+                                   neq,nzs,e1au,e1ad,vold,mi,damage_damjac,
+                                   nmpc,&e1nd,dam,damdamageini,
+                                   &e1sk,&e1ad2,&e1ho,&e1fl));
+              for(e1k=0;e1k<neq[1];e1k++)
+                e1y[e1k]=e1ad[e1k]*damage_dl_pn[e1k];
+              for(e1c=0;e1c<neq[1];e1c++){
+                for(e1k=jq[e1c]-1;e1k<jq[e1c+1]-1;e1k++){
+                  e1r=irow[e1k]-1;
+                  e1y[e1r]+=e1au[e1k]*damage_dl_pn[e1c];
+                  e1y[e1c]+=e1au[nzs[2]+e1k]*damage_dl_pn[e1r];
+                }
+              }
+              for(e1i=0;e1i<neq[1];e1i++){
+                e1n+=e1y[e1i]*e1y[e1i];
+                e1d+=damage_wall_def[e1i]*damage_wall_def[e1i];
+                e1w+=e1y[e1i]*damage_wall_def[e1i];
+              }
+              e1n=sqrt(e1n);e1d=sqrt(e1d);
+              /* Is the rank-1 term small because dD/d(eps) is small, or
+                 because the assembly loses it?  damjac slots 1..6 are the
+                 effective stress and 7..12 are dD/d(eps); censusing both
+                 separates "the derivative is tiny" from "the derivative is
+                 there and the operator does not carry it". */
+              {
+                ITG qi,qn=0,qz=0;
+                double qmax=0.,qsum=0.,tmax=0.;
+                for(qi=0;qi<ne0;qi++){
+                  ITG qk;double qa2=0.,qt2=0.;
+                  if(ipkon[qi]<0) continue;
+                  if(lakon[8*qi]!='C') continue;
+                  for(qk=6;qk<12;qk++)
+                    qa2+=damage_damjac[12*mi[0]*qi+qk]
+                        *damage_damjac[12*mi[0]*qi+qk];
+                  for(qk=0;qk<6;qk++)
+                    qt2+=damage_damjac[12*mi[0]*qi+qk]
+                        *damage_damjac[12*mi[0]*qi+qk];
+                  if((qa2<=0.)&&(qt2<=0.)) continue;
+                  qn++;
+                  qa2=sqrt(qa2);qt2=sqrt(qt2);
+                  if(qa2<=1.e-12) qz++;
+                  if(qa2>qmax) qmax=qa2;
+                  if(qt2>tmax) tmax=qt2;
+                  qsum+=qa2;
+                }
+                printf("[WALLDIAG]   damjac census over %" ITGFORMAT
+                       " elements with any entry: |dD/d(eps)| max=%.6e "
+                       "mean=%.6e, of which %" ITGFORMAT
+                       " have it BELOW 1e-12 (assembled anyway, because the "
+                       "skip test sums the stress slots too); |sigma_eff| "
+                       "max=%.6e%s",qn,qmax,(qn>0)?qsum/qn:0.,qz,tmax,"\n");
+              }
+              printf("[WALLDIAG]   damage rank-1 term applied to p_N: "
+                     "elements %" ITGFORMAT ", |E p|=%.6e, |defect|/eps=%.6e,"
+                     "  cos(defect,E p)=%+.6f  |defect|/(eps|E p|)=%.6f%s",
+                     e1nd,e1n,e1d/le,
+                     ((e1n>0.)&&(e1d>0.))?e1w/(e1n*e1d):0.,
+                     (e1n>0.)?e1d/(le*e1n):0.,"\n");
+              SFREE(e1ad);SFREE(e1au);SFREE(e1y);
+            }
+            if(lii==14){
+              damage_wall_split("linear-model defect",damage_wall_def,neq[1],
+                                nactdof,mt,*nk,ipkon,kon,lakon,dam,xstate,
+                                *ne,ne0,mi[0],*nstate_);
+              damage_wall_split("residual r0",damage_dl_r0,neq[1],nactdof,mt,
+                                *nk,ipkon,kon,lakon,dam,xstate,*ne,ne0,mi[0],
+                                *nstate_);
+              damage_wall_split("Newton step p_N",damage_dl_pn,neq[1],nactdof,
+                                mt,*nk,ipkon,kon,lakon,dam,xstate,*ne,ne0,
+                                mi[0],*nstate_);
+              damage_wall_where("defect",damage_wall_def,neq[1],nactdof,mt,
+                                *nk,5,ipkon,kon,lakon,xstate,stx,dam,*ne,ne0,
+                                mi[0],*nstate_);
+            }
             fflush(stdout);
           }
         }
@@ -10819,7 +11568,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
              baseline on every results() call, and this is what shows it
              rather than assuming it. */
 
-          if(getenv("CCX_DAMAGE_LS_PROBE")!=NULL){
+          if(damage_ls_probe!=0){
             static const double lsp[9]={1.,1.,0.5,0.2,0.1,0.03,0.01,
                                         0.003,0.001};
             ITG lpi;
