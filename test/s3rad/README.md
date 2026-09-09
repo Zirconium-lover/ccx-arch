@@ -950,7 +950,28 @@ Independently of the wall, `damageq` - the forward-difference `dD/d(eps)` in
 `resultsmech.f` - delivers a rank-1 term worth 0.27% of the operator while
 the residual around increment 92 behaves as if the full `dDvis/d(eps)` were
 missing.  The `damjac` census says the derivative IS there (max 36.4, mean
-4.18 over 6850 elements, none below 1e-12), so the next place to look is
-between what `damageq` computes and what `mafilldamas.f` assembles from it.
-That defect costs iterations and cutbacks all the way up.  It is not the
-wall: by `theta=0.2556` the viscosity has damped it to 1.7%.
+4.18 over 6850 elements, none below 1e-12).  That defect costs iterations and
+cutbacks all the way up.  It is not the wall: by `theta=0.2556` the viscosity
+has damped it to 1.7%.
+
+**One candidate has since been checked and refuted, from the logs, so nobody
+spends a run on it.**  Both `resultsmech.f` and `mafilldamas.f` gate the
+rank-1 term on `dam - dambase > 1.d-14`, and `mafilldamas.f` justifies the
+gate in a comment: "an unloading point legitimately has no rank-1 term,
+because D is frozen and `dD/d(eps)` is zero."  That is not true at a point
+sitting exactly AT its own maximum, where `D = max(D_base, D_trial(eps))` has
+a right-derivative equal to `dD_trial/d(eps)` and a left-derivative of zero,
+and the code takes zero - so a large kink population would mean a large
+omitted term.  It does not: at increment 93 the census counts **6850 elements
+carrying a `damjac` entry against 6785 live bulk elements**, so the bulk term
+is assembled essentially everywhere it can be and there is no such skipped
+population to blame.
+
+That narrows what is left.  It is not the size of the assembled bulk
+derivative (measured, present), not its coverage (measured, complete), and
+not the near-null space (measured, orthogonal).  The remaining candidates are
+the cohesive tangent in `resultsmech_uc6.f`, which is a different routine on
+a different element, and the viscous path itself - note that the defect's
+size tracks `beta = dtime/(eta+dtime)` while the assembled term ALREADY
+carries a factor `beta`, which is a coincidence worth explaining before it is
+assumed to be one.
