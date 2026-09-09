@@ -10793,10 +10793,9 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           NNEW(damage_linesearch_step,double,neq[1]);
           isiz=neq[1];cpypardou(damage_linesearch_step,b,&isiz,&num_cpus);
           damage_linesearch_contracted=0;
-          lsladder_start(&damage_lsl,damage_linesearch_oldnorm,
-                         damage_ls_min,0.5,damage_ls_trials,
-                         damage_ls_legacy);
-          flinesearch=damage_lsl.alpha;
+          lsladder_start(&damage_lsl,flinesearch,
+                         damage_linesearch_oldnorm,damage_ls_min,0.5,
+                         damage_ls_trials,damage_ls_legacy);
 
           /* ---- BACKTRACKING LADDER PROBE (CCX_DAMAGE_LS_PROBE) --------
              The line search backtracks 1.0 -> 0.5 -> 0.1 and stops: three

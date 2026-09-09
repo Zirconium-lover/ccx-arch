@@ -58,10 +58,16 @@
 #include <math.h>
 #include "CalculiX.h"
 
-void lsladder_start(lsladder *l,double oldres,double flr,double ratio,
-                    ITG ntrial,ITG legacy){
+/* alpha0 is the FIRST rung, and it is not 1: the caller computes a secant
+   step sum1/(sum1-sum2) and clamps it into [floor, 0.80] before the ladder
+   ever runs.  Overwriting it with 1 changes the search - measured, the
+   trajectory diverges at increment 100 - so it is an argument here rather
+   than an assumption. */
 
-  l->alpha=1.;
+void lsladder_start(lsladder *l,double alpha0,double oldres,double flr,
+                    double ratio,ITG ntrial,ITG legacy){
+
+  l->alpha=((alpha0>0.)&&(alpha0<=1.))?alpha0:1.;
   l->best=-1.;
   l->bestres=0.;
   l->oldres=oldres;
@@ -139,7 +145,7 @@ ITG lsladder_selftest(void){
 
   /* ---- A: the legacy ladder is exactly {1.0, 0.5, 0.1} ------------- */
 
-  lsladder_start(&l,1.,0.10,0.5,3,1);
+  lsladder_start(&l,1.,1.,0.10,0.5,3,1);
   for(i=0;i<3;i++){a[i]=l.alpha;r=lsladder_step(&l,1.e30);}
   printf("   %-30s %.4f %.4f %.4f  %s\n","A legacy rungs",a[0],a[1],a[2],
          ((fabs(a[0]-1.)<1.e-12)&&(fabs(a[1]-0.5)<1.e-12)&&
@@ -151,7 +157,7 @@ ITG lsladder_selftest(void){
   /* residuals 9, 3, 7 against oldres 1: nothing contracts, the best rung
      is 0.5 with 3, and the legacy rule hands back 0.1 anyway. */
 
-  lsladder_start(&l,1.,0.10,0.5,3,1);
+  lsladder_start(&l,1.,1.,0.10,0.5,3,1);
   lsladder_step(&l,9.);lsladder_step(&l,3.);lsladder_step(&l,7.);
   printf("   %-30s best=%.4f taken=%.4f  %s\n","B legacy takes the last",
          l.best,lsladder_final(&l),
@@ -162,7 +168,7 @@ ITG lsladder_selftest(void){
 
   /* ---- C: the fixed rule takes the BEST rung ----------------------- */
 
-  lsladder_start(&l,1.,1.e-3,0.5,8,0);
+  lsladder_start(&l,1.,1.,1.e-3,0.5,8,0);
   lsladder_step(&l,9.);lsladder_step(&l,3.);lsladder_step(&l,7.);
   printf("   %-30s best=%.4f taken=%.4f  %s\n","C fixed takes the best",
          l.best,lsladder_final(&l),
@@ -173,7 +179,7 @@ ITG lsladder_selftest(void){
   /* 46.5% of the measured activations had their optimum below the old
      floor, so reaching there is the whole point. */
 
-  lsladder_start(&l,1.,1.e-3,0.5,8,0);
+  lsladder_start(&l,0.8,1.,1.e-3,0.5,8,0);
   for(i=0;i<8;i++){a[i]=l.alpha;if(lsladder_step(&l,1.e30)!=0) break;}
   printf("   %-30s rungs",("D fixed ladder depth"));
   for(r=0;r<8;r++) printf(" %.4g",a[r]);
@@ -182,7 +188,7 @@ ITG lsladder_selftest(void){
 
   /* ---- E: a contracting rung is accepted at once ------------------- */
 
-  lsladder_start(&l,1.,1.e-3,0.5,8,0);
+  lsladder_start(&l,1.,1.,1.e-3,0.5,8,0);
   r=lsladder_step(&l,0.5);
   printf("   %-30s return=%" ITGFORMAT " alpha=%.4f  %s\n",
          "E contraction accepted",r,lsladder_final(&l),
@@ -191,7 +197,7 @@ ITG lsladder_selftest(void){
 
   /* ---- F: alpha is monotone and never below the floor -------------- */
 
-  lsladder_start(&l,1.,0.02,0.5,12,0);
+  lsladder_start(&l,1.,1.,0.02,0.5,12,0);
   {
     double prev=2.;
     ITG ok=1;
@@ -205,6 +211,20 @@ ITG lsladder_selftest(void){
            ok?"ok":"FAIL");
     if(!ok) nbad++;
   }
+
+  /* ---- G: the first rung is the caller's alpha0, not 1 -------------- */
+  /* The caller clamps a secant step into [floor, 0.80]; forcing the ladder
+     to start at 1 instead was measured to change the trajectory. */
+
+  lsladder_start(&l,0.548186,1.,1.e-3,0.5,8,0);
+  a[0]=l.alpha;
+  lsladder_step(&l,1.e30);
+  a[1]=l.alpha;
+  printf("   %-30s first two rungs %.6f %.6f  %s\n","G alpha0 is honoured",
+         a[0],a[1],
+         ((fabs(a[0]-0.548186)<1.e-12)&&(fabs(a[1]-0.274093)<1.e-9))?
+         "ok":"FAIL");
+  if(!((fabs(a[0]-0.548186)<1.e-12)&&(fabs(a[1]-0.274093)<1.e-9))) nbad++;
 
   printf("[LSLADDER] self test %s (%" ITGFORMAT " failure(s))\n",
          (nbad==0)?"PASSED":"FAILED",nbad);

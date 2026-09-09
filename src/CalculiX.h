@@ -4919,8 +4919,8 @@ typedef struct{
   ITG legacy;       /* reproduce the old shape and the old fallback      */
 }lsladder;
 
-void lsladder_start(lsladder *l,double oldres,double flr,double ratio,
-                    ITG ntrial,ITG legacy);
+void lsladder_start(lsladder *l,double alpha0,double oldres,double flr,
+                    double ratio,ITG ntrial,ITG legacy);
 ITG lsladder_step(lsladder *l,double res);
 double lsladder_final(const lsladder *l);
 ITG lsladder_selftest(void);
