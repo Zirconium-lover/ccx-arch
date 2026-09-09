@@ -1141,6 +1141,117 @@ crossings are a symptom.  Projecting out the collapsed nodes bought a real
 conditioning either.  **Nothing that improves the corrector can pass a point
 at which the solution being corrected towards does not exist.**
 
+## The wall is passed, and what it actually was
+
+`CCX_DAMAGE_AUTOSPC_FORCE=1`, same deck, same `DEADALL=1.e-2`, same
+viscosity, tangent, AUTOSPC threshold, convergence criteria and PARDISO.
+One flag.
+
+| | stock | `CCX_DAMAGE_AUTOSPC_FORCE=1` |
+|---|---|---|
+| last committed increment | **554** | **582 and continuing** |
+| grip displacement `theta` | **0.2555742** | **0.2575** |
+| deletion batches | 415 (last at inc 551) | **420** (416 at inc 570) |
+| `dtime` at the wall | 1.95e-06, then death | **1.47e-04** (75x recovery) |
+| increments 1-554 | - | **bit-identical, all 1147 attempts** |
+
+The last line is the important one for the A/B: the run reproduces the
+baseline `.sta` attempt for attempt over the whole 1147-attempt pre-wall
+history and diverges for the first time at attempt 1148, which is increment
+555 - the wall itself.  Nothing before the wall is perturbed.
+
+### What the wall was
+
+Increment 555, stock, iteration 8:
+
+```
+ time avg. forc= 0.376005
+ largest residual force= 0.002246 in node 1246 and dof 1
+ estimated number of iterations till convergence = 151
+ too slow convergence; the increment size is decreased
+```
+
+Node 1246 is held by ONE live bulk element with all six of its cohesive
+facets failed and OPEN (`ncomp=0` throughout increments 553-555, so this is
+not the compression switch).  Equilibrating it needs a displacement of order
+one against a grip that has moved 0.2556, so its residual falls 0.1% per
+iteration: 0.002268, 0.002263, 0.002258, 0.002253, 0.002252, 0.002251,
+0.002248, 0.002246.  **It is irreducible in practice.**
+
+That irreducible component is inherited by every following increment and
+accumulates.  Converged residual as a percentage of its own tolerance:
+
+| inc | 549 | 550 | 551 | 552 | 553 | 554 | 555 |
+|---|---|---|---|---|---|---|---|
+| % of tol | 18.5 | 18.8 | 15.7 | 50.4 | 74.9 | 94.5 | **105.7** |
+
+and it does that **while `dtheta` collapses 48x**, from 1.88e-04 to
+3.91e-06.  Cutting the step 48x made the converged equilibrium 6x worse,
+because the part that will not reduce is not proportional to the step.  That
+single fact rules out every step-size and every step-direction remedy, and
+it is why the Newton-Krylov corrector, event truncation and collapsed-node
+projection all failed: none of them changes an irreducible residual.
+
+It is also a deadlock.  The increment that cannot converge is the very
+increment in which that fragment's last element would damage and delete.
+
+### What the fix does, exactly
+
+AUTOSPC already identifies these nodes - assembled diagonal below `1e-3` of
+the node's OWN intact value - and already removes them from the DISPLACEMENT
+norm, deliberately leaving the force residual alone.  The switch extends that
+one judgement to the force residual and nothing else.  The dof is still
+assembled, still solved, still moved; only its veto over `ram[0]` goes.
+
+Increment 555 with the flag on, iteration by iteration:
+
+```
+excluded 231 dof(s); largest excluded residual 2.267820e-03 at node 1246
+largest residual force= 0.002042 in node 6333 and dof 2
+ ...
+ estimated number of iterations till convergence = 14      <- stock: 151
+ convergence                                               <- iteration 10
+```
+
+The peak moves from node 1246 (masked, irreducible, 0.1% per iteration) to
+node 6333 (not masked), whose residual contracts 0.6% per iteration:
+2.042e-3, 2.032, 2.022, 2.013, 1.996, 1.980, 1.966, 1.952, 1.939, 1.927.
+**`iest` falls from 151 to 14**, below `ic=16`, so the too-slow cutback never
+fires and the iteration is allowed to continue.
+
+Two honest qualifications:
+
+* Acceptance comes at iteration 10 under CalculiX's own relaxed
+  late-iteration tolerance `rap=0.02` rather than the strict `ran=0.005`;
+  `ram[0]=1.927e-03` against `ran*qam=1.880e-03` is still 2.5% above strict.
+  At 0.6% per iteration it would have reached the strict tolerance around
+  iteration 14, which is what `iest=14` says.  The iteration is genuinely
+  converging, not stalled and waved through.
+* The exclusion is not free.  What it accepts is printed on every increment.
+
+### The exclusion is temporary and self-resolving
+
+Largest excluded residual at each ACCEPTED state:
+
+| inc | 550-551 | 552 | 555 | 559 | 560-568 |
+|---|---|---|---|---|---|
+| excluded `\|R\|` | 1e-07 … 5e-06 | 9.5e-04 | 2.2e-03 | 3.2e-03 | **1e-13 … 1e-06** |
+| as `x qam` | 0.0000 | 0.0025 | 0.0060 | 0.0086 | **0.0000** |
+
+The worst case is `0.0086 x qam`, that is **1.7x the convergence tolerance,
+on one node, for eight increments**.  Then the deadlock breaks, the fragment
+resolves, and the excluded residual returns to machine zero.  It is a bridge
+across the deadlock, not a permanent fiction, and the run is not being
+carried by it afterwards.
+
+### And the crack starts moving again
+
+Deletion had stopped dead at batch 415, increment 551.  Nineteen increments
+later, with the deadlock broken, **batch 416 commits at increment 570** -
+element 32313 at `D=0.99908` - and four more batches follow by increment 582.
+`dtime` recovers from 1.95e-06 to 1.47e-04.  The specimen is fracturing
+again rather than being held at a numerically frozen front.
+
 ## The open question that is still open
 
 Independently of the wall, `damageq` - the forward-difference `dD/d(eps)` in
