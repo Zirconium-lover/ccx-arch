@@ -65,10 +65,14 @@ and the residual orthogonal to the near-null space to twenty-one digits.
 A SEPARATE first-order tangent defect was found and quantified around
 increment 92, where the run first cuts back: there the defect ratio is
 constant instead of `O(eps)`, the Newton iteration's linear rate equals it
-to six decimals, and its size is exactly the viscous factor
-`dtime/(eta+dtime)` - the operator behaves as if `dDvis/d(eps)` were zero.
-It costs iterations and cutbacks all the way up, and it is NOT what stops
-the run at `theta=0.2556`: by then the viscosity has damped it to 1.7%.
+to six decimals, and its size tracks the viscous factor `dtime/(eta+dtime)`,
+so the missing term is damage-rate related.  It is NOT the damage-consistent
+rank-1 term: that term's `dD/d(eps)` is present at max 36.4 and mean 4.18
+over 6850 elements, and its action on the Newton step is 0.27% of the
+operator's - two to three orders below the defect.  The missing derivative
+is therefore still unnamed.  It costs iterations and cutbacks all the way
+up, and it is NOT what stops the run at `theta=0.2556`: by then the
+viscosity has damped it to 1.7%.
 
 ## Repository map
 

@@ -610,18 +610,42 @@ asymptotic defect ratio equals the viscous damage-rate factor
 | increment 93, iteration 12 | 5.0e-04 | 0.833 | 0.870 | **1.04** |
 | increment 556, iteration 8 (the wall) | 1.95e-06 | 0.0192 | 0.0171 | **0.89** |
 
-The operator behaves as if `dDvis/d(eps)` were zero, and the size of that
-omission relative to `J p` is exactly `beta`.  That is confirmed
-independently: the bulk damage-consistent rank-1 term
-`- sigma_eff (x) dDvis/d(eps)`, assembled alone into a zeroed operator and
-applied to `p_N` at the same iterate, has `|E p_N| = 4.66e-03` against
-`|J p_N| = 1.71` - **0.27% of the operator's action** - and the defect is
-132 to 1126 times larger than it and only weakly aligned with it
-(`cos = -0.29 to -0.19`).  The term is present in the assembly and
-numerically negligible, so `damageq`, the forward-difference `dD/d(eps)` in
-`resultsmech.f`, is not delivering the derivative the residual actually
-has.  Rescaling it cannot supply what is missing, so
-`CCX_DAMAGE_UNSYM_SCALE` was left alone.
+So the size of the omission relative to `J p` tracks `beta`, which says the
+missing term is damage-rate related.  It does NOT say which term, and the
+obvious candidate is ruled out.
+
+The bulk damage-consistent rank-1 term `- sigma_eff (x) dDvis/d(eps)` was
+assembled alone into a zeroed operator and applied to `p_N` at the same
+iterate:
+
+| quantity | value |
+|---|---|
+| elements carrying the term | 6850 |
+| `\|dD/d(eps)\|` over them | max **36.4**, mean **4.18**, none below 1e-12 |
+| `\|sigma_eff\|` | max 2.51e+04 |
+| `\|E p_N\|` | 4.66e-03 |
+| `\|J p_N\| = \|r0\|` | 1.71 |
+| `\|defect\|/(eps \|E p_N\|)` | **132 to 1126** |
+| `cos(defect, E p_N)` | **-0.29 to -0.19** |
+
+The derivative is there and it is the right size - `charlen/ufail` for this
+mesh and material is about 6, and the mean is 4.18.  What is small is the
+TERM: its action on `p_N` is 0.27% of the operator's, two to three orders
+below the defect and only weakly aligned with it.  So `damageq` is not
+returning zero, the assembly is not losing it, and rescaling it cannot
+supply what is missing - `CCX_DAMAGE_UNSYM_SCALE` was left alone on the
+strength of that rather than on an assumption.
+
+**The missing term is therefore still unnamed.**  What is established about
+it: it is first order (constant defect ratio over five decades of `eps`, at
+a level eleven orders above the cancellation floor); its asymptotic size is
+`beta = dtime/(eta+dtime)`, so it is damage-rate related; it carries 99.999%
+of its norm on nodes attached to softening bulk elements and peaks on nodes
+with 32 to 36 live bulk elements and no cohesive facet; and along a
+direction that is not the Newton one the same ratio is 0.008 to 0.05 rather
+than 0.36 to 0.87, so the error operator is concentrated in a few soft
+directions rather than spread over the mesh.  Naming it was not achieved
+inside this budget, and it is stated as open rather than guessed at.
 
 And this is why that defect is NOT the second wall: at the wall `dtime` is
 1.95e-06, `beta` is 0.019, and the omission is worth 1.7%.  It is worth 87%
