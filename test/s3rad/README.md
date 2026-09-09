@@ -1382,6 +1382,50 @@ separating from this: there the peak sat on node 1177 and contracted 2% per
 iteration - slow but real - with the slow-Newton extension arming normally
 (`est_total=12`, `cap=40`).  That part is a cost problem, not a deadlock.
 
+## What still holds the specimen together, and why it cannot let go
+
+At the end of the fixed run (`theta=0.5575`, 3790 elements deleted), a
+union-find over the LIVE bulk elements only, taken offline from the deck's
+mesh and the committed deletion list:
+
+| | |
+|---|---|
+| live bulk elements | 33701 |
+| live UC6 facets | 5316 |
+| `FACE_X0_NSET` and `FACE_XL_NSET` through solid material alone | **NOT connected** |
+| live facets touching both grip components | **430** |
+
+**The metal is severed.**  The two halves are joined by 430 cohesive facets
+and by nothing else.
+
+They cannot let go, and it is not the solver:
+
+* `cohesive_uc6.f:189` - `g = max(gmin, 1.d0-dvisc)`.  The degradation factor
+  is pinned from below at `gmin`, which this deck sets to `1.e-5`.  A fully
+  debonded facet keeps one hundred-thousandth of its stiffness for ever.
+* `nonlingeo.c:1287` - the terminal-deletion scan takes `C3D4` only.  A UC6
+  facet is not eligible.
+
+So a dead facet can neither reach zero stiffness nor be removed, and it reads
+as a load path for ever.  That is exactly the state the run reaches and then
+sits in: the grip reaction stops at 0.056% instead of going to zero, damage
+growth stops, and `dtime` runs to the deck maximum - nothing left to break,
+and no way to say so.
+
+This is a known property of the model rather than a new discovery here.  The
+tree already carries the diagnosis, in the comment at `nonlingeo.c:3600`,
+with a measurement on DHC1: the specimen carried 0.0% of peak with 206 of 416
+facets fully failed, and an offline replay put severance at `t=0.6100` while
+the run was driven on to `0.7124`.
+
+`CCX_FRACTURE_DEADFACET=1` excludes a facet whose every integration point has
+failed from the TERMINATION connectivity - it deletes nothing and changes no
+equation, only the moment the run may stop.  **It is OFF by default and was
+not set in any run in this file** (checked: no `[FRACTURE TERMINATION] a
+cohesive facet` banner and no `[FRACTURE COMPLETE]` in either the stock or
+the fixed run).  Any statement about whether this specimen separates has to
+be made with that switch armed.
+
 ## The open question that is still open
 
 Independently of the wall, `damageq` - the forward-difference `dD/d(eps)` in
