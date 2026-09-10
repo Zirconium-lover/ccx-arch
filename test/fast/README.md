@@ -191,6 +191,29 @@ and the result is flat over two decades of the band (`1.e-2`, `1.e-1`, `1.e0`
 give 515, 514, 514 increments), which is what a regularisation should look
 like rather than a tuned constant.
 
+### Which mechanism actually does the work
+
+Cross the two switches on this deck and the answer is unambiguous:
+
+| `CCX_DAMAGE_AUTOSPC` | `CCX_UC6_CONTACT_SMOOTH` | rc | last increment / `theta` | deleted |
+|---|---|---|---|---|
+| `1.e-3` | off | 201 | 99 / 0.158766 | 64 |
+| `1.e-3` | `1.e-2` | **0** | 515 / **1.0** | 64 |
+| **off** | off | 201 | 99 / 0.158766 | 64 |
+| **off** | `1.e-2` | **0** | 515 / **1.0** | 64 |
+
+Masking the collapsed node changes **nothing** here - the two AUTOSPC rows are
+identical to the digit.  The kink decides everything.  So this deck's wall was
+never the load-path problem even though it manufactures a load-path node, and
+that separation is worth keeping in mind: the walls are not one thing.  On
+`s3rad` the opposite holds, where `CCX_DAMAGE_AUTOSPC_FORCE=1` alone moved the
+wall from increment 554 to 930.
+
+(The damstate A/B above is unaffected by this: it compares the census the
+predicate computes, which is identical between the two binaries.  What this
+table adds is that on this deck the *consumer* of that mask does not change
+the outcome.)
+
 ### The wall it hits without that switch is NOT the s3rad wall
 
 It stops with `increment size smaller than minimum` at increment 99, and
