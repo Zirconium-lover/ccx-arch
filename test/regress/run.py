@@ -13,10 +13,12 @@ made blind.  These cases cover the load-path judgement, the crack-face kink,
 bulk damage with deletion and cutbacks, and the analytical mixed-mode branch,
 and they run on one core in the time it takes to read a diff.
 """
-import argparse,concurrent.futures as cf,json,os,pathlib,re,shutil,subprocess,sys,time
+import argparse,concurrent.futures as cf,io,contextlib,json,os,pathlib,re,shutil,subprocess,sys,time
 
 HERE=pathlib.Path(__file__).resolve().parent
 ROOT=HERE.parent.parent
+sys.path.insert(0,str(ROOT/'tools'))
+import ccxdiff
 
 def sh(cmd,env,cwd=None,timeout=3600):
     return subprocess.run(cmd,shell=True,env=env,cwd=cwd,timeout=timeout,
@@ -188,6 +190,12 @@ def main():
     pre=sh('python3 %s/tools/mkswitches.py --check'%ROOT,base_env([]))
     print("preflight  switch registry: %s"%pre.stdout.strip().replace('\n','; '))
     preflight_bad = 1 if pre.returncode!=0 else 0
+    # A comparison that has not been shown able to fail is not a comparison,
+    # and it is about to decide whether cases pass.
+    cd=sh('python3 %s/tools/ccxdiff.py --selftest'%ROOT,base_env([]))
+    print("preflight  comparison layer: %s"%
+          (cd.stdout.strip().splitlines() or ['no output'])[-1])
+    if cd.returncode!=0: preflight_bad+=1
     spec=json.load(open(HERE/'cases.json'))
     cases=[c for c in spec['cases'] if not a.k or a.k in c['name']]
     outroot=pathlib.Path(a.o or (HERE/'_runs'/time.strftime('%Y%m%d-%H%M%S'))).resolve()
@@ -217,6 +225,35 @@ def main():
             A=(pathlib.Path(res[other]['rundir'])/name).read_bytes()
             B=(pathlib.Path(r['rundir'])/name).read_bytes()
             if A!=B: r['fails'].append("%s is not identical to %s"%(name,other))
+        # equal_to: the same relation, stated as a TOLERANCE instead of as
+        # byte identity, over whichever files the case names.  Byte identity
+        # can prove a change is a no-op and cannot prove one is correct to
+        # 1e-10, so an extraction that necessarily reorders a summation had
+        # no way to be asserted at all.  tools/ccxdiff.py --selftest proves
+        # this comparison goes red, and goes red for the right reason.
+        spec=c.get('equal_to')
+        if spec and spec['case'] in res:
+            refdir=pathlib.Path(res[spec['case']]['rundir'])
+            newdir=pathlib.Path(r['rundir'])
+            rtol=spec.get('rtol',1.e-10); atol=spec.get('atol',1.e-12)
+            exact=spec.get('exact',False)
+            buf=io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                nbadf=sum(ccxdiff.compare_file(refdir,newdir,f,rtol,atol,exact)
+                          for f in spec['files'])
+            r['got']['equal_to']="%s at rtol=%g atol=%g%s"%(
+                spec['case'],rtol,atol," (exact)" if exact else "")
+            if nbadf:
+                lines=[l.strip() for l in buf.getvalue().splitlines() if l.strip()]
+                head=[l for l in lines if ('DIFFERS' in l) or ('MISSING' in l)]
+                detail=[l for l in lines if l not in head]
+                r['fails'].append("not equal to %s: %s"%(spec['case'],"; ".join(head)))
+                # the first few offenders and a count.  A gate that prints
+                # four hundred lines of difference is a gate nobody reads.
+                for l in detail[:5]: r['fails'].append("   %s"%l)
+                if len(detail)>5:
+                    r['fails'].append("   ... and %d more differing value(s)"
+                                      %(len(detail)-5))
     # Which switches did any case actually put in force?  The [SWITCHES]
     # banner makes this measurable instead of assumed, and the number is
     # worth knowing: a switch no test ever sets is a switch whose behaviour
