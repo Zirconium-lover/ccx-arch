@@ -138,11 +138,42 @@ def one(case,outroot,exe,required,lines):
     return {'name':case['name'],'what':case['what'],'seconds':round(time.time()-t0,1),
             'got':got,'fails':fails,'rundir':str(rundir)}
 
+def provenance(exe):
+    """What a later reader needs in order to believe a recorded number.
+
+    A baseline that does not state its binary and its thread count is not a
+    baseline: runs are NOT reproducible across thread counts (measured -
+    handover/05-DEBT.md item 5), so a scalar without that context cannot be
+    compared against anything."""
+    import hashlib,platform
+    def cmd(c):
+        try: return subprocess.run(c,shell=True,capture_output=True,text=True).stdout.strip().split('\n')[0]
+        except Exception: return None
+    h=hashlib.sha256()
+    with open(exe,'rb') as f:
+        for chunk in iter(lambda:f.read(1<<20),b''): h.update(chunk)
+    e=base_env([])
+    return {'binary':os.path.realpath(exe),
+            'binary_sha256':h.hexdigest(),
+            'omp_num_threads':e.get('OMP_NUM_THREADS'),
+            'mkl_num_threads':e.get('MKL_NUM_THREADS'),
+            'mkl_cbwr':e.get('MKL_CBWR'),
+            'git_commit':cmd('git -C %s rev-parse HEAD'%ROOT),
+            'git_dirty':bool(cmd('git -C %s status --porcelain'%ROOT)),
+            'cc':cmd('gcc --version'),'fc':cmd('gfortran --version'),
+            'machine':platform.machine(),'python':platform.python_version()}
+
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument('-j',type=int,default=2,help='cases to run at once')
     ap.add_argument('-k',default=None,help='run only cases whose name contains this')
     ap.add_argument('-o',default=None,help='where to put the runs')
+    ap.add_argument('--json',default=None,metavar='PATH',
+                    help='also write the whole run - provenance, every '
+                         'expectation and every measured scalar - as JSON, '
+                         'so "it still passes" can be checked rather than '
+                         'asserted')
     ap.add_argument('--record-coverage',action='store_true',
                     help='rewrite test/regress/covered.txt from this run, so '
                          'docs/SWITCHES.md can say which switches any test '
@@ -216,6 +247,17 @@ def main():
     print("\nswitches put in force by these cases: %d"%len(cov))
     print("\n%d of %d case(s) failed%s"%(nbad,len(cases),
           ", plus the preflight" if preflight_bad else ""))
+    if a.json:
+        rec={'provenance':provenance(exe),
+             'when':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
+             'switches_exercised':sorted(cov),
+             'failed':nbad,'preflight_failed':preflight_bad,
+             'cases':[{'name':c['name'],'what':c['what'],
+                       'expect':c['expect'],'got':res[c['name']]['got'],
+                       'seconds':res[c['name']]['seconds'],
+                       'fails':res[c['name']]['fails']} for c in cases]}
+        pathlib.Path(a.json).write_text(json.dumps(rec,indent=2,sort_keys=True)+"\n")
+        print("wrote %s"%a.json)
     return nbad+preflight_bad
 
 if __name__=='__main__':
