@@ -48,3 +48,4 @@ test/s3rad/_runs/
 *.gz
 *.xz
 *.bundle
+test/regress/_runs/

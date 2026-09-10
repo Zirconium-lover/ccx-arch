@@ -17,6 +17,13 @@ same form: what was tried, and the measurement that killed it.
 | a stiffness-ratio threshold tuned until a node is included | 76 nodes below 1e-3, 166 below 1e-2, 381 below 1e-1. Tuning among them is the chain of thresholds this project exists to avoid |
 | the crack-face regulariser, **on `s3rad`** | moves the wall 28 increments, 0.10% of load factor — and the whole difference is inside the post-severance regime. It works on the fast deck and does nothing here |
 
+## About where the time goes
+
+| tried | measurement that rejected it |
+|---|---|
+| **holding the sparsity pattern fixed under erosion so the symbolic factorisation happens once** (`08-OBJECT-MODEL.md` §4, first candidate) | it already effectively does, and it buys nothing. `CCX_PARDISO_REUSE_SYMBOLIC=1` retains the analysis for **603 of 606** factorisations on `fast-wrapped`, and the factorisation cost is **11.649 s against 11.380/11.480/11.528 s** over three stock control runs - at the top of the noise, not below it. The arms are bit-identical, so this is a cost measurement and not a trajectory comparison. `research/01-PROFILING.md` |
+| **the line-search ladder as a runtime problem** | it consumes 367 of 973 residual evaluations on `fast-wrapped` - 38% of them - but residual evaluation is **12.0%** of the run, so the whole globalization apparatus is about **4.6%**. Deleting mechanisms remains an argument about comprehensibility; it is not an argument about speed |
+
 ## About the model's structure
 
 | tried | measurement that rejected it |

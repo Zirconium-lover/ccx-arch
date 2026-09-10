@@ -1114,6 +1114,7 @@ topodiag.c \
 lsladder.c \
 damstate.c \
 damswitch.c \
+logview.c \
 pardiso_cp.c \
 pastix.c \
 pcgsolver.c \

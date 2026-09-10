@@ -8,7 +8,7 @@
    Regenerate with tools/mkswitches.py; tools/mkswitches.py --check
    fails if this file is stale. */
 
-#define DAMSWITCH_COUNT 139
+#define DAMSWITCH_COUNT 140
 
 static const char *const damswitch_name[DAMSWITCH_COUNT]={
   "CCX_CRACK_CONTROL",
@@ -121,6 +121,7 @@ static const char *const damswitch_name[DAMSWITCH_COUNT]={
   "CCX_FRACTURE_LINK",
   "CCX_FRACTURE_TERMINATION",
   "CCX_LOG_ALLOC",
+  "CCX_LOG_VIEW",
   "CCX_NPROC_BIOTSAVART",
   "CCX_NPROC_CFD",
   "CCX_NPROC_EQUATION_SOLVER",

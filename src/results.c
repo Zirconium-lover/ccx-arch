@@ -116,6 +116,7 @@ void results(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
 	     ITG *irowt,ITG *jqt,ITG *mortartrafoflag,
 	     ITG *intscheme,double *physcon,double *dam,double *damn,
 	     ITG *iponoel){
+  logview_begin_named("residual (results)");
 
   ITG intpointvarm,calcul_fn,calcul_f,calcul_qa,calcul_cauchy,ikin,
     intpointvart,mt=mi[1]+1,i,j,de12_thiscall=0;
@@ -530,6 +531,7 @@ void results(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,ITG *ne,
 			  ipobody,ibody,xbody,nbody,iinc,dam,damn));
   }
   
+  logview_end_named("residual (results)");
   return;
 
 }

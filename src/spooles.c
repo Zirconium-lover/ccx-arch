@@ -1160,12 +1160,18 @@ void spooles(double *ad, double *au, double *adb, double *aub, double *sigma,
     /*    FORTRAN(spooles_write,(ad,au,adb,aub,sigma,b,icol,irow,neq,nzs,
 	  symmetryflag,inputformat,nzs3));*/
     
+  logview_begin_named("spooles factor");
   spooles_factor(ad,au,adb,aub,sigma,icol,irow,neq,nzs,symmetryflag,
 		 inputformat,nzs3);
+  logview_end_named("spooles factor");
   
+  logview_begin_named("spooles solve");
   spooles_solve(b,neq);
+  logview_end_named("spooles solve");
   
+  logview_begin_named("spooles cleanup");
   spooles_cleanup();
+  logview_end_named("spooles cleanup");
 
 }
 

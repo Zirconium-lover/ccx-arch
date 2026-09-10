@@ -159,6 +159,7 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
 		    double *sigma,ITG *icol, ITG *irow, 
 		    ITG *neq, ITG *nzs, ITG *symmetryflag, ITG *inputformat,
 		    ITG *jq, ITG *nzs3){
+  logview_begin_named("pardiso factor");
 
   char *env;
   /*  char env1[32]; */
@@ -538,11 +539,13 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
     }
   }
 
+  logview_end_named("pardiso factor");
   return;
 }
 
 void pardiso_solve(double *b, ITG *neq,ITG *symmetryflag,ITG *inputformat,
 		   ITG *nrhs){
+  logview_begin_named("pardiso solve");
 
   ITG maxfct=1,mnum=1,phase=33,*perm=NULL,mtype,
     msglvl=0,i,error=0;
@@ -578,10 +581,12 @@ void pardiso_solve(double *b, ITG *neq,ITG *symmetryflag,ITG *inputformat,
   for(i=0;i<*nrhs**neq;i++){b[i]=x[i];}
   SFREE(x);
 
+  logview_end_named("pardiso solve");
   return;
 }
 
 void pardiso_cleanup(ITG *neq,ITG *symmetryflag,ITG *inputformat){
+  logview_begin_named("pardiso cleanup");
 
   ITG maxfct=1,mnum=1,phase=-1,*perm=NULL,nrhs=1,mtype,
     msglvl=0,error=0;
@@ -612,6 +617,7 @@ void pardiso_cleanup(ITG *neq,ITG *symmetryflag,ITG *inputformat){
   pardiso_cgs_report(1);
   pardiso_cgs_ok=0;pardiso_cgs_fail=0;pardiso_cgs_iter=0;
 
+  logview_end_named("pardiso cleanup");
   return;
 }
 

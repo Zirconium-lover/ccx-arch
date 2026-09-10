@@ -82,6 +82,7 @@ void mafillsmmain(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,
 		  double *smscale,ITG *mscalmethod,char *set,ITG *nset,
 		  ITG *islavquadel,double *aut,ITG *irowt,ITG *jqt,
 		  ITG *mortartrafoflag){
+  logview_begin_named("assembly (mafillsmmain)");
 
   /* mafillsmmain = main program for MAtrix FILLing of the Stiffnes
      Matrix */
@@ -397,6 +398,7 @@ void mafillsmmain(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,
 			fext,ipompc,nodempc,coefmpc,mi,rhsi,fnext,
 			nmethod,ntrans,inotr,trab,co));
   
+  logview_end_named("assembly (mafillsmmain)");
   return;
 
 }

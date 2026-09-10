@@ -1954,6 +1954,10 @@ _set_output_format(_TWO_DIGIT_EXPONENT);
   
   printf("Total CalculiX Time: %lf\n", totalCalculixTime);
 
+  /* Where that time went, if CCX_LOG_VIEW asked.  Printed against the
+     total the line above reports, so the two can never disagree. */
+  logview_report(totalCalculixTime);
+
   printf("________________________________________\n");
 
   return 0;
