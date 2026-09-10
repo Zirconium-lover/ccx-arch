@@ -213,20 +213,39 @@ def compare(ref,new,rtol,atol,maxreport=5):
 _TOK=re.compile(r'[-+]?\d*\.?\d+(?:[eEdD][-+]?\d+)?')
 
 def resolution(path,limit=400000):
-    """How many significant digits does this file actually carry?
+    """How finely can this file's own digits resolve a relative difference?
 
-    A tolerance tighter than the file's own printed precision is not a
-    strict comparison, it is a comparison of rounding.  m.sta prints seven
-    significant digits; asking it for 1e-10 agreement asks a question the
-    bytes cannot answer, and getting "equal" back would be a lie of the kind
-    this whole layer exists to stop telling."""
-    d=0
+    A tolerance tighter than the file's printed precision is not a strict
+    comparison, it is a comparison of rounding.  Getting "equal" back would
+    be the "not wrong but uninformative" answer that costs a run.
+
+    Computed per token, not from a digit count: what matters is the QUANTUM
+    of the last printed digit relative to the value itself, and that depends
+    on the format AND on the magnitude.  `0.9639E+00` quantises at 1e-4 on a
+    value of 0.96, so it resolves 1e-4; `0.100000E+01` quantises at 1e-5 on
+    a value of 1.0, so it resolves 1e-5.  A digit count alone gets both of
+    those wrong, in opposite directions.
+
+    Integers are skipped - a node number is exact, not quantised - and the
+    median is reported rather than an extreme, because one badly scaled
+    value should not speak for the file."""
+    rels=[]
     txt=open(path,errors='replace').read(limit)
     for m in _TOK.finditer(txt):
-        mant=m.group(0).split('e')[0].split('E')[0].split('d')[0].split('D')[0]
-        n=len(mant.lstrip('-+0.').replace('.','').rstrip('0')) or 1
-        if n>d: d=n
-    return 10.**-(d-1) if d>1 else 1.
+        t=m.group(0).replace('D','E').replace('d','e')
+        if ('.' not in t) and ('e' not in t) and ('E' not in t): continue
+        mant,_,exp=t.replace('E','e').partition('e')
+        if '.' not in mant: continue
+        frac=len(mant.split('.')[1])
+        try:
+            v=abs(float(t)); e=int(exp) if exp else 0
+        except ValueError:
+            continue
+        if v==0.: continue
+        rels.append((10.**(e-frac))/v)
+    if not rels: return 0.
+    rels.sort()
+    return rels[len(rels)//2]
 
 def compare_file(refdir,newdir,fname,rtol,atol,exact,quiet=False):
     a=pathlib.Path(refdir)/fname; b=pathlib.Path(newdir)/fname
@@ -247,8 +266,8 @@ def compare_file(refdir,newdir,fname,rtol,atol,exact,quiet=False):
               %(fname,"identical" if same else "DIFFERS"))
         return 0 if same else 1
     res=resolution(a)
-    note=("  [this file carries about %.0e relative precision, so rtol=%g is "
-          "below what its digits can resolve]"%(res,rtol)) if rtol<res else ""
+    note=("  [this file's digits resolve about %.0e relative, so rtol=%g is "
+          "below what they can answer]"%(res,rtol)) if rtol<res else ""
     findings,(wabs,wrel,wwhere,nnum)=compare(rd(a),rd(b),rtol,atol)
     if findings:
         print("  %-12s DIFFERS  (rtol=%g atol=%g, %d numbers compared)%s"

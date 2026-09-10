@@ -4915,6 +4915,45 @@ void logview_end_named(const char *name);
 void logview_report(double totalseconds);
 ITG  logview_selftest(void);
 
+/* ---- does the assembled tangent differ the residual? (opcheck.c) ----
+
+   The check 07-RESEARCH-AGENDA.md rank 3 calls the named hole, which turned
+   out to be already in the tree behind three undeclared switches.  What is
+   new here is the DISCRIMINATOR: a central difference converges to the mean
+   of the one-sided derivatives at a kink, so its h-plateau cannot tell a
+   kink from a wrong tangent.  The two one-sided differences can. */
+
+#define OPCHECK_OK    0   /* one-sided differences agree, and with K_asm   */
+#define OPCHECK_KINK  1   /* they disagree, and K_asm is on one branch     */
+#define OPCHECK_WRONG 2   /* they agree, and K_asm is on neither           */
+#define OPCHECK_BOTH  3   /* they disagree and K_asm is on neither branch  */
+
+typedef struct{
+  ITG n;             /* coefficients compared in this column             */
+  ITG nok,nkink,nwrong,nboth;
+  double scale;      /* largest |K| in the column: everything is relative */
+  double relctr;     /* max |K_ctr - K_asm| / scale                       */
+  double relside;    /* max |K_fwd - K_bwd| / scale - the kink measure    */
+  double relbest;    /* max over rows of min(|K_fwd-K_asm|,|K_bwd-K_asm|) */
+  ITG worst,worstdir;/* where relctr peaked                               */
+  double wfwd,wbwd,wasm;
+  double tol;
+}opcheck;
+
+ITG  opcheck_classify(double kfwd,double kbwd,double kasm,double scale,
+                      double tol);
+void opcheck_begin(opcheck *o,double tol);
+void opcheck_column(opcheck *o,ITG nk,ITG mt,const ITG *nactdof,
+                    const double *f0,const double *fp,const double *fm,
+                    double h,ITG col,
+                    const double *ad,const double *au,
+                    const ITG *jq,const ITG *irow,const ITG *nzs,ITG nasym);
+ITG  opcheck_selftest(void);
+void monitor_opcheck(const opcheck *o,ITG iinc,ITG iit,ITG node,ITG dir,
+                     double h);
+void monitor_opcheck_total(const opcheck *o,ITG iinc,ITG iit,ITG elem,
+                           double dam,double h,ITG ncol);
+
 /* ---- the stiffness census (census.c) and its presenter (monitor.c) ----
 
    How far the assembled nodal stiffness has fallen, as a fraction of each

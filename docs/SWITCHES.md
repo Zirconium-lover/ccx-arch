@@ -6,12 +6,12 @@ Two tables, and the difference between them is the point.
 
 | | |
 |---|---|
-| names the binary reads | **140** |
-| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **31** |
+| names the binary reads | **141** |
+| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **32** |
 | undeclared, documented only by whatever the source says of them | 109 |
 | **explained nowhere at all** | **54** |
 | exercised by `test/regress/run.py` | 17 |
-| **never set by any test in this tree** | **123** |
+| **never set by any test in this tree** | **124** |
 | **no declaration, no test and no prose - the retirement queue** | **54** |
 
 Every run prints the ones that are set (`[SWITCHES]` at the top of any
@@ -57,6 +57,7 @@ are read from the declaration, not from the line that reads it.
 | `CCX_STRUCT_FD_H` | real | 1.e-7 | - | - | the perturbation of the central difference.  Measured: the answer is flat over 1e-11 to 1e-8 and has moved by 1e-3, so the default sits inside the converged plateau |
 | `CCX_STRUCT_FD_INC` | int | 0 (off) | - | - | arm the operator check at this increment: compare the ASSEMBLED tangent, column by column, against a central difference of the internal force.  The run stops afterwards - the probe perturbs the displacement repeatedly, so the run is diagnostic only |
 | `CCX_STRUCT_FD_ITER` | int | 0 | - | - | the Newton iteration at which the operator check runs |
+| `CCX_STRUCT_FD_STEP` | int | 0 (any step) | - | - | restrict the operator check to this *STEP.  iinc restarts at 1 in every step, so without this the probe can only ever fire in the first one - which is the wrong one whenever the interesting state is reached by unloading, as the crack-face closure benchmark is |
 | `CCX_UC6_CONTACT_SMOOTH` | real | unset (sharp law) | - | yes | penetration band over which the crack-face closure kink is blended.  The kink is a measured factor of 1/gmin = 1e+06 in the normal tangent; the blend is a byte-for-byte no-op wherever no DAMAGED facet closes |
 
 ## Undeclared

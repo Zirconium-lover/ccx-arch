@@ -1214,37 +1214,6 @@ static ITG damage_delete_allowed(ITG imat,const char *matname,
   return 0;
 }
 
-/* Read one coefficient back out of the assembled sparse operator.
-
-   Convention taken from add_sm_st_as.f, which is what mafillsm and
-   mafilldamas write through: ad(i) holds the diagonal; a coefficient with
-   i>j lives in column j of au; one with i<j lives in column i, offset by
-   nzs(3).  Row indices inside a column are sorted, so the search is a
-   bisection, exactly as nident does on the way in.
-
-   Returns 0 for a structurally absent coefficient, which is the correct
-   value - the sparsity pattern is a superset of the assembled entries and
-   a missing slot means the two degrees of freedom share no element. */
-
-static double damage_fd_coeff(const double *ad,const double *au,
-                              const ITG *jq,const ITG *irow,const ITG *nzs,
-                              ITG i,ITG j)
-{
-  ITG col,want,lo,hi,mid,off;
-
-  if(i==j) return ad[i-1];
-
-  if(i>j){col=j;want=i;off=0;}
-  else   {col=i;want=j;off=nzs[2];}
-
-  lo=jq[col-1];hi=jq[col]-1;
-  while(lo<=hi){
-    mid=(lo+hi)/2;
-    if(irow[mid-1]==want) return au[mid-1+off];
-    if(irow[mid-1]<want) lo=mid+1; else hi=mid-1;
-  }
-  return 0.;
-}
 
 
 /* Deletes a DEAD element that is the SOLE support of a node.
@@ -1970,9 +1939,9 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_dump_nb=0,damage_dump_nu=0,damage_dump_alive=0,
     damage_dump_idx=0,damage_dump_np=0,damage_dump_hit=0,
     damage_fd_inc=0,damage_fd_it=1,damage_fd_ncol=0,damage_fd_el=-1,
-    damage_fd_j=0,damage_fd_s=0,damage_fd_d=0,damage_fd_node=0,
-    damage_fd_col=0,damage_fd_row=0,damage_fd_worst=-1,
-    damage_fd_nbad=0,damage_fd_wd=0,damage_unsym_skip=0,
+    damage_fd_j=0,damage_fd_s=0,damage_fd_node=0,damage_fd_step=0,
+    damage_fd_uel=-1,damage_fd_t=0,damage_fd_tel=-1,damage_fd_tnn=0,
+    damage_fd_col=0,damage_unsym_skip=0,
     damage_unsym_skiprep=-1,damage_unsym_adv=0,
     damage_unsym_advrep=-1,
     *damage_stiff_haz=NULL,
@@ -2084,11 +2053,9 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_diss_ff=0.,damage_diss_den=0.,
     damage_de13_batch_vmin=1.,
     damage_stiff_min=0.,damage_path_lam=0.,damage_path_dev=0.,
-    damage_fd_h=1.e-7,damage_fd_dmax=0.,damage_fd_num=0.,
-    damage_fd_asm=0.,damage_fd_amax=0.,damage_fd_emax=0.,
+    damage_fd_h=1.e-7,damage_fd_dmax=0.,damage_fd_udmax=-1.,
     *damage_fd_vsav=NULL,*damage_fd_fp=NULL,*damage_fd_fm=NULL,
-    *damage_fd_ad=NULL,*damage_fd_au=NULL,
-    damage_fd_wa=0.,damage_fd_wf=0.,
+    *damage_fd_f0=NULL,*damage_fd_ad=NULL,*damage_fd_au=NULL,
     damage_path_devmax=-1.,damage_path_ref=0.,
     damage_path_lamcom=0.,damage_path_drop=0.25,
     *damage_null_x=NULL,damage_null_nb=0.,damage_null_nx=0.,
@@ -2857,6 +2824,30 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      that is uninformative, and the second kind costs a whole run to notice.
      Reports only; reads nothing, decides nothing. */
   ccxopt_report();
+
+  /* The operator check reads its configuration HERE, unconditionally.
+
+     It used to be parsed inside the block gated by damage_de12_enabled -
+     that is, only on a deck carrying a progressive BULK damage material -
+     for no reason except that it was written next to the code that needed
+     that gate.  The consequence was measured rather than argued: on
+     test/pathfollow/close.inp, the one deck in this tree that isolates the
+     crack-face closure kink, the probe could not be armed at all.  Every
+     one of its switches was reported by [SWITCHES LEFT] as set and never
+     read, which is exactly the failure that report exists to catch, on its
+     first real use.
+
+     "A responsibility with no home ends up nested inside whatever code
+     happened to be nearby" - 08-OBJECT-MODEL.md section 1, describing a
+     different instance of the same thing. */
+  if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_INC"))!=NULL)
+    damage_fd_inc=atoi(damage_de13_env);
+  if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_ITER"))!=NULL)
+    damage_fd_it=atoi(damage_de13_env);
+  if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_H"))!=NULL)
+    damage_fd_h=atof(damage_de13_env);
+  if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_STEP"))!=NULL)
+    damage_fd_step=atoi(damage_de13_env);
 
   /* [DAMAGE TMIN] statics.f:234-247 silently raises the deck's minimum
      increment to min(tinc,1e-6*tper) under automatic incrementation.  With
@@ -3676,12 +3667,6 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
       if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_DELETE_VISC"))!=NULL){
         damage_delete_visc=(strcmp(damage_de13_env,"0")==0)?0:1;
       }
-      if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_INC"))!=NULL)
-        damage_fd_inc=atoi(damage_de13_env);
-      if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_ITER"))!=NULL)
-        damage_fd_it=atoi(damage_de13_env);
-      if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_H"))!=NULL)
-        damage_fd_h=atof(damage_de13_env);
       if(ccxopt_getenv("CCX_DAMAGE_FREE_PROBE")!=NULL) damage_free_probe=1;
       if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_NODE_DUMP"))!=NULL)
         damage_dump_node=atoi(damage_de13_env);
@@ -7673,7 +7658,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	   relative error of 1.0 because every coefficient read back was
 	   zero.  Keep a copy while the operator still exists. */
 
-	if((damage_fd_inc>0)&&(iinc>=damage_fd_inc)&&(iit>=damage_fd_it)){
+	if((damage_fd_inc>0)&&(iinc>=damage_fd_inc)&&(iit>=damage_fd_it)&&
+	   ((damage_fd_step<=0)||(*istep==damage_fd_step))){
 	  if(damage_fd_ad==NULL){
 	    NNEW(damage_fd_ad,double,neq[1]);
 	    NNEW(damage_fd_au,double,(nasym+1)*nzs[1]);
@@ -9697,11 +9683,15 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         }
       }
 
-      if((damage_fd_inc>0)&&(iinc>=damage_fd_inc)&&(iit>=damage_fd_it)){
+      if((damage_fd_inc>0)&&(iinc>=damage_fd_inc)&&(iit>=damage_fd_it)&&
+         ((damage_fd_step<=0)||(*istep==damage_fd_step))){
+
+        opcheck damage_fd_all,damage_fd_col_o,damage_fd_bulk,damage_fd_coh;
 
         NNEW(damage_fd_vsav,double,mt**nk);
         NNEW(damage_fd_fp,double,mt**nk);
         NNEW(damage_fd_fm,double,mt**nk);
+        NNEW(damage_fd_f0,double,mt**nk);
         memcpy(damage_fd_vsav,v,sizeof(double)*mt**nk);
 
         /* columns are taken at the nodes of the most damaged element: a
@@ -9710,28 +9700,69 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
            have missed */
 
         damage_fd_el=-1;damage_fd_dmax=-1.;
-        for(i=0;i<ne0;i++){
+        for(i=0;(i<ne0)&&(*ndmat_>0)&&(dam!=NULL);i++){
           if(ipkon[i]<0) continue;
           if(strncmp(&lakon[8*i],"C3D4",4)!=0) continue;
           if(dam[mi[0]*i]>damage_fd_dmax){
             damage_fd_dmax=dam[mi[0]*i];damage_fd_el=i;
           }
         }
-        if(damage_fd_el<0){
-          printf("[STRUCT-FD] no active C3D4 element to probe\n");
+        /* And the most damaged COHESIVE facet, because that is where the
+           three documented kinks live - damage initiation (deff>d0),
+           loading against unloading (deff against dmax) and crack-face
+           closure (deltal(1)=0, a measured factor of 1e+06 in the normal
+           slope).  Probing only the bulk cannot see any of them, and a
+           verdict of "no kink" from bulk columns alone would be a statement
+           about where the probe looked rather than about the model.
+           UC6 damage is xstate[nstate_*(mi[0]*elem+ip)+1] over 3 points. */
+        damage_fd_uel=-1;damage_fd_udmax=-1.;
+        if(*nstate_>1){
+          for(i=0;i<ne0;i++){
+            if(ipkon[i]<0) continue;
+            if((lakon[8*i]!='U')||(lakon[8*i+1]!='C')||(lakon[8*i+2]!='6'))
+              continue;
+            for(k=0;k<3;k++){
+              if(xstate[*nstate_*(mi[0]*i+k)+1]>damage_fd_udmax){
+                damage_fd_udmax=xstate[*nstate_*(mi[0]*i+k)+1];
+                damage_fd_uel=i;
+              }
+            }
+          }
+        }
+        if((damage_fd_el<0)&&(damage_fd_uel<0)){
+          printf("[OPCHECK] no active element to probe\n");
+        }else if(opcheck_selftest()!=0){
+          printf("[OPCHECK] *ERROR: the classifier self test failed; "
+                 "reporting nothing rather than reporting a verdict that may "
+                 "be wrong.\n");
+          damage_fd_el=-1;damage_fd_uel=-1;
         }else{
-          printf("[STRUCT-FD] inc=%" ITGFORMAT " iter=%" ITGFORMAT
-      	   " element=%" ITGFORMAT " dam=%.6f h=%.3e\n",
-      	   iinc,iit,damage_fd_el+1,damage_fd_dmax,damage_fd_h);
-          printf("[STRUCT-FD] %-6s %-5s %-14s %-14s %-12s %s\n",
-      	   "node","dir","max|K_fd|","max|K_asm-K_fd|","rel.err",
-      	   "worst row");
+          printf("[OPCHECK] inc=%" ITGFORMAT " iter=%" ITGFORMAT
+      	   " step=%" ITGFORMAT " h=%.3e\n",iinc,iit,*istep,damage_fd_h);
+          if(damage_fd_el>=0)
+            printf("[OPCHECK]   bulk     element %" ITGFORMAT " dam=%.6f\n",
+                   damage_fd_el+1,damage_fd_dmax);
+          if(damage_fd_uel>=0)
+            printf("[OPCHECK]   cohesive element %" ITGFORMAT " dv=%.6f "
+                   "(g=%.3e)\n",damage_fd_uel+1,damage_fd_udmax,
+                   1.-damage_fd_udmax);
+          printf("[OPCHECK] one-sided differences taken SEPARATELY: a "
+                 "central difference converges to their mean at a kink, so "
+                 "it cannot tell a kink from a wrong tangent.\n");
           fflush(stdout);
         }
+        opcheck_begin(&damage_fd_all,1.e-4);
+        opcheck_begin(&damage_fd_bulk,1.e-4);
+        opcheck_begin(&damage_fd_coh,1.e-4);
 
         damage_fd_ncol=0;
-        for(damage_fd_j=0;(damage_fd_j<4)&&(damage_fd_el>=0);damage_fd_j++){
-          damage_fd_node=kon[ipkon[damage_fd_el]+damage_fd_j]-1;
+        /* target 0 is the bulk element (4 nodes), target 1 the facet (6) */
+        for(damage_fd_t=0;damage_fd_t<2;damage_fd_t++){
+        damage_fd_tel=(damage_fd_t==0)?damage_fd_el:damage_fd_uel;
+        damage_fd_tnn=(damage_fd_t==0)?4:6;
+        for(damage_fd_j=0;(damage_fd_j<damage_fd_tnn)&&(damage_fd_tel>=0);
+            damage_fd_j++){
+          damage_fd_node=kon[ipkon[damage_fd_tel]+damage_fd_j]-1;
           if((damage_fd_node<0)||(damage_fd_node>=*nk)) continue;
 
           for(idir=1;idir<=3;idir++){
@@ -9740,10 +9771,14 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 
             /* central difference on the internal force */
 
-            for(damage_fd_s=0;damage_fd_s<2;damage_fd_s++){
+            /* three evaluations, not two: the base state is needed to
+               split the central difference into its two one-sided halves,
+               which is the only reading that separates a kink from a
+               tangent that is not the differential. */
+            for(damage_fd_s=0;damage_fd_s<3;damage_fd_s++){
       	memcpy(v,damage_fd_vsav,sizeof(double)*mt**nk);
-      	v[mt*damage_fd_node+idir]+=
-      	  (damage_fd_s==0)?damage_fd_h:-damage_fd_h;
+      	if(damage_fd_s==0)      v[mt*damage_fd_node+idir]+=damage_fd_h;
+      	else if(damage_fd_s==1) v[mt*damage_fd_node+idir]-=damage_fd_h;
       	results(co,nk,kon,ipkon,lakon,ne,v,stn,inum,stx,
       		elcon,nelcon,rhcon,nrhcon,alcon,nalcon,alzero,ielmat,
       		ielorien,norien,orab,ntmat_,t0,t1act,ithermal,
@@ -9768,56 +9803,63 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
       		damn,iponoel);
       	if(damage_fd_s==0)
       	  memcpy(damage_fd_fp,fn,sizeof(double)*mt**nk);
-      	else
+      	else if(damage_fd_s==1)
       	  memcpy(damage_fd_fm,fn,sizeof(double)*mt**nk);
+      	else
+      	  memcpy(damage_fd_f0,fn,sizeof(double)*mt**nk);
             }
 
-            /* compare the measured column against the stored one */
+            /* Classify the column: opcheck.c owns the comparison and the
+               verdict, this loop owns only the three evaluations that feed
+               it. */
 
-            damage_fd_amax=0.;damage_fd_emax=0.;damage_fd_worst=-1;
-            damage_fd_nbad=0;damage_fd_wa=0.;damage_fd_wf=0.;
-            for(k=0;k<*nk;k++){
-      	for(damage_fd_d=1;damage_fd_d<=3;damage_fd_d++){
-      	  damage_fd_row=nactdof[mt*k+damage_fd_d];
-      	  if(damage_fd_row<=0) continue;
-      	  damage_fd_num=(damage_fd_fp[mt*k+damage_fd_d]
-      			 -damage_fd_fm[mt*k+damage_fd_d])
-      	                /(2.*damage_fd_h);
-      	  damage_fd_asm=damage_fd_coeff(damage_fd_ad,damage_fd_au,
-                                                jq,irow,nzs,
-      					damage_fd_row,damage_fd_col);
-      	  if(fabs(damage_fd_num)>damage_fd_amax)
-      	    damage_fd_amax=fabs(damage_fd_num);
-      	  if(fabs(damage_fd_asm-damage_fd_num)>damage_fd_emax){
-      	    damage_fd_emax=fabs(damage_fd_asm-damage_fd_num);
-      	    damage_fd_worst=k+1;
-      	    damage_fd_wa=damage_fd_asm;
-      	    damage_fd_wf=damage_fd_num;
-      	    damage_fd_wd=damage_fd_d;
-      	  }
-      	  if(fabs(damage_fd_asm-damage_fd_num)>1.e-4*damage_fd_amax)
-      	    damage_fd_nbad++;
-      	}
+            opcheck_begin(&damage_fd_col_o,1.e-4);
+            opcheck_column(&damage_fd_col_o,*nk,mt,nactdof,
+                           damage_fd_f0,damage_fd_fp,damage_fd_fm,
+                           damage_fd_h,damage_fd_col,
+                           damage_fd_ad,damage_fd_au,jq,irow,nzs,nasym);
+            monitor_opcheck(&damage_fd_col_o,iinc,iit,damage_fd_node+1,idir,
+                            damage_fd_h);
+            damage_fd_all.n+=damage_fd_col_o.n;
+            damage_fd_all.nok+=damage_fd_col_o.nok;
+            damage_fd_all.nkink+=damage_fd_col_o.nkink;
+            damage_fd_all.nwrong+=damage_fd_col_o.nwrong;
+            damage_fd_all.nboth+=damage_fd_col_o.nboth;
+            if(damage_fd_t==0){
+              damage_fd_bulk.n+=damage_fd_col_o.n;
+              damage_fd_bulk.nok+=damage_fd_col_o.nok;
+              damage_fd_bulk.nkink+=damage_fd_col_o.nkink;
+              damage_fd_bulk.nwrong+=damage_fd_col_o.nwrong;
+              damage_fd_bulk.nboth+=damage_fd_col_o.nboth;
+            }else{
+              damage_fd_coh.n+=damage_fd_col_o.n;
+              damage_fd_coh.nok+=damage_fd_col_o.nok;
+              damage_fd_coh.nkink+=damage_fd_col_o.nkink;
+              damage_fd_coh.nwrong+=damage_fd_col_o.nwrong;
+              damage_fd_coh.nboth+=damage_fd_col_o.nboth;
             }
-            printf("[STRUCT-FD] %-6" ITGFORMAT " %-5" ITGFORMAT
-      	     " %-13.5e %-12.4e worst row %" ITGFORMAT "/%" ITGFORMAT
-      	     " K_fd=%-13.5e K_asm=%-13.5e ratio=%-9.4f bad=%"
-      	     ITGFORMAT "\n",
-      	     damage_fd_node+1,idir,damage_fd_amax,
-      	     (damage_fd_amax>0.)?damage_fd_emax/damage_fd_amax:-1.,
-      	     damage_fd_worst,damage_fd_wd,damage_fd_wf,damage_fd_wa,
-      	     (fabs(damage_fd_wf)>0.)?damage_fd_wa/damage_fd_wf:0.,
-      	     damage_fd_nbad);
             fflush(stdout);
             damage_fd_ncol++;
           }
         }
+        }
 
         memcpy(v,damage_fd_vsav,sizeof(double)*mt**nk);
         SFREE(damage_fd_vsav);SFREE(damage_fd_fp);SFREE(damage_fd_fm);
-        printf("[STRUCT-FD] %" ITGFORMAT " columns compared; stopping, the "
-      	 "probe perturbed v repeatedly and this run is diagnostic "
-      	 "only\n",damage_fd_ncol);
+        SFREE(damage_fd_f0);
+        if(damage_fd_bulk.n>0){
+          printf("[OPCHECK] --- bulk columns ---\n");
+          monitor_opcheck_total(&damage_fd_bulk,iinc,iit,damage_fd_el+1,
+                                damage_fd_dmax,damage_fd_h,damage_fd_ncol);
+        }
+        if(damage_fd_coh.n>0){
+          printf("[OPCHECK] --- cohesive columns, where the three documented "
+                 "kinks live ---\n");
+          monitor_opcheck_total(&damage_fd_coh,iinc,iit,damage_fd_uel+1,
+                                damage_fd_udmax,damage_fd_h,damage_fd_ncol);
+        }
+        printf("[OPCHECK] stopping: the probe perturbed v repeatedly and "
+               "this run is diagnostic only\n");
         fflush(stdout);
         FORTRAN(stopwithout201,());
       }

@@ -44,3 +44,66 @@ void monitor_stiffness(const stiffcensus *c,ITG iinc,double time){
          c->nnode,c->worst,c->worstratio);
   fflush(stdout);
 }
+
+/*  The operator check, per column and in total.
+ *
+ *  The old [STRUCT-FD] line reported one relative error, which - now that
+ *  the one-sided differences are separated - is known to have been an
+ *  ambiguous number.  It is kept, so a reader who has seen the old output
+ *  can still find their bearings, and the discriminating columns are added
+ *  beside it: how far the two one-sided differences are from EACH OTHER,
+ *  how far the better of them is from the tangent, and the classification.
+ */
+void monitor_opcheck(const opcheck *o,ITG iinc,ITG iit,ITG node,ITG dir,
+                     double h){
+  printf("[OPCHECK] node %-6" ITGFORMAT " dir %" ITGFORMAT
+         "  scale=%-11.4e |ctr-asm|=%-10.3e |fwd-bwd|=%-10.3e "
+         "min|side-asm|=%-10.3e  ok=%-6" ITGFORMAT " kink=%-6" ITGFORMAT
+         " wrong=%-6" ITGFORMAT " both=%-6" ITGFORMAT "\n",
+         node,dir,o->scale,o->relctr,o->relside,o->relbest,
+         o->nok,o->nkink,o->nwrong,o->nboth);
+  printf("[MON] {\"kind\":\"opcheck_column\",\"inc\":%" ITGFORMAT
+         ",\"iter\":%" ITGFORMAT ",\"node\":%" ITGFORMAT ",\"dir\":%"
+         ITGFORMAT ",\"h\":%.6e,\"scale\":%.6e,\"rel_ctr\":%.6e,"
+         "\"rel_side\":%.6e,\"rel_best\":%.6e,\"n\":%" ITGFORMAT
+         ",\"ok\":%" ITGFORMAT ",\"kink\":%" ITGFORMAT ",\"wrong\":%"
+         ITGFORMAT ",\"both\":%" ITGFORMAT ",\"worst_row\":%" ITGFORMAT
+         ",\"worst_dir\":%" ITGFORMAT ",\"worst_fwd\":%.6e,"
+         "\"worst_bwd\":%.6e,\"worst_asm\":%.6e}\n",
+         iinc,iit,node,dir,h,o->scale,o->relctr,o->relside,o->relbest,
+         o->n,o->nok,o->nkink,o->nwrong,o->nboth,o->worst,o->worstdir,
+         o->wfwd,o->wbwd,o->wasm);
+  fflush(stdout);
+}
+
+void monitor_opcheck_total(const opcheck *o,ITG iinc,ITG iit,ITG elem,
+                           double dam,double h,ITG ncol){
+  ITG bad=o->nkink+o->nwrong+o->nboth;
+  printf("[OPCHECK] inc=%" ITGFORMAT " iter=%" ITGFORMAT " element=%"
+         ITGFORMAT " dam=%.6f h=%.3e %" ITGFORMAT " column(s), %" ITGFORMAT
+         " coefficient(s)\n",iinc,iit,elem,dam,h,ncol,o->n);
+  printf("[OPCHECK]   %-8" ITGFORMAT " agree with the tangent\n",o->nok);
+  printf("[OPCHECK]   %-8" ITGFORMAT " KINK   - the one-sided differences "
+         "disagree and the tangent is on one branch\n",o->nkink);
+  printf("[OPCHECK]   %-8" ITGFORMAT " WRONG  - the one-sided differences "
+         "AGREE and the tangent is on neither\n",o->nwrong);
+  printf("[OPCHECK]   %-8" ITGFORMAT " BOTH   - non-smooth, and the tangent "
+         "is on neither branch\n",o->nboth);
+  if(bad>0){
+    printf("[OPCHECK]   verdict: %.1f%% of the disagreement is a kink the "
+           "tangent is right about; %.1f%% is the tangent being wrong where "
+           "the residual is smooth\n",
+           100.*(double)o->nkink/(double)bad,
+           100.*(double)o->nwrong/(double)bad);
+  }else{
+    printf("[OPCHECK]   verdict: the assembled tangent IS the differential "
+           "of the residual here\n");
+  }
+  printf("[MON] {\"kind\":\"opcheck\",\"inc\":%" ITGFORMAT ",\"iter\":%"
+         ITGFORMAT ",\"element\":%" ITGFORMAT ",\"dam\":%.6f,\"h\":%.6e,"
+         "\"columns\":%" ITGFORMAT ",\"n\":%" ITGFORMAT ",\"ok\":%"
+         ITGFORMAT ",\"kink\":%" ITGFORMAT ",\"wrong\":%" ITGFORMAT
+         ",\"both\":%" ITGFORMAT "}\n",
+         iinc,iit,elem,dam,h,ncol,o->n,o->nok,o->nkink,o->nwrong,o->nboth);
+  fflush(stdout);
+}

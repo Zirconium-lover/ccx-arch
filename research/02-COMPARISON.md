@@ -77,9 +77,23 @@ this tree's own history.
               [this file carries about 1e-05 relative precision,
                so rtol=1e-10 is below what its digits can resolve]
 
-  That note is a finding in itself: **`m.cvg` carries only about three
-  significant digits**, so the convergence record cannot support a tight
-  comparison at all in its present format.
+  That note is a finding in itself: **`m.cvg` prints four significant digits**
+  (`0.9639E+00`), so its practical resolution is about **1e-4** and the
+  convergence record cannot support a tight comparison in its present format.
+
+  The figure itself was got wrong first, and the correction is worth keeping
+  because it is the tool's whole point. The first version counted significant
+  digits and reported `10^-(d-1)`, which is the worst case over all leading
+  digits and gave `1e-3`. The quantum of the last printed digit relative to
+  the value is what actually matters, and it depends on the format *and* on
+  the magnitude: `0.9639E+00` quantises at 1e-4 on a value of 0.96 and so
+  resolves 1e-4, while `0.100000E+01` quantises at 1e-5 on a value of 1.0 and
+  resolves 1e-5. A digit count alone gets those two wrong in opposite
+  directions. `resolution()` now computes the quantum per token, skips
+  integers (a node number is exact, not quantised) and reports the median.
+  Measured: `m.cvg` 3e-04, `m.sta` 5e-06, `m.frd` 3e-06, `m.dat` 3e-07,
+  `m.damage` below 1e-15. A tool whose subject is honesty about resolution
+  has to get its own number right.
 
 **Rejected: replacing byte identity.** It stays, as `--exact`, and it stays
 the strictest setting. The self test proves it is strictly stronger: a
@@ -159,7 +173,7 @@ Both hold. 9 of 9 green.
 
 ## What is still open
 
-- **`m.cvg` prints three significant digits.** The convergence record is the
+- **`m.cvg` prints four significant digits, resolving about 1e-4.** The convergence record is the
   one artefact a decomposition of the Newton loop will need to compare
   tightly, and in its present format it cannot be. That is a format problem,
   and it belongs with the Monitor object (item 4), not here.

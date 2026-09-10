@@ -24,6 +24,15 @@ same form: what was tried, and the measurement that killed it.
 | **holding the sparsity pattern fixed under erosion so the symbolic factorisation happens once** (`08-OBJECT-MODEL.md` §4, first candidate) | it already effectively does, and it buys nothing. `CCX_PARDISO_REUSE_SYMBOLIC=1` retains the analysis for **603 of 606** factorisations on `fast-wrapped`, and the factorisation cost is **11.649 s against 11.380/11.480/11.528 s** over three stock control runs - at the top of the noise, not below it. The arms are bit-identical, so this is a cost measurement and not a trajectory comparison. `research/01-PROFILING.md` |
 | **the line-search ladder as a runtime problem** | it consumes 367 of 973 residual evaluations on `fast-wrapped` - 38% of them - but residual evaluation is **12.0%** of the run, so the whole globalization apparatus is about **4.6%**. Deleting mechanisms remains an argument about comprehensibility; it is not an argument about speed |
 
+## About the operator, and about how it was measured
+
+| tried | measurement that rejected it |
+|---|---|
+| **a plateau of the CENTRAL difference over `h` as evidence that a tangent is wrong** | it is not evidence. At a kink the central difference converges to the MEAN of the one-sided derivatives - a stable converged value, different from both branches, with a plateau indistinguishable from a wrong tangent's. Take the one-sided differences separately: `research/03-OPERATOR.md` |
+| **attributing the process-zone tangent error to `CCX_DAMAGE_TANGENT=UNSYM`** | the same state on the stock symmetric path gives **151 wrong coefficients against 157**, and `9.622e-02` against `9.573e-02`. It is not the mode; it is the bulk progressive-damage tangent in both modes |
+| **the cohesive tangent as a suspect** | exact: 30906 of 30906 coefficients agree, 2.3e-07 to 8.6e-06 relative, and on the closure benchmark 3.2e-14 with a textbook `h^2` slope |
+| **"the cohesive tangent is wrong by 1.0 of the column scale"** (an earlier run of this same probe) | a measurement bug, not a finding: the coefficient reader assumed `au` always carries an upper triangle at offset `nzs[2]`, and on the stock SYMMETRIC path it read past the end of the array. Caught by a self test written against a hand-built matrix, which then caught the first fix as wrong too |
+
 ## About the model's structure
 
 | tried | measurement that rejected it |

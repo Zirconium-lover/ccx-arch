@@ -173,6 +173,12 @@ static const ccxopt_decl ccxopt_decl_table[]={
 {"CCX_STRUCT_FD_ITER",CCXOPT_INT,"0",CCXOPT_UNBOUNDED,NULL,
  "the Newton iteration at which the operator check runs",NULL},
 
+{"CCX_STRUCT_FD_STEP",CCXOPT_INT,"0 (any step)",CCXOPT_UNBOUNDED,NULL,
+ "restrict the operator check to this *STEP.  iinc restarts at 1 in every "
+ "step, so without this the probe can only ever fire in the first one - "
+ "which is the wrong one whenever the interesting state is reached by "
+ "unloading, as the crack-face closure benchmark is",NULL},
+
 {"CCX_STRUCT_FD_H",CCXOPT_REAL,"1.e-7",CCXOPT_UNBOUNDED,NULL,
  "the perturbation of the central difference.  Measured: the answer is flat "
  "over 1e-11 to 1e-8 and has moved by 1e-3, so the default sits inside the "

@@ -173,13 +173,27 @@ identity being approximate.
 
 - ~~Nothing measures the **operator** directly.~~ **Corrected 2026-09-10.**
   It does, and it always did: `CCX_STRUCT_FD_INC` / `CCX_STRUCT_FD_ITER` /
-  `CCX_STRUCT_FD_H` run a column-by-column central-difference check of the
-  assembled tangent against the internal force, at the most damaged element.
-  No test set them and nothing documented them, so they sat in the generated
-  retirement queue. Now declared, and run: **elastic control 5.4e-08 relative
-  error with 0 bad coefficients; process zone 1e-03 to 9.6e-02 with 8-20 bad
-  coefficients per column and sign errors**, flat over `h` from 1e-11 to
-  1e-8. See `research/03-OPERATOR.md`. A tool nobody can find is not a tool.
+  `CCX_STRUCT_FD_H` / `CCX_STRUCT_FD_STEP` compare the assembled tangent
+  column by column against a finite difference of the internal force. No test
+  set them and nothing documented them, so they sat in the generated
+  retirement queue. A tool nobody can find is not a tool.
+
+  **Read the one-sided columns, not the central one.** At a kink the central
+  difference converges to the MEAN of the one-sided derivatives, so its
+  plateau in `h` cannot tell a kink from a wrong tangent. `|fwd-bwd|`
+  proportional to `h` means smooth; a departure from that proportionality
+  locates a switching surface and the `h` at which it departs is the distance
+  to it.
+
+  | reading | meaning |
+  |---|---|
+  | `|fwd-bwd|` linear in `h`, `|ctr-asm|` flat in `h`, `min|side-asm|` equal to it | **the tangent is wrong** and nothing here is non-smooth |
+  | `|fwd-bwd|` departs from linear, `min|side-asm|` small | **a kink**; the tangent is right, on one branch |
+
+  What it says today (`research/03-OPERATOR.md`): elastic bulk **5.4e-08**,
+  cohesive facet **3.2e-14** with a textbook `h^2` slope, bulk process zone
+  **9.6e-02 with 0 KINK and 157 WRONG** in both tangent modes. The crack-face
+  closure kink is real and sits about `1e-5`-`1e-4` away from the iterate.
 - Nothing reports **why an attempt was abandoned** in a machine-readable
   form. `m.cvg` has to be read by eye.
 - The connectivity check (§6) is offline python. It should be a census the

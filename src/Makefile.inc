@@ -1115,6 +1115,7 @@ lsladder.c \
 damstate.c \
 ccxopt.c \
 census.c \
+opcheck.c \
 monitor.c \
 logview.c \
 pardiso_cp.c \
