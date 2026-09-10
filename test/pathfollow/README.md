@@ -232,7 +232,7 @@ gcc -Wall -O2 -DARCH="Linux" -I. -o /tmp/pf_test /tmp/pf_main.c pathfollow.c -lm
 /tmp/pf_test
 ```
 
-All four self tests can be run together, outside CalculiX:
+All five self tests can be run together, outside CalculiX:
 
 ```sh
 cd src
@@ -243,15 +243,17 @@ int main(void){ ITG a=pathfollow_selftest(); printf("\n");
                 pathfollow_legacycheck();    printf("\n");
                 ITG c=crackcontrol_selftest(); printf("\n");
                 ITG d=topodiag_selftest();     printf("\n");
-                ITG e=lsladder_selftest();
-                return ((a==0)&&(c==0)&&(d==0)&&(e==0))?0:1; }
+                ITG e=lsladder_selftest();     printf("\n");
+                ITG f=damstate_selftest();
+                return ((a==0)&&(c==0)&&(d==0)&&(e==0)&&(f==0))?0:1; }
 EOF
 gcc -Wall -O2 -DARCH="Linux" -I. -o /tmp/all_test /tmp/all_main.c \
-    pathfollow.c crackcontrol.c topodiag.c lsladder.c u_calloc.c u_free.c -lm
+    pathfollow.c crackcontrol.c topodiag.c lsladder.c damstate.c \
+    u_calloc.c u_free.c -lm
 /tmp/all_test
 ```
 
-Measured here: all four PASSED, 0 failures.  Each also runs inside
+Measured here: all five PASSED, 0 failures.  Each also runs inside
 CalculiX at arm time, and each refuses to arm its feature on a failure.
 
 `pathfollow_selftest` verifies dG against its definition, row 2 of the

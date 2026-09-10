@@ -4902,6 +4902,30 @@ typedef struct{
   double dmaxmax;  /* largest committed maximum separation             */
 }crackcontrol_census;
 
+/* ---- THE judgement about what no longer carries load (damstate.c) -----
+
+   One owner for a decision that used to be made in three places for three
+   consumers, with the solve never told at all.  See damstate.c. */
+
+typedef struct{
+  ITG nk;            /* number of nodes                                   */
+  ITG *ok;           /* per node: all three translational dofs are active  */
+  ITG *dead;         /* per node: judged no longer load-carrying          */
+  double *diag;      /* per node: min assembled diagonal over its dofs     */
+  double *diag0;     /* per node: first positive diagonal ever seen        */
+  ITG ndead;
+  double g;          /* dead below this fraction of the node own intact    */
+  ITG allowneg;      /* count a non-positive diagonal as dead              */
+}damstate;
+
+void damstate_init(damstate *s,ITG nk,double g,ITG allowneg);
+void damstate_free(damstate *s);
+void damstate_update(damstate *s,const double *ad,const ITG *nactdof,ITG mt);
+ITG  damstate_dead(const damstate *s,ITG node);
+ITG  damstate_facet_dead(const double *xstate,ITG nstate,ITG mi0,
+                         ITG elem,ITG nip);
+ITG  damstate_selftest(void);
+
 /* ---- the backtracking ladder of the damage line search (lsladder.c) --
    Extracted from the Newton loop because it was wrong and the way it was
    wrong is worth a regression test.  See the block comment there. */

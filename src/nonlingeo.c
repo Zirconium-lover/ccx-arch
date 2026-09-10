@@ -131,6 +131,10 @@ ITG *damage_spc_mask=NULL;
 ITG damage_spc_nk=0;
 ITG damage_spc_count=0;
 
+/* [DAMSTATE] the single owner of the load-path judgement; the three
+   globals above are views onto it once it has been updated. */
+damstate damage_dstate={0,NULL,NULL,NULL,NULL,0,0.,0};
+
 /* Number of active damage integration points for the standard 3-D
    continuum elements used by calcdamage.  For uncommon/composite
    formulations fall back to mi[0], i.e. the allocated damage stride. */
@@ -3779,7 +3783,17 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         if(damage_spc_g>1.e-1) damage_spc_g=1.e-1;
         if(damage_spc_g>0.){
           damage_stiff_probe=1;
-          printf("[DAMAGE AUTOSPC] a node whose assembled diagonal has fallen below %.1e of its own intact value is excluded from the DISPLACEMENT convergence norm; the force residual is untouched and nothing is deleted\n",damage_spc_g);
+          /* [DAMSTATE] prove the judgement before letting it decide
+             anything, on every run, the discipline lsladder.c set. */
+          if(damstate_selftest()!=0){
+            printf("[DAMSTATE] *ERROR: the load-path judgement self test "
+                   "failed; disabling AUTOSPC rather than judging nodes by a "
+                   "rule that is not the one that was tested.\n");
+            damage_spc_g=0.;
+            damage_stiff_probe=0;
+          }else{
+            printf("[DAMAGE AUTOSPC] a node whose assembled diagonal has fallen below %.1e of its own intact value is excluded from the DISPLACEMENT convergence norm; the force residual is untouched and nothing is deleted\n",damage_spc_g);
+          }
         }
       }
       if((damage_de13_env=getenv("CCX_DAMAGE_STIFF_MIN"))!=NULL){
@@ -7761,82 +7775,25 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	}
 
 	if(damage_stiff_probe>0){
-	  if(damage_addiag==NULL){
-	    NNEW(damage_addiag,double,*nk);
-	    NNEW(damage_addiag0,double,*nk);
-	    NNEW(damage_addok,ITG,*nk);
-	  }
-	  /* Two defects lived here until 2026-08-26, and both mattered once
-	     the ratio started deciding things rather than only printing.
-
-	     (1) -1. was the sentinel for "this node has a constrained or
-	         absent DOF", which is indistinguishable from a genuinely
-	         NEGATIVE diagonal - and a node held only by softening
-	         cohesive facets is expected to have one, because dT/ddelta is
-	         negative on the descending branch.  Everything downstream
-	         then treated it as "not in the system" and skipped it.
-	     (2) `if((damage_addmin<0.)||(ad<damage_addmin))` stops being a
-	         minimum as soon as one negative value enters: the first
-	         clause is true on every later DOF, so the stored number is
-	         the LAST negative diagonal, not the smallest.
-
-	     Validity now has its own flag and the minimum is a real
-	     minimum. */
-	  for(i=0;i<*nk;i++){
-	    ITG damage_addfirst=1;
-	    damage_addok[i]=1;
-	    damage_addmin=0.;
-	    for(idir=1;idir<=3;idir++){
-	      k=nactdof[mt*i+idir];
-	      if(k<=0){damage_addok[i]=0;break;}
-	      if(damage_addfirst||(ad[k-1]<damage_addmin)){
-		damage_addmin=ad[k-1];
-		damage_addfirst=0;
-	      }
-	    }
-	    if(damage_addok[i]==0){
-	      damage_addiag[i]=0.;
-	      continue;
-	    }
-	    damage_addiag[i]=damage_addmin;
-	    if((damage_addiag0[i]<=0.)&&(damage_addmin>0.))
-	      damage_addiag0[i]=damage_addmin;
-	  }
-
-	  /* AUTOSPC mask, rebuilt from the operator that is about to be
-	     solved.  A node counts only against its OWN intact diagonal, so
-	     the ratio is dimensionless and no median over the mesh is
-	     needed.  A node with damage_addiag < 0 is fully constrained or
-	     absent from the system and is left alone - it cannot appear in
-	     cam[0] anyway. */
+	  /* [DAMSTATE] One owner for the judgement.  This block used to compute
+	     the per-node diagonal, its intact reference and the AUTOSPC mask
+	     inline; damstate.c now owns all three and the globals below are
+	     views onto it, so every consumer - the displacement norm in
+	     resultsini.c, the force norm here, the termination connectivity -
+	     reads ONE decision instead of three separate ones.  Behaviour is
+	     unchanged: damstate_update reproduces this loop exactly, including
+	     that the minimum over the three dofs is a real minimum when a
+	     negative diagonal is present, which its self test pins. */
+	  if(damage_dstate.nk==0)
+	    damstate_init(&damage_dstate,*nk,damage_spc_g,damage_spc_neg);
+	  damstate_update(&damage_dstate,ad,nactdof,mt);
+	  damage_addiag=damage_dstate.diag;
+	  damage_addiag0=damage_dstate.diag0;
+	  damage_addok=damage_dstate.ok;
 	  if(damage_spc_g>0.){
-	    if(damage_spc_mask==NULL){
-	      NNEW(damage_spc_mask,ITG,*nk);
-	      damage_spc_nk=*nk;
-	    }
-	    damage_spc_count=0;
-	    for(i=0;i<*nk;i++){
-	      damage_spc_mask[i]=0;
-	      if(damage_addok[i]==0) continue;
-	      if(damage_addiag0[i]<=0.) continue;
-	      if(damage_addiag[i]<=0.){
-		/* A non-positive assembled diagonal is not a small number,
-		   it is a different object: the node sits on a descending
-		   branch.  Masking it is a bigger step than masking a null
-		   row, so it is a separate switch and OFF by default - the
-		   force residual is unmasked either way, so a node out of
-		   equilibrium is still caught. */
-		if(damage_spc_neg){
-		  damage_spc_mask[i]=1;
-		  damage_spc_count++;
-		}
-		continue;
-	      }
-	      if(damage_addiag[i]<damage_spc_g*damage_addiag0[i]){
-		damage_spc_mask[i]=1;
-		damage_spc_count++;
-	      }
-	    }
+	    damage_spc_mask=damage_dstate.dead;
+	    damage_spc_nk=*nk;
+	    damage_spc_count=damage_dstate.ndead;
 	  }
 	}
 

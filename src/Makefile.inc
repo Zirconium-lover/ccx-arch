@@ -1112,6 +1112,7 @@ pathfollow.c \
 crackcontrol.c \
 topodiag.c \
 lsladder.c \
+damstate.c \
 pardiso_cp.c \
 pastix.c \
 pcgsolver.c \
