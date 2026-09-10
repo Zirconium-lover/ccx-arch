@@ -56,6 +56,24 @@ under a minute.  That makes it usable as a characterization baseline: any
 refactor must reproduce these numbers exactly before it is allowed near
 `s3rad`.
 
+## It also demonstrates the severance blindness, in 58 seconds
+
+With `CCX_FRACTURE_DEADFACET=1` the same deck stops itself:
+
+```
+[FRACTURE COMPLETE] inc=65 step_time=1.175000000000e-01
+                    no surviving load path between FACE_X0_NSET and FACE_XL_NSET
+```
+
+Without it, the identical deck walks on to `theta=1.0` at increment 507 -
+**442 increments after the specimen has actually separated**.  That is the
+same blindness measured on `s3rad`, where the metal severs at `theta=0.3412`
+and the run continues to `0.5575`, and it is the consequence of
+`cohesive_uc6.f` pinning `g` at `gmin` while terminal deletion scans `C3D4`
+only: a dead facet reads as a load path for ever.
+
+Here it costs a minute to see instead of two and a half hours.
+
 ## What it does NOT yet do
 
 It completes rather than walling, so it does not yet reproduce a

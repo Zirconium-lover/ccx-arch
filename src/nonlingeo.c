@@ -13747,26 +13747,16 @@ damage_active_set_closed:
            of the load-bearing path, not an increment-size failure. */
 
         if((damage_fracture_seta!=NULL)&&(damage_fracture_complete==0)){
-          ITG *damage_ifacdead=NULL,ifd_i,ifd_j,ifd_nip,ifd_ok,ifd_n=0;
+          ITG *damage_ifacdead=NULL,ifd_i,ifd_n=0;
           NNEW(damage_ifacdead,ITG,*ne);
           if(damage_deadfacet&&(*nstate_>=4)){
+            /* [DAMSTATE] the same judgement, asked of the one owner.  The
+               three-point count and the reason it must not be mi[0] live in
+               damstate_facet_dead, with a test on both branches. */
             for(ifd_i=0;ifd_i<*ne;ifd_i++){
               if(ipkon[ifd_i]<0) continue;
               if(lakon[8*ifd_i]!='U') continue;
-              /* UC6 carries exactly three integration points (cohesive_uc6.f,
-                 three-point triangular rule).  mi[0] is the allocated stride,
-                 and looping to it would average in uninitialised slots - the
-                 defect E-84 found in the nonlocal average. */
-              ifd_nip=3;
-              if(ifd_nip>mi[0]) ifd_nip=mi[0];
-              ifd_ok=1;
-              for(ifd_j=0;ifd_j<ifd_nip;ifd_j++){
-                if(xstate[3+(*nstate_)*(ifd_j+mi[0]*ifd_i)]<0.5){
-                  ifd_ok=0;
-                  break;
-                }
-              }
-              if(ifd_ok){
+              if(damstate_facet_dead(xstate,*nstate_,mi[0],ifd_i,3)){
                 damage_ifacdead[ifd_i]=1;
                 ifd_n++;
               }
