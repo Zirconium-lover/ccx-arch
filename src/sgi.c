@@ -37,7 +37,7 @@ void sgi_factor(double *ad, double *au, double *adb, double *aub,
 
   printf(" Factoring the system of equations using the sgi solver\n\n");
 
-  env=getenv("CCX_OOC_MEM");
+  env=ccxopt_getenv("CCX_OOC_MEM");
   if(env) ooclimit=atoi(env);
 
   ndim=*neq+*nzs;

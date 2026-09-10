@@ -207,7 +207,7 @@ void pastix_init(double *ad, double *au, double *adb, double *aub,
 	env=getenv("OMP_NUM_THREADS");
 	if(env) {nthread=atoi(env);}
 	}
-	env=getenv("CCX_NPROC_EQUATION_SOLVER");
+	env=ccxopt_getenv("CCX_NPROC_EQUATION_SOLVER");
 	if(env) {
 	nthread_v=atoi(env);
 	if (nthread_v <= nthread) {nthread=nthread_v;}

@@ -42,7 +42,7 @@ void *u_realloc(void* ptr,size_t size,const char *file,const int line, const cha
   else {
     if(log_realloc==-1) {
       log_realloc=0;
-      env=getenv("CCX_LOG_ALLOC");
+      env=ccxopt_getenv("CCX_LOG_ALLOC");
       if(env) {log_realloc=atoi(env);}
     }      
     if(log_realloc==1) {

@@ -51,7 +51,7 @@ void opmain(ITG *n,double *x,double *y,double *ad,double*au,ITG *jq,ITG *irow){
 
   /* local declaration prevails, if strictly positive */
 
-  envloc = getenv("CCX_NPROC_RESULTS");
+  envloc = ccxopt_getenv("CCX_NPROC_RESULTS");
   if(envloc){
     num_cpus=atoi(envloc);
     if(num_cpus<0){

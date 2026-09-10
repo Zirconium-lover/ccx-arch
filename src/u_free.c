@@ -35,7 +35,7 @@ void *u_free(void* ptr,const char *file,const int line, const char* ptr_name){
 
   if(log_realloc==-1) {
       log_realloc=0;
-      env=getenv("CCX_LOG_ALLOC");
+      env=ccxopt_getenv("CCX_LOG_ALLOC");
       if(env) {log_realloc=atoi(env);}
   }      
   if(log_realloc==1) {

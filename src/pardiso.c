@@ -53,7 +53,7 @@ static ITG pardiso_symbolic_reuse_requested(void)
 
   if(pardiso_reuse_mode>=0) return pardiso_reuse_mode;
   pardiso_reuse_mode=0;
-  env=getenv("CCX_PARDISO_REUSE_SYMBOLIC");
+  env=ccxopt_getenv("CCX_PARDISO_REUSE_SYMBOLIC");
   if((env!=NULL)&&
      ((strcmp(env,"1")==0)||(strcmp(env,"ON")==0)||
       (strcmp(env,"on")==0)||(strcmp(env,"YES")==0)||
@@ -88,7 +88,7 @@ static ITG pardiso_cgs_level(void)
 
   if(pardiso_cgs_mode>=0) return pardiso_cgs_mode;
   pardiso_cgs_mode=0;
-  env=getenv("CCX_PARDISO_CGS");
+  env=ccxopt_getenv("CCX_PARDISO_CGS");
   if(env!=NULL){
     v=atoi(env);
     if((v>0)&&(v<10)) pardiso_cgs_mode=v;
@@ -225,7 +225,7 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
       env=getenv("OMP_NUM_THREADS");
       if(env) {nthread=atoi(env);}
     }
-    env=getenv("CCX_NPROC_EQUATION_SOLVER");
+    env=ccxopt_getenv("CCX_NPROC_EQUATION_SOLVER");
     if(env) {
       nthread_v=atoi(env);
       if (nthread_v <= nthread) {nthread=nthread_v;}

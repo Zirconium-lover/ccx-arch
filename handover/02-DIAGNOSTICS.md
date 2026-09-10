@@ -171,9 +171,15 @@ identity being approximate.
 
 ## What is missing from this list
 
-- Nothing measures the **operator** directly. A tangent that is not the exact
-  differential of the residual would show up in §1 as an erratic ratio, but
-  there is no clean check. A directional-derivative comparison would be one.
+- ~~Nothing measures the **operator** directly.~~ **Corrected 2026-09-10.**
+  It does, and it always did: `CCX_STRUCT_FD_INC` / `CCX_STRUCT_FD_ITER` /
+  `CCX_STRUCT_FD_H` run a column-by-column central-difference check of the
+  assembled tangent against the internal force, at the most damaged element.
+  No test set them and nothing documented them, so they sat in the generated
+  retirement queue. Now declared, and run: **elastic control 5.4e-08 relative
+  error with 0 bad coefficients; process zone 1e-03 to 9.6e-02 with 8-20 bad
+  coefficients per column and sign errors**, flat over `h` from 1e-11 to
+  1e-8. See `research/03-OPERATOR.md`. A tool nobody can find is not a tool.
 - Nothing reports **why an attempt was abandoned** in a machine-readable
   form. `m.cvg` has to be read by eye.
 - The connectivity check (§6) is offline python. It should be a census the

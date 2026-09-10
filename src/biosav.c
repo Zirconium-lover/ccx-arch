@@ -61,7 +61,7 @@ void biosav(ITG *ipkon,ITG *kon,char *lakon,ITG *ne,double *co,
 
     /* local declaration prevails, if strictly positive */
 
-    envloc = getenv("CCX_NPROC_BIOTSAVART");
+    envloc = ccxopt_getenv("CCX_NPROC_BIOTSAVART");
     if(envloc){
 	num_cpus=atoi(envloc);
 	if(num_cpus<0){

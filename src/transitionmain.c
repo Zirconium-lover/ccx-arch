@@ -99,7 +99,7 @@ void transitionmain(double *co, double *feasdir, ITG *nobject, ITG *nk,
     
        /* local declaration prevails, if strictly positive */
     
-       envloc = getenv("CCX_NPROC_SENS");
+       envloc = ccxopt_getenv("CCX_NPROC_SENS");
        if(envloc){
 	  num_cpus=atoi(envloc);
 	  if(num_cpus<0){

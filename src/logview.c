@@ -77,7 +77,7 @@ static void logview_atexit(void);
 
 ITG logview_enabled(void){
   if(logview_armed<0){
-    const char *e=getenv("CCX_LOG_VIEW");
+    const char *e=ccxopt_getenv("CCX_LOG_VIEW");
     logview_armed=((e!=NULL)&&(e[0]!='\0')&&(strcmp(e,"0")!=0))?1:0;
     if(logview_armed){
       logview_t0=logview_now();

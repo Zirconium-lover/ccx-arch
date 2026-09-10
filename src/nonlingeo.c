@@ -1669,7 +1669,7 @@ static void damage_de1_write_vtk(const char *jobnamec,
      show a sequence of damage rather than one final picture. */
 
   if(vtkseries<0){
-    vtkseries=(getenv("CCX_DAMAGE_VTK_SERIES")!=NULL)?1:0;
+    vtkseries=(ccxopt_getenv("CCX_DAMAGE_VTK_SERIES")!=NULL)?1:0;
   }
 
   for(i=0;i<ne0;i++){
@@ -2858,7 +2858,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      was never read is the difference between an A/B that is wrong and one
      that is uninformative, and the second kind costs a whole run to notice.
      Reports only; reads nothing, decides nothing. */
-  damswitch_report();
+  ccxopt_report();
 
   /* [DAMAGE TMIN] statics.f:234-247 silently raises the deck's minimum
      increment to min(tinc,1e-6*tper) under automatic incrementation.  With
@@ -2867,7 +2867,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      than minimum" has been a CalculiX floor rather than a physical limit.
      Opt-in, physical units, applied before the normalisation below. */
 
-  if((damage_de13_env=getenv("CCX_DAMAGE_TMIN"))!=NULL){
+  if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_TMIN"))!=NULL){
     double tmnew=atof(damage_de13_env);
     if(tmnew>0.){
       printf("[DAMAGE TMIN] minimum increment overridden: %.12e -> %.12e "
@@ -2920,7 +2920,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     }
     if(damage_de12_matcount>0) damage_de12_enabled=1;
     if(damage_de12_enabled){
-      damage_tangent_env=getenv("CCX_DAMAGE_TANGENT");
+      damage_tangent_env=ccxopt_getenv("CCX_DAMAGE_TANGENT");
       if((damage_tangent_env!=NULL)&&
          ((strcmp(damage_tangent_env,"FD_SYM")==0)||
           (strcmp(damage_tangent_env,"fd_sym")==0)||
@@ -2938,7 +2938,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 
         damage_tangent_mode=2;
       }
-      damage_reeq_scale_env=getenv("CCX_DAMAGE_REEQ_SCALE");
+      damage_reeq_scale_env=ccxopt_getenv("CCX_DAMAGE_REEQ_SCALE");
       if((damage_reeq_scale_env!=NULL)&&
          ((strcmp(damage_reeq_scale_env,"PHYSICAL")==0)||
           (strcmp(damage_reeq_scale_env,"physical")==0)||
@@ -2966,7 +2966,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          to be shown on the physics (hydride consumption, failed facets,
          peakedness), and adopting it needs the full verify + ladder gate.
          Default 0 = off = bit-identical to the unpatched binary. */
-      if((damage_de13_env=getenv("CCX_DAMAGE_REEQ_FLOOR"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_REEQ_FLOOR"))!=NULL){
         damage_reeq_uam_floor=atof(damage_de13_env);
         if(damage_reeq_uam_floor<0.) damage_reeq_uam_floor=0.;
         if(damage_reeq_uam_floor>1.) damage_reeq_uam_floor=1.;
@@ -3048,7 +3048,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          This evaluates A, snapshots EVERY array results()/calcresidual
          touch, evaluates B, evaluates A again, and compares byte for byte.
          Fires once, then the run continues from the full step. */
-      if((damage_de13_env=getenv("CCX_DAMAGE_ABA"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_ABA"))!=NULL){
         damage_aba_mode=1;
         damage_aba_a=atof(damage_de13_env);
         if((damage_aba_a<=0.)||(damage_aba_a>=1.)) damage_aba_a=0.25;
@@ -3058,7 +3058,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
            code through a different constitutive state, and that is exactly
            what has to be shown before an ensemble rests on it. */
         damage_aba_ninc=0;
-        if((damage_de13_env=getenv("CCX_DAMAGE_ABA_INC"))!=NULL){
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_ABA_INC"))!=NULL){
           char *acp=damage_de13_env;
           while((*acp!=0)&&(damage_aba_ninc<4)){
             while((*acp==' ')||(*acp==',')) acp++;
@@ -3074,7 +3074,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         fflush(stdout);
       }
 
-      if(getenv("CCX_DAMAGE_REEQ_BACKTRACK")!=NULL){
+      if(ccxopt_getenv("CCX_DAMAGE_REEQ_BACKTRACK")!=NULL){
         damage_bt_mode=1;
         /* Three tunables, each aimed at a MEASURED failure of the
            first version (J-15 -> bandrad regressed 25%).
@@ -3093,16 +3093,16 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                      measured death mode was a chain of accepts at
                      alpha=0.031 and 0.016 buying 1-3% each while the
                      iteration budget drained.  0.015625 = old. */
-        if((damage_de13_env=getenv("CCX_DAMAGE_BT_GROWTH"))!=NULL){
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_BT_GROWTH"))!=NULL){
           damage_bt_growth=atof(damage_de13_env);
           if(damage_bt_growth<1.) damage_bt_growth=1.;
         }
-        if((damage_de13_env=getenv("CCX_DAMAGE_BT_WINDOW"))!=NULL){
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_BT_WINDOW"))!=NULL){
           damage_bt_window=atoi(damage_de13_env);
           if(damage_bt_window<1) damage_bt_window=1;
           if(damage_bt_window>8) damage_bt_window=8;
         }
-        if((damage_de13_env=getenv("CCX_DAMAGE_BT_FLOOR"))!=NULL){
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_BT_FLOOR"))!=NULL){
           damage_bt_floor=atof(damage_de13_env);
           if(damage_bt_floor<0.015625) damage_bt_floor=0.015625;
           if(damage_bt_floor>1.) damage_bt_floor=1.;
@@ -3124,39 +3124,39 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          to destroy the bandrad severance the control reaches (J-17), so the
          two must never run together. */
 
-      if((getenv("CCX_DAMAGE_REEQ_RESCUE")!=NULL)||
-         (getenv("CCX_DAMAGE_REEQ_RESCUE2")!=NULL)||
-         (getenv("CCX_DAMAGE_REEQ_RESCUE3")!=NULL)||
-         (getenv("CCX_DAMAGE_RESCUE_CORRIDOR")!=NULL)){
+      if((ccxopt_getenv("CCX_DAMAGE_REEQ_RESCUE")!=NULL)||
+         (ccxopt_getenv("CCX_DAMAGE_REEQ_RESCUE2")!=NULL)||
+         (ccxopt_getenv("CCX_DAMAGE_REEQ_RESCUE3")!=NULL)||
+         (ccxopt_getenv("CCX_DAMAGE_RESCUE_CORRIDOR")!=NULL)){
         damage_rescue_mode=1;
         ccx_rescue_active=1;
-        if(getenv("CCX_DAMAGE_REEQ_RESCUE2")!=NULL){
+        if(ccxopt_getenv("CCX_DAMAGE_REEQ_RESCUE2")!=NULL){
           damage_rescue_maxlevel=2;
           damage_evt_nstep=0;
         }
-        if((getenv("CCX_DAMAGE_REEQ_RESCUE3")!=NULL)||
-           (getenv("CCX_DAMAGE_RESCUE_CORRIDOR")!=NULL)){
+        if((ccxopt_getenv("CCX_DAMAGE_REEQ_RESCUE3")!=NULL)||
+           (ccxopt_getenv("CCX_DAMAGE_RESCUE_CORRIDOR")!=NULL)){
           damage_evt_nstep=0;
           damage_reg_nlam=5;
           damage_rescue_maxlevel=2+damage_reg_nlam;
         }
-        if(getenv("CCX_DAMAGE_RESCUE_CORRIDOR")!=NULL){
+        if(ccxopt_getenv("CCX_DAMAGE_RESCUE_CORRIDOR")!=NULL){
           damage_corr_mode=1;
-          if((damage_de13_env=getenv("CCX_DAMAGE_CORR_MAXINC"))!=NULL)
+          if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CORR_MAXINC"))!=NULL)
             damage_corr_maxinc=atoi(damage_de13_env);
-          if((damage_de13_env=getenv("CCX_DAMAGE_CORR_EXIT"))!=NULL)
+          if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CORR_EXIT"))!=NULL)
             damage_corr_exit=atoi(damage_de13_env);
-          if((damage_de13_env=getenv("CCX_DAMAGE_CORR_TRY"))!=NULL)
+          if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CORR_TRY"))!=NULL)
             damage_corr_tryevery=atoi(damage_de13_env);
-          if((damage_de13_env=getenv("CCX_DAMAGE_CORR_GRACE"))!=NULL)
+          if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CORR_GRACE"))!=NULL)
             damage_corr_grace=atoi(damage_de13_env);
-          if((damage_de13_env=getenv("CCX_DAMAGE_CORR_MAXWALL"))!=NULL)
+          if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CORR_MAXWALL"))!=NULL)
             damage_corr_maxwall=atoi(damage_de13_env);
-          if((damage_de13_env=getenv("CCX_DAMAGE_CORR_MAXESC"))!=NULL)
+          if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CORR_MAXESC"))!=NULL)
             damage_corr_maxesc=atoi(damage_de13_env);
-          if((damage_de13_env=getenv("CCX_DAMAGE_CORR_STABLE"))!=NULL)
+          if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CORR_STABLE"))!=NULL)
             damage_corr_stableneed=atoi(damage_de13_env);
-          if((damage_de13_env=getenv("CCX_DAMAGE_CORR_MINFRAC"))!=NULL)
+          if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CORR_MINFRAC"))!=NULL)
             damage_corr_minfrac=atof(damage_de13_env);
           if(damage_corr_maxinc<1) damage_corr_maxinc=1;
           if(damage_corr_exit<1) damage_corr_exit=1;
@@ -3192,11 +3192,11 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                  damage_corr_minfrac,"\n");
           fflush(stdout);
         }
-        if((damage_de13_env=getenv("CCX_DAMAGE_RESCUE_WINDOW"))!=NULL){
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_RESCUE_WINDOW"))!=NULL){
           damage_rec_window=atoi(damage_de13_env);
           if(damage_rec_window<1) damage_rec_window=1;
         }
-        if((damage_de13_env=getenv("CCX_DAMAGE_RESCUE_MAXUNREC"))!=NULL){
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_RESCUE_MAXUNREC"))!=NULL){
           damage_rec_maxunrec=atoi(damage_de13_env);
           if(damage_rec_maxunrec<1) damage_rec_maxunrec=1;
         }
@@ -3265,14 +3265,14 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         fflush(stdout);
       }
 
-      if((damage_de13_env=getenv("CCX_DAMAGE_RESIDUAL_RAY"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_RESIDUAL_RAY"))!=NULL){
         damage_ray_probe=1;
         damage_ray_max=atoi(damage_de13_env);
         if(damage_ray_max<1) damage_ray_max=8;
         if(damage_ray_max>1000) damage_ray_max=1000;
         /* CCX_DAMAGE_RAY_INC="231" - walk only at these increments. */
         damage_ray_ninc=0;
-        if((damage_de13_env=getenv("CCX_DAMAGE_RAY_INC"))!=NULL){
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_RAY_INC"))!=NULL){
           char *rcp=damage_de13_env;
           while((*rcp!=0)&&(damage_ray_ninc<4)){
             while((*rcp==' ')||(*rcp==',')) rcp++;
@@ -3295,7 +3295,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         fflush(stdout);
       }
 
-      if((damage_de13_env=getenv("CCX_DAMAGE_RELEASE_PROBE"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_RELEASE_PROBE"))!=NULL){
         damage_release_probe=atoi(damage_de13_env);
         if(damage_release_probe<0) damage_release_probe=0;
         if(damage_release_probe>2) damage_release_probe=2;
@@ -3309,7 +3309,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           fflush(stdout);
         }
       }
-      damage_linesearch_env=getenv("CCX_DAMAGE_LINESEARCH");
+      damage_linesearch_env=ccxopt_getenv("CCX_DAMAGE_LINESEARCH");
       if((damage_linesearch_env!=NULL)&&
          ((strcmp(damage_linesearch_env,"ADAPTIVE")==0)||
           (strcmp(damage_linesearch_env,"adaptive")==0)||
@@ -3323,7 +3323,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          once.  Making the threshold settable lets that be measured
          instead of argued about. */
 
-      if((damage_de13_env=getenv("CCX_FRACTURE_LINK"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_FRACTURE_LINK"))!=NULL){
         if((strcmp(damage_de13_env,"FACE")==0)||
            (strcmp(damage_de13_env,"face")==0)){
           damage_fracture_link=1;
@@ -3368,7 +3368,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          mechanism REFUSES TO ARM if it is not 1 to 1e-8.  The asymmetry of
          the operator is measured at the same point, not assumed. */
 
-      if(getenv("CCX_DAMAGE_TR_DOGLEG")!=NULL){
+      if(ccxopt_getenv("CCX_DAMAGE_TR_DOGLEG")!=NULL){
         if(damage_rescue_mode==0){
           printf("*ERROR: CCX_DAMAGE_TR_DOGLEG requires "
                  "CCX_DAMAGE_REEQ_RESCUE2; it is a level ON TOP of "
@@ -3390,23 +3390,23 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         }
         damage_dl_mode=1;
         damage_rescue_maxlevel=3;
-        if((damage_de13_env=getenv("CCX_DAMAGE_TR_MAXTRIAL"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_TR_MAXTRIAL"))!=NULL)
           damage_dl_maxtrial=atoi(damage_de13_env);
-        if((damage_de13_env=getenv("CCX_DAMAGE_TR_MAXEVAL"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_TR_MAXEVAL"))!=NULL)
           damage_dl_maxeval=atoi(damage_de13_env);
-        if((damage_de13_env=getenv("CCX_DAMAGE_TR_MAXFACT"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_TR_MAXFACT"))!=NULL)
           damage_dl_maxfact=atoi(damage_de13_env);
-        if((damage_de13_env=getenv("CCX_DAMAGE_TR_MAXARM"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_TR_MAXARM"))!=NULL)
           damage_dl_maxarm=atoi(damage_de13_env);
-        if((damage_de13_env=getenv("CCX_DAMAGE_TR_D0"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_TR_D0"))!=NULL)
           damage_dl_d0fac=atof(damage_de13_env);
-        if((damage_de13_env=getenv("CCX_DAMAGE_TR_LINCHECK"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_TR_LINCHECK"))!=NULL)
           damage_dl_lincheck=atoi(damage_de13_env);
         if(damage_dl_lincheck<0) damage_dl_lincheck=0;
-        if((damage_de13_env=getenv("CCX_DAMAGE_TR_LINCHECK_IT"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_TR_LINCHECK_IT"))!=NULL)
           damage_dl_lc_it=atoi(damage_de13_env);
         if(damage_dl_lc_it<1) damage_dl_lc_it=1;
-        if((damage_de13_env=getenv("CCX_DAMAGE_TR_LINCHECK_NIT"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_TR_LINCHECK_NIT"))!=NULL)
           damage_dl_lc_nit=atoi(damage_de13_env);
         if(damage_dl_lc_nit<1) damage_dl_lc_nit=1;
         /* the geometry of the step is proved before the first increment, on
@@ -3460,7 +3460,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          at lambda=1, no return to stock control, no completed step and no
          restart.  Every ending is PARTIAL. */
 
-      if(getenv("CCX_DAMAGE_CONTINUATION")!=NULL){
+      if(ccxopt_getenv("CCX_DAMAGE_CONTINUATION")!=NULL){
         if((damage_rescue_mode==0)||(damage_dl_mode==0)){
           printf("*ERROR: CCX_DAMAGE_CONTINUATION requires BOTH "
                  "CCX_DAMAGE_REEQ_RESCUE2 and CCX_DAMAGE_TR_DOGLEG; it is a "
@@ -3481,24 +3481,24 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         }
         damage_ct_mode=1;
         damage_rescue_maxlevel=4;
-        if((damage_de13_env=getenv("CCX_DAMAGE_CT_RHOMIN"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CT_RHOMIN"))!=NULL)
           damage_ct_rhomin=atof(damage_de13_env);
-        if((damage_de13_env=getenv("CCX_DAMAGE_CT_CLIM"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CT_CLIM"))!=NULL)
           damage_ct_clim=atof(damage_de13_env);
-        if((damage_de13_env=getenv("CCX_DAMAGE_CT_ULIM"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CT_ULIM"))!=NULL)
           damage_ct_ulim=atof(damage_de13_env);
-        if((damage_de13_env=getenv("CCX_DAMAGE_CT_EPS"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CT_EPS"))!=NULL)
           damage_ct_eps=atof(damage_de13_env);
-        if((damage_de13_env=getenv("CCX_DAMAGE_CT_KAPTOL"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CT_KAPTOL"))!=NULL)
           damage_ct_kaptol=atof(damage_de13_env);
         if(damage_ct_kaptol<1.) damage_ct_kaptol=1.5;
-        if((damage_de13_env=getenv("CCX_DAMAGE_CT_MAXSTEP"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CT_MAXSTEP"))!=NULL)
           damage_ct_maxstep=atoi(damage_de13_env);
-        if((damage_de13_env=getenv("CCX_DAMAGE_CT_MAXCORR"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CT_MAXCORR"))!=NULL)
           damage_ct_maxcorr=atoi(damage_de13_env);
-        if((damage_de13_env=getenv("CCX_DAMAGE_CT_MAXFACT"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CT_MAXFACT"))!=NULL)
           damage_ct_maxfact=atoi(damage_de13_env);
-        if((damage_de13_env=getenv("CCX_DAMAGE_CT_MAXEVAL"))!=NULL)
+        if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_CT_MAXEVAL"))!=NULL)
           damage_ct_maxeval=atoi(damage_de13_env);
         if(damage_ct_rhomin<=0.) damage_ct_rhomin=1.e-4;
         if(damage_ct_clim<=0.) damage_ct_clim=20.;
@@ -3539,42 +3539,42 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          outer condition did not list them, so the run executed as the
          plain control and read like a negative result.  Shout instead of
          pretending. */
-      if((getenv("CCX_DAMAGE_RESCUE_CORRIDOR")!=NULL)&&
+      if((ccxopt_getenv("CCX_DAMAGE_RESCUE_CORRIDOR")!=NULL)&&
          (damage_corr_mode==0)){
         printf("*ERROR: CCX_DAMAGE_RESCUE_CORRIDOR is set but the "
                "corridor did NOT arm; the run would silently be a plain "
                "control.  Stopping.%s","\n");
         fflush(stdout);FORTRAN(stop,());
       }
-      if((getenv("CCX_DAMAGE_REEQ_RESCUE3")!=NULL)&&
+      if((ccxopt_getenv("CCX_DAMAGE_REEQ_RESCUE3")!=NULL)&&
          (damage_reg_nlam==0)){
         printf("*ERROR: CCX_DAMAGE_REEQ_RESCUE3 is set but the "
                "regularized level did NOT arm.  Stopping.%s","\n");
         fflush(stdout);FORTRAN(stop,());
       }
-      if((getenv("CCX_DAMAGE_CONTINUATION")!=NULL)&&
+      if((ccxopt_getenv("CCX_DAMAGE_CONTINUATION")!=NULL)&&
          ((damage_ct_mode==0)||(damage_rescue_maxlevel!=4))){
         printf("*ERROR: CCX_DAMAGE_CONTINUATION is set but the continuation "
                "level did NOT arm; the run would silently be a plain "
                "Rescue2+dogleg control.  Stopping.%s","\n");
         fflush(stdout);FORTRAN(stop,());
       }
-      if((getenv("CCX_DAMAGE_TR_DOGLEG")!=NULL)&&
+      if((ccxopt_getenv("CCX_DAMAGE_TR_DOGLEG")!=NULL)&&
          ((damage_dl_mode==0)||(damage_rescue_maxlevel<3))){
         printf("*ERROR: CCX_DAMAGE_TR_DOGLEG is set but the dogleg level "
                "did NOT arm; the run would silently be a plain Rescue2 "
                "control.  Stopping.%s","\n");
         fflush(stdout);FORTRAN(stop,());
       }
-      if(((getenv("CCX_DAMAGE_REEQ_RESCUE")!=NULL)||
-          (getenv("CCX_DAMAGE_REEQ_RESCUE2")!=NULL))&&
+      if(((ccxopt_getenv("CCX_DAMAGE_REEQ_RESCUE")!=NULL)||
+          (ccxopt_getenv("CCX_DAMAGE_REEQ_RESCUE2")!=NULL))&&
          (damage_rescue_mode==0)){
         printf("*ERROR: a rescue flag is set but rescue did NOT arm.  "
                "Stopping.%s","\n");
         fflush(stdout);FORTRAN(stop,());
       }
 
-      damage_fracture_env=getenv("CCX_FRACTURE_TERMINATION");
+      damage_fracture_env=ccxopt_getenv("CCX_FRACTURE_TERMINATION");
       if(damage_fracture_env!=NULL){
         damage_fracture_seta=strdup(damage_fracture_env);
         damage_fracture_setb=strchr(damage_fracture_seta,':');
@@ -3622,7 +3622,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          CCX_FRACTURE_LINK this deletes nothing and changes no equation - only
          the moment the run may stop - so it carries none of the risk that sank
          damfloatface (E-57, E-72).  Default OFF. */
-      if((damage_de13_env=getenv("CCX_FRACTURE_DEADFACET"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_FRACTURE_DEADFACET"))!=NULL){
         damage_deadfacet=(strcmp(damage_de13_env,"0")==0)?0:1;
         if(damage_deadfacet){
           printf("[FRACTURE TERMINATION] a cohesive facet whose every "
@@ -3650,7 +3650,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          same way: default OFF, batch-capped, and travelling the unchanged
          transactional path so rollback restores it (E-64).  It must not be
          adopted without verify 65/65 and the full ladder. */
-      if((damage_de13_env=getenv("CCX_DAMAGE_FACET_DELETE"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_FACET_DELETE"))!=NULL){
         damage_facetdel=(strcmp(damage_de13_env,"0")==0)?0:1;
         if(damage_facetdel){
           printf("[DAMAGE FACET DELETE] a cohesive facet whose every "
@@ -3659,14 +3659,14 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         }
       }
 
-      if(getenv("CCX_DISSIPATION_REPORT")!=NULL) damage_diss_report=1;
-      damage_diss_env=getenv("CCX_DISSIPATION_TARGET");
+      if(ccxopt_getenv("CCX_DISSIPATION_REPORT")!=NULL) damage_diss_report=1;
+      damage_diss_env=ccxopt_getenv("CCX_DISSIPATION_TARGET");
       if(damage_diss_env!=NULL){
         damage_diss_target=atof(damage_diss_env);
         if(damage_diss_target>0.) damage_diss_report=1;
       }
-      if(getenv("CCX_DISSIPATION_PROBE")!=NULL) damage_diss_probe=1;
-      if(getenv("CCX_DAMAGE_BATCH_LIST")!=NULL) damage_batch_list=1;
+      if(ccxopt_getenv("CCX_DISSIPATION_PROBE")!=NULL) damage_diss_probe=1;
+      if(ccxopt_getenv("CCX_DAMAGE_BATCH_LIST")!=NULL) damage_batch_list=1;
       /* The stress is scaled by 1-Dvis whenever the viscosity is
          on, so the deletion trigger has to read the same variable.
          Measured on DHC1: elements were being removed while still
@@ -3675,43 +3675,43 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          lambda=0.3793 to 0.4651.  With the viscosity off damvisc
          is never allocated and the trigger falls back to D, so
          this is a no-op there - verified on SP1. */
-      if((damage_de13_env=getenv("CCX_DAMAGE_DELETE_VISC"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_DELETE_VISC"))!=NULL){
         damage_delete_visc=(strcmp(damage_de13_env,"0")==0)?0:1;
       }
-      if((damage_de13_env=getenv("CCX_STRUCT_FD_INC"))!=NULL)
+      if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_INC"))!=NULL)
         damage_fd_inc=atoi(damage_de13_env);
-      if((damage_de13_env=getenv("CCX_STRUCT_FD_ITER"))!=NULL)
+      if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_ITER"))!=NULL)
         damage_fd_it=atoi(damage_de13_env);
-      if((damage_de13_env=getenv("CCX_STRUCT_FD_H"))!=NULL)
+      if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_H"))!=NULL)
         damage_fd_h=atof(damage_de13_env);
-      if(getenv("CCX_DAMAGE_FREE_PROBE")!=NULL) damage_free_probe=1;
-      if((damage_de13_env=getenv("CCX_DAMAGE_NODE_DUMP"))!=NULL)
+      if(ccxopt_getenv("CCX_DAMAGE_FREE_PROBE")!=NULL) damage_free_probe=1;
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_NODE_DUMP"))!=NULL)
         damage_dump_node=atoi(damage_de13_env);
-      if((damage_de13_env=getenv("CCX_DAMAGE_NODE_INC"))!=NULL)
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_NODE_INC"))!=NULL)
         damage_dump_inc=atoi(damage_de13_env);
-      if((damage_de13_env=getenv("CCX_DAMAGE_NULLVEC"))!=NULL)
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_NULLVEC"))!=NULL)
         damage_null_inc=atoi(damage_de13_env);
-      if((damage_de13_env=getenv("CCX_DAMAGE_NULLVEC_IT"))!=NULL)
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_NULLVEC_IT"))!=NULL)
         damage_null_nit=atoi(damage_de13_env);
-      if((damage_de13_env=getenv("CCX_DAMAGE_PATH_DROP"))!=NULL)
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_PATH_DROP"))!=NULL)
         damage_path_drop=atof(damage_de13_env);
-      if((damage_de13_env=getenv("CCX_DAMAGE_PATH_NSTEP"))!=NULL)
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_PATH_NSTEP"))!=NULL)
         damage_path_nstep=atoi(damage_de13_env);
-      if((damage_de13_env=getenv("CCX_DAMAGE_PATH"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_PATH"))!=NULL){
         damage_path_on=atoi(damage_de13_env);
         if(damage_path_on<0) damage_path_on=0;
         if(damage_path_on>2) damage_path_on=2;
       }
-      if(getenv("CCX_DAMAGE_STIFF_PROBE")!=NULL)
+      if(ccxopt_getenv("CCX_DAMAGE_STIFF_PROBE")!=NULL)
         damage_stiff_probe=1;
-      if(getenv("CCX_DAMAGE_TANGENT_CENSUS")!=NULL)
+      if(ccxopt_getenv("CCX_DAMAGE_TANGENT_CENSUS")!=NULL)
         damage_unsym_census=1;
       /* resultsmech.f reads this name too and has no safe place to print
          from - it runs on several threads.  Reporting it here is what makes
          the difference between "the flag ran and changed nothing" and "the
          flag was never read", which is exactly the ambiguity that made the
          first CCX_DAMAGE_TANGENT_FULL A/B uninformative (J-10). */
-      if(getenv("CCX_DAMAGE_TANGENT_FULL")!=NULL){
+      if(ccxopt_getenv("CCX_DAMAGE_TANGENT_FULL")!=NULL){
         damage_unsym_tanfull=1;
         printf("[DAMAGE TANGENT FULL] the consistent-tangent cut-off is "
                "taken on the SAME damage variable the stress uses instead "
@@ -3725,7 +3725,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          0.94% before the peak and spread to 73-89% after it, and
          viscosity changes solvability without moving those curves at
          all (E-83).  Default off, so every stored baseline stands. */
-      if((damage_de13_env=getenv("CCX_DAMAGE_NONLOCAL"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_NONLOCAL"))!=NULL){
         damage_nl_ell=atof(damage_de13_env);
         if(damage_nl_ell<0.) damage_nl_ell=0.;
         if(damage_nl_ell>0.){
@@ -3746,7 +3746,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          machine, because one hydride element's neighbourhood holds
          thousands of tiny elements.  The PDE form is O(nnz) on any mesh
          and is the only one that can be used on a graded mesh at all. */
-      if((damage_de13_env=getenv("CCX_DAMAGE_NONLOCAL_MODE"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_NONLOCAL_MODE"))!=NULL){
         if((strcmp(damage_de13_env,"GRADIENT")==0)||
            (strcmp(damage_de13_env,"gradient")==0)){
           damage_nl_mode=1;
@@ -3775,7 +3775,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         printf("[DAMAGE NONLOCAL] backend FROZEN: CONTROL ONLY - the staggered damage update WITHOUT spatial averaging.  ell is read but NOT applied; this arm regularises nothing and exists to separate the internal length from the integration scheme\n");
       }
       FORTRAN(damnonlocalmode,(&damage_nl_mode));
-      if((damage_de13_env=getenv("CCX_DAMAGE_QAM_FLOOR"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_QAM_FLOOR"))!=NULL){
         damage_qam_floor=atof(damage_de13_env);
         if(damage_qam_floor<0.) damage_qam_floor=0.;
         if(damage_qam_floor>1.) damage_qam_floor=1.;
@@ -3783,8 +3783,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           printf("[DAMAGE QAM FLOOR] DIAGNOSTIC: the reference force qam is held at or above %.3e of its running maximum, so the RELATIVE force criterion cannot collapse as the specimen unloads.  This CHANGES THE CONVERGENCE CRITERION and therefore the answer; going further with it is not by itself a success\n",damage_qam_floor);
         }
       }
-      if(getenv("CCX_DAMAGE_AUTOSPC_NEG")!=NULL) damage_spc_neg=1;
-      if((damage_de13_env=getenv("CCX_DAMAGE_AUTOSPC"))!=NULL){
+      if(ccxopt_getenv("CCX_DAMAGE_AUTOSPC_NEG")!=NULL) damage_spc_neg=1;
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_AUTOSPC"))!=NULL){
         damage_spc_g=atof(damage_de13_env);
         if(damage_spc_g<0.) damage_spc_g=0.;
         if(damage_spc_g>1.e-1) damage_spc_g=1.e-1;
@@ -3803,7 +3803,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           }
         }
       }
-      if((damage_de13_env=getenv("CCX_DAMAGE_STIFF_MIN"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_STIFF_MIN"))!=NULL){
         damage_stiff_min=atof(damage_de13_env);
         if(damage_stiff_min<0.) damage_stiff_min=0.;
         if(damage_stiff_min>0.1) damage_stiff_min=0.1;
@@ -3818,12 +3818,12 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          benefit on DHC1: +0.0009, down from the +0.021 of E-04, which the
          E-05 deletion-on-Dtilde fix superseded.  Set to 1 only to
          reproduce the old behaviour. */
-      if((damage_de13_env=getenv("CCX_DAMAGE_DANGLE"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_DANGLE"))!=NULL){
         damage_dangle_max=atoi(damage_de13_env);
         if(damage_dangle_max<0) damage_dangle_max=0;
         if(damage_dangle_max>4) damage_dangle_max=4;
       }
-      damage_deadall_env=getenv("CCX_DAMAGE_DEADALL");
+      damage_deadall_env=ccxopt_getenv("CCX_DAMAGE_DEADALL");
       if(damage_deadall_env!=NULL){
         damage_deadall_g=atof(damage_deadall_env);
         if(damage_deadall_g<0.) damage_deadall_g=0.;
@@ -3835,7 +3835,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                  damage_deadall_g);
         }
       }
-      damage_deadsole_env=getenv("CCX_DAMAGE_DEADSOLE");
+      damage_deadsole_env=ccxopt_getenv("CCX_DAMAGE_DEADSOLE");
       if(damage_deadsole_env!=NULL){
         damage_deadsole_g=atof(damage_deadsole_env);
         if(damage_deadsole_g<0.) damage_deadsole_g=0.;
@@ -3845,7 +3845,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                  "support of a node is deleted\n",damage_deadsole_g);
         }
       }
-      damage_stab_env=getenv("CCX_DAMAGE_STABILISE");
+      damage_stab_env=ccxopt_getenv("CCX_DAMAGE_STABILISE");
       if(damage_stab_env!=NULL){
         damage_stab_alpha=atof(damage_stab_env);
         if(damage_stab_alpha<0.) damage_stab_alpha=0.;
@@ -3856,7 +3856,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                  damage_stab_alpha);
         }
       }
-      damage_diss_env=getenv("CCX_DISSIPATION_CONTROL");
+      damage_diss_env=ccxopt_getenv("CCX_DISSIPATION_CONTROL");
       if((damage_diss_env!=NULL)&&(damage_diss_target>0.)){
         damage_diss_ctrl=(strcmp(damage_diss_env,"2")==0)?2:1;
         if(damage_diss_ctrl==2){
@@ -3927,17 +3927,17 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 
          CCX_DISSIPATION_STEP=0 keeps the stock step controller and leaves
          the target to the constraint alone. */
-      if((damage_de13_env=getenv("CCX_DISSIPATION_STEP"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DISSIPATION_STEP"))!=NULL){
         damage_diss_step=(strcmp(damage_de13_env,"0")==0)?0:1;
         if(damage_diss_step==0){
           printf("[DISSIPATION] step sizing is OFF; the target drives the "
                  "constraint only, the stock controller sizes the step\n");
         }
       }
-      if((damage_de13_env=getenv("CCX_DISSIPATION_ENGAGE_T"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DISSIPATION_ENGAGE_T"))!=NULL){
         damage_diss_engage_t=atof(damage_de13_env);
       }
-      if((damage_de13_env=getenv("CCX_DAMAGE_ARCLENGTH"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_ARCLENGTH"))!=NULL){
         damage_arc=(strcmp(damage_de13_env,"0")==0)?0:1;
       }
       if(damage_arc==1){
@@ -3952,9 +3952,9 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         }
       }
 
-      damage_delete_filter=getenv("CCX_DAMAGE_DELETE_MAT");
+      damage_delete_filter=ccxopt_getenv("CCX_DAMAGE_DELETE_MAT");
 
-      damage_de13_env=getenv("CCX_DAMAGE_DELETE_D");
+      damage_de13_env=ccxopt_getenv("CCX_DAMAGE_DELETE_D");
       if(damage_de13_env!=NULL){
         damage_de13_delete_d=atof(damage_de13_env);
         if((damage_de13_delete_d<0.5)||(damage_de13_delete_d>0.9999)){
@@ -3965,7 +3965,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         }
       }
 
-      damage_topology_env=getenv("CCX_DAMAGE_TOPOLOGY");
+      damage_topology_env=ccxopt_getenv("CCX_DAMAGE_TOPOLOGY");
       if((damage_topology_env!=NULL)&&
          ((strcmp(damage_topology_env,"DEFERRED")==0)||
           (strcmp(damage_topology_env,"deferred")==0)||
@@ -3988,10 +3988,10 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      the one pathfollow.c verifies, and it refuses to arm otherwise
      rather than degrade silently. */
 
-  if(getenv("CCX_DAMAGE_BATCH_TRACE")!=NULL) td_trace=1;
-  if(getenv("CCX_TOPODIAG")!=NULL) td_from=atoi(getenv("CCX_TOPODIAG"));
-  if(getenv("CCX_DAMAGE_LS_PROBE")!=NULL) damage_ls_probe=1;
-  if(getenv("CCX_DAMAGE_WALL_NULLVEC")!=NULL) damage_wall_null=1;
+  if(ccxopt_getenv("CCX_DAMAGE_BATCH_TRACE")!=NULL) td_trace=1;
+  if(ccxopt_getenv("CCX_TOPODIAG")!=NULL) td_from=atoi(ccxopt_getenv("CCX_TOPODIAG"));
+  if(ccxopt_getenv("CCX_DAMAGE_LS_PROBE")!=NULL) damage_ls_probe=1;
+  if(ccxopt_getenv("CCX_DAMAGE_WALL_NULLVEC")!=NULL) damage_wall_null=1;
 
   /* [WALLDIAG] Arm the increment-numbered probes by LOAD FACTOR instead.
 
@@ -4002,8 +4002,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      diagnostics at a state that the next run does not have.  theta is the
      physical coordinate the wall is recorded in, so the gate takes it. */
 
-  if(getenv("CCX_DAMAGE_WALL_THETA")!=NULL){
-    damage_wall_theta=atof(getenv("CCX_DAMAGE_WALL_THETA"));
+  if(ccxopt_getenv("CCX_DAMAGE_WALL_THETA")!=NULL){
+    damage_wall_theta=atof(ccxopt_getenv("CCX_DAMAGE_WALL_THETA"));
     printf("[WALLDIAG] armed at theta >= %.9e: from the first attempt at or "
            "beyond that load factor the linearisation check, the topology "
            "diagnostic, the deflated null-vector probe and the line-search "
@@ -4038,7 +4038,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      The dof is still assembled, still solved and still moved - only its
      veto over ram[0] is removed - and every excluded residual is printed, so
      it can never hide a growing imbalance.  OFF unless asked for. */
-  if(getenv("CCX_DAMAGE_AUTOSPC_FORCE")!=NULL){
+  if(ccxopt_getenv("CCX_DAMAGE_AUTOSPC_FORCE")!=NULL){
     damage_spc_force=1;
     printf("[DAMAGE AUTOSPC-FORCE] armed: a node already masked by AUTOSPC "
            "is excluded from the FORCE residual ram[0] as well as from "
@@ -4046,7 +4046,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
            "excluded residual is reported on every increment.%s","\n");
     fflush(stdout);
   }
-  if(getenv("CCX_DAMAGE_WALL_MASKSTEP")!=NULL){
+  if(ccxopt_getenv("CCX_DAMAGE_WALL_MASKSTEP")!=NULL){
     damage_wall_maskstep=1;
     printf("[WALLDIAG] MASKSTEP armed: the linearisation check gains a third "
            "pass along p_N with the AUTOSPC-masked nodes' components zeroed. "
@@ -4067,7 +4067,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     }
   }
 
-  pf_env=getenv("CCX_PATHFOLLOW");
+  pf_env=ccxopt_getenv("CCX_PATHFOLLOW");
   if(pf_env!=NULL){
     pf_tauv=atof(pf_env);
     if(!(pf_tauv>0.)){
@@ -4099,13 +4099,13 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
       pf_neqarm=neq[1];
       pf_taucur=pf_tauv;
       pf_on=1;
-      if(getenv("CCX_PATHFOLLOW_CLIP")!=NULL)
-        pf_clip=atof(getenv("CCX_PATHFOLLOW_CLIP"));
+      if(ccxopt_getenv("CCX_PATHFOLLOW_CLIP")!=NULL)
+        pf_clip=atof(ccxopt_getenv("CCX_PATHFOLLOW_CLIP"));
       if(!(pf_clip>0.)) pf_clip=0.05;
-      if(getenv("CCX_PATHFOLLOW_LINCHECK")!=NULL)
-        pf_lincheck=atoi(getenv("CCX_PATHFOLLOW_LINCHECK"));
-      if(getenv("CCX_PATHFOLLOW_DTHETA")!=NULL)
-        pf_dtheta_eng=atof(getenv("CCX_PATHFOLLOW_DTHETA"));
+      if(ccxopt_getenv("CCX_PATHFOLLOW_LINCHECK")!=NULL)
+        pf_lincheck=atoi(ccxopt_getenv("CCX_PATHFOLLOW_LINCHECK"));
+      if(ccxopt_getenv("CCX_PATHFOLLOW_DTHETA")!=NULL)
+        pf_dtheta_eng=atof(ccxopt_getenv("CCX_PATHFOLLOW_DTHETA"));
       if(!(pf_dtheta_eng>0.)) pf_dtheta_eng=1.e-3;
       printf("[PATHFOLLOW] armed: tau=%.6e per increment, "
              "|dlambda| clipped at %.3e per iteration.\n",
@@ -4132,12 +4132,12 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          mutually exclusive; CCX_PATHFOLLOW_COD is kept unchanged so that
          the Mode-I result stays a regression test. */
 
-      if((getenv("CCX_CRACK_CONTROL")!=NULL)&&
-         (getenv("CCX_PATHFOLLOW_COD")!=NULL)){
+      if((ccxopt_getenv("CCX_CRACK_CONTROL")!=NULL)&&
+         (ccxopt_getenv("CCX_PATHFOLLOW_COD")!=NULL)){
         printf("[CRACKCTL] *ERROR: CCX_CRACK_CONTROL and "
                "CCX_PATHFOLLOW_COD both define the control coordinate; "
                "set only one.  Not armed.\n");
-      }else if(getenv("CCX_CRACK_CONTROL")!=NULL){
+      }else if(ccxopt_getenv("CCX_CRACK_CONTROL")!=NULL){
         char *cce;
         ITG ce,ncoh=0;
         for(ce=0;ce<*ne;ce++){
@@ -4152,7 +4152,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           printf("[CRACKCTL] *ERROR: the kinematics self test failed; "
                  "refusing to arm.\n");
         }else{
-          pf_dphi=atof(getenv("CCX_CRACK_CONTROL"));
+          pf_dphi=atof(ccxopt_getenv("CCX_CRACK_CONTROL"));
           if(!(pf_dphi>0.)){
             printf("[CRACKCTL] *ERROR: CCX_CRACK_CONTROL must be a "
                    "positive control increment.  Not armed.\n");
@@ -4162,7 +4162,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                mean runs backwards while the loading mean advances
                monotonically - see crackcontrol.c. */
             pf_ccmode=2;
-            cce=getenv("CCX_CRACK_CONTROL_MODE");
+            cce=ccxopt_getenv("CCX_CRACK_CONTROL_MODE");
             if(cce!=NULL){
               if((strcmp(cce,"MEAN")==0)||(strcmp(cce,"0")==0)) pf_ccmode=0;
               else if((strcmp(cce,"ZONE")==0)||(strcmp(cce,"1")==0)) pf_ccmode=1;
@@ -4170,12 +4170,12 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
               else printf("[CRACKCTL] unknown CCX_CRACK_CONTROL_MODE "
                           "\"%s\"; keeping DISS\n",cce);
             }
-            cce=getenv("CCX_CRACK_CONTROL_ENGAGE");
+            cce=ccxopt_getenv("CCX_CRACK_CONTROL_ENGAGE");
             if(cce!=NULL) pf_ccengage=atoi(cce);
-            cce=getenv("CCX_CRACK_CONTROL_EPS");
+            cce=ccxopt_getenv("CCX_CRACK_CONTROL_EPS");
             if(cce!=NULL) pf_eps=atof(cce);
             if(!(pf_eps>0.)) pf_eps=1.e-5;
-            cce=getenv("CCX_CRACK_CONTROL_GROW");
+            cce=ccxopt_getenv("CCX_CRACK_CONTROL_GROW");
             if(cce!=NULL) pf_ccgrow=atof(cce);
             if(!(pf_ccgrow>=1.)) pf_ccgrow=1.1;
             NNEW(pf_cvec,double,neq[1]);
@@ -4208,7 +4208,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         }
       }
 
-      if(getenv("CCX_PATHFOLLOW_COD")!=NULL){
+      if(ccxopt_getenv("CCX_PATHFOLLOW_COD")!=NULL){
         ITG ce,ci,ck,cip,cn,cnp,cdof,ncoh=0;
         double ca[3],cb[3],cnv[3],cnorm,csh[3],cw;
         for(ce=0;ce<*ne;ce++){
@@ -4254,7 +4254,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
               }
             }
           }
-          pf_dphi=atof(getenv("CCX_PATHFOLLOW_COD"));
+          pf_dphi=atof(ccxopt_getenv("CCX_PATHFOLLOW_COD"));
           if(!(pf_dphi>0.)) pf_dphi=5.e-5;
           if(pathfollow_cod_arm(pf_cvec,neq[1])==1){
             pf_codmode=1;
@@ -4299,7 +4299,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          over at the start of the next physical increment exactly like
          damdamageini.  A rejected increment simply discards the trial. */
 
-      damage_visc_env=getenv("CCX_DAMAGE_VISCOSITY");
+      damage_visc_env=ccxopt_getenv("CCX_DAMAGE_VISCOSITY");
       if(damage_visc_env!=NULL) damage_visc_eta=atof(damage_visc_env);
       if(damage_visc_eta<0.) damage_visc_eta=0.;
       if(damage_visc_eta>0.){
@@ -4425,12 +4425,12 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          the same deck and SP1's healthy 1.92e-3 (E-91).  So make the two
          clamps measurable instead of assumed.  Defaults are the compiled-in
          values, so an unset environment is bit-identical. */
-      if((damage_de13_env=getenv("CCX_DAMAGE_LS_MIN"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_LS_MIN"))!=NULL){
         damage_ls_min=atof(damage_de13_env);
         if(damage_ls_min<1.e-6) damage_ls_min=1.e-6;
         if(damage_ls_min>DAMAGE_LINESEARCH_MAX) damage_ls_min=DAMAGE_LINESEARCH_MAX;
       }
-      if((damage_de13_env=getenv("CCX_DAMAGE_LS_TRIALS"))!=NULL){
+      if((damage_de13_env=ccxopt_getenv("CCX_DAMAGE_LS_TRIALS"))!=NULL){
         damage_ls_trials=atoi(damage_de13_env);
         if(damage_ls_trials<1) damage_ls_trials=1;
         if(damage_ls_trials>32) damage_ls_trials=32;
@@ -4473,7 +4473,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         damage_linesearch_mode=0;
       }
 
-      if(getenv("CCX_DAMAGE_LS_LEGACY")!=NULL){
+      if(ccxopt_getenv("CCX_DAMAGE_LS_LEGACY")!=NULL){
         damage_ls_legacy=1;
         damage_ls_min=DAMAGE_LINESEARCH_MIN;
         damage_ls_trials=DAMAGE_LINESEARCH_MAX_TRIALS;
@@ -4481,8 +4481,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                "and the last trial is taken whether or not it contracts.\n",
                DAMAGE_LINESEARCH_MIN,DAMAGE_LINESEARCH_MAX_TRIALS);
       }else{
-        if(getenv("CCX_DAMAGE_LS_MIN")==NULL) damage_ls_min=1.e-3;
-        if(getenv("CCX_DAMAGE_LS_TRIALS")==NULL) damage_ls_trials=8;
+        if(ccxopt_getenv("CCX_DAMAGE_LS_MIN")==NULL) damage_ls_min=1.e-3;
+        if(ccxopt_getenv("CCX_DAMAGE_LS_TRIALS")==NULL) damage_ls_trials=8;
         printf("[DAMAGE LINESEARCH] ladder: floor %.4e, up to %"
                ITGFORMAT " trials, and the BEST alpha measured is taken "
                "when none contracts.\n",damage_ls_min,damage_ls_trials);
@@ -6121,7 +6121,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
          here; anything else means the rollback did not restore what the
          constraint assumes it restored. */
 
-      if(getenv("CCX_PATHFOLLOW_ACCUMCHECK")!=NULL){
+      if(ccxopt_getenv("CCX_PATHFOLLOW_ACCUMCHECK")!=NULL){
         double pfd=0.,pfm=0.;
         ITG pfi,pfj,pfk;
         for(pfi=0;pfi<*nk;pfi++){
@@ -6169,7 +6169,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
       if(*idrct!=0) aok=0; if(*iprestr!=0) aok=0; if(*nstate_<4) aok=0;
       if(*isolver!=7) aok=0;
       {
-        char *ae=getenv("CCX_PARDISO_REUSE_SYMBOLIC");
+        char *ae=ccxopt_getenv("CCX_PARDISO_REUSE_SYMBOLIC");
         if((ae==NULL)||((strcmp(ae,"1")!=0)&&(strcmp(ae,"ON")!=0)&&
                         (strcmp(ae,"on")!=0)&&(strcmp(ae,"YES")!=0)&&
                         (strcmp(ae,"yes")!=0))) aok=0;
@@ -7191,7 +7191,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
        the two, which the constraint would otherwise attribute to the
        increment. */
 
-    if((pf_on==1)&&(getenv("CCX_PATHFOLLOW_ACCUMCHECK")!=NULL)){
+    if((pf_on==1)&&(ccxopt_getenv("CCX_PATHFOLLOW_ACCUMCHECK")!=NULL)){
       double pfd=0.,pft;
       ITG pfi,pfj,pfk;
       for(pfi=0;pfi<*nk;pfi++){
@@ -8178,7 +8178,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	   true solution both times.  Saving the rhs here lets both solves be
 	   verified afterwards with one sparse mat-vec each. */
 
-	if((pf_on==1)&&(getenv("CCX_PATHFOLLOW_SOLVECHECK")!=NULL)){
+	if((pf_on==1)&&(ccxopt_getenv("CCX_PATHFOLLOW_SOLVECHECK")!=NULL)){
 	  if(pf_rhs0==NULL){NNEW(pf_rhs0,double,neq[1]);NNEW(pf_y,double,neq[1]);}
 	  isiz=neq[1];cpypardou(pf_rhs0,b,&isiz,&num_cpus);
 	}
@@ -8899,7 +8899,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	     tangent predictor has a stiffness the moment the constraint
 	     takes over.  Only the APPLICATION is gated on engagement. */
 
-	  if((pf_rhs0!=NULL)&&(getenv("CCX_PATHFOLLOW_SOLVECHECK")!=NULL)){
+	  if((pf_rhs0!=NULL)&&(ccxopt_getenv("CCX_PATHFOLLOW_SOLVECHECK")!=NULL)){
 	    double pfr1=0.,pfr2=0.,pfn1=0.,pfn2=0.,pft;
 	    ITG pfi,pfone=1;
 	    const double *pffh2=pathfollow_fhat();
@@ -9222,7 +9222,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	       hypothesis cleanly - the opening constraint residual is not
 	       what stops the run. */
 
-	    if((iit==1)&&(getenv("CCX_PATHFOLLOW_PROJECT")!=NULL)){
+	    if((iit==1)&&(ccxopt_getenv("CCX_PATHFOLLOW_PROJECT")!=NULL)){
 	      if(pathfollow_project_lambda(pf_pdu,&pf_lam)==1){
 	        for(k=0;k<*nboun;k++){
 	          xbounact[k]=xbounold[k]+(xboun[k]-xbounold[k])*pf_lam;
@@ -9238,7 +9238,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	    }
 	  }
 	 pf_after_step:
-	  if(getenv("CCX_PATHFOLLOW_PROBE")!=NULL){
+	  if(ccxopt_getenv("CCX_PATHFOLLOW_PROBE")!=NULL){
 	    printf("[PATHFOLLOW] it=%" ITGFORMAT " lambda=%.8f dlambda=%+.4e "
 	           "dG=%.6e g=%.4e applied=%" ITGFORMAT " reason=%" ITGFORMAT
 	           "\n",iit,pf_lam,pf_applied?pf_dlam:0.,pf_dg,pf_g,

@@ -90,7 +90,7 @@ void interpoltetmain(double *planfa,ITG *ifatet,ITG *netet_,ITG *kontet,
 
   /* local declaration prevails, if strictly positive */
 
-  envloc = getenv("CCX_NPROC_CFD");
+  envloc = ccxopt_getenv("CCX_NPROC_CFD");
   if(envloc){
     num_cpus=atoi(envloc);
     if(num_cpus<0){

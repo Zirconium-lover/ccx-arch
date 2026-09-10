@@ -679,7 +679,7 @@ void spooles_factor(double *ad, double *au,  double *adb, double *aub,
 	    
 	    /* local declaration prevails, if strictly positive */
 	    
-	    envloc = getenv("CCX_NPROC_EQUATION_SOLVER");
+	    envloc = ccxopt_getenv("CCX_NPROC_EQUATION_SOLVER");
 	    if(envloc){
 		num_cpus=atoi(envloc);
 		if(num_cpus<0){
@@ -1017,7 +1017,7 @@ void spooles_factor_rad(double *ad, double *au,  double *adb, double *aub,
 	    
 	    /* local declaration prevails, if strictly positive */
 	    
-	    envloc = getenv("CCX_NPROC_EQUATION_SOLVER");
+	    envloc = ccxopt_getenv("CCX_NPROC_EQUATION_SOLVER");
 	    if(envloc){
 		num_cpus=atoi(envloc);
 		if(num_cpus<0){

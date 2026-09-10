@@ -4915,10 +4915,17 @@ void logview_end_named(const char *name);
 void logview_report(double totalseconds);
 ITG  logview_selftest(void);
 
-/* damswitch.c - the registry of CCX_* switches this binary reads.  Reports
-   the configuration of every run and names anything set that is not read. */
-void damswitch_report(void);
-ITG  damswitch_selftest(void);
+/* ccxopt.c - Options: the one place that knows what this binary can be told
+   to do.  Every CCX_* read goes through ccxopt_getenv, which is getenv plus
+   the note that this run read it; ccxopt_decl.h declares type, default,
+   range, legal spellings and prose for the options that have an owner;
+   ccxopt_report states the configuration of the run, validates the declared
+   ones, names anything set that is not read, and at exit names anything set
+   that was never read.  Replaces damswitch.c, which did about a tenth of
+   this.  PETSc's options database is the model. */
+const char *ccxopt_getenv(const char *name);
+void ccxopt_report(void);
+ITG  ccxopt_selftest(void);
 
 /* ---- THE judgement about what no longer carries load (damstate.c) -----
 

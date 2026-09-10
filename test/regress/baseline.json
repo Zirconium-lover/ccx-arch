@@ -15,7 +15,7 @@
         "theta": "0.100000E+01"
       },
       "name": "fast-plain",
-      "seconds": 46.9,
+      "seconds": 50.4,
       "what": "the bar with a partial cohesive plane: bulk damage, deletion, cutbacks"
     },
     {
@@ -34,7 +34,7 @@
         "theta": "0.100000E+01"
       },
       "name": "fast-plain-smooth",
-      "seconds": 47.1,
+      "seconds": 49.9,
       "what": "the regulariser on a deck with real bulk damage and 90 deletions where no DAMAGED facet ever closes: it must be a byte-for-byte no-op, because the blend differs from the sharp law only when g<1 AND the facet is in compression"
     },
     {
@@ -56,7 +56,7 @@
         "worst_ratio": 0.00044641
       },
       "name": "fast-wrapped",
-      "seconds": 25.2,
+      "seconds": 25.5,
       "what": "the eroding phase wrapped in facets: reaches a node with no bulk support, and walls on the crack-face kink"
     },
     {
@@ -74,7 +74,7 @@
         "theta": "0.100000E+01"
       },
       "name": "fast-wrapped-smooth",
-      "seconds": 54.5,
+      "seconds": 55.9,
       "what": "the same deck with the crack-face kink regularised: the wall is gone and the fracture is not"
     },
     {
@@ -92,7 +92,7 @@
         "theta": "0.158766E+00"
       },
       "name": "fast-wrapped-nospc",
-      "seconds": 24.5,
+      "seconds": 25.5,
       "what": "the same wall without the load-path mask, which must not change it"
     },
     {
@@ -112,7 +112,7 @@
         "theta": "0.100000E+01"
       },
       "name": "mixed-analytic",
-      "seconds": 23.3,
+      "seconds": 23.2,
       "what": "inclined cohesive plane against the closed-form post-peak branch, 36 percent shear"
     },
     {
@@ -151,7 +151,7 @@
         "theta": "0.200000E+01"
       },
       "name": "close-sharp",
-      "seconds": 0.7,
+      "seconds": 0.6,
       "what": "the UC6 normal law itself, verified point by point on a facet damaged to gmin and then closed: this is where the five-orders tangent jump is measured rather than argued"
     },
     {
@@ -173,7 +173,7 @@
         "theta": "0.200000E+01"
       },
       "name": "close-blend",
-      "seconds": 0.7,
+      "seconds": 0.6,
       "what": "the same facet under the regulariser: identical far-field slopes, so nothing physical moved, and the blend band actually exercised"
     }
   ],
@@ -181,10 +181,10 @@
   "preflight_failed": 0,
   "provenance": {
     "binary": "/home/user/ccx-arch/build-mkl/ccx_2.23_pardiso",
-    "binary_sha256": "1ca894e476afc04a16f32a85e5d385c97916279a9bcefad3728aad5100bb97af",
+    "binary_sha256": "e0d0335364f59d255125cd130b1105721c0203435c08b2ba7162e6a8a9df7e3c",
     "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
     "fc": "GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
-    "git_commit": "38c7d965459d5bc55743599dd3e3f76c502058ee",
+    "git_commit": "4f0b06a659e7d3aacdceed6b8c0dad727140352c",
     "git_dirty": true,
     "machine": "x86_64",
     "mkl_cbwr": null,
@@ -211,5 +211,5 @@
     "CCX_PATHFOLLOW_DTHETA",
     "CCX_UC6_CONTACT_SMOOTH"
   ],
-  "when": "2026-09-10T19:22:46Z"
+  "when": "2026-09-10T19:44:58Z"
 }

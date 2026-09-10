@@ -915,7 +915,7 @@ ITG pathfollow_cod_step(double *b,const double *uf,double cu,double *lam,
   }
   g=cu-pf_target;
   if(gout!=NULL) *gout=g;
-  if(getenv("CCX_PATHFOLLOW_PROBE")!=NULL){
+  if(ccxopt_getenv("CCX_PATHFOLLOW_PROBE")!=NULL){
     printf("[COD] phi=%.6e target=%.6e g=%.4e  c.duR=%.6e c.duF=%.6e\n",
            cu,pf_target,g,cdr,cdf);
     fflush(stdout);

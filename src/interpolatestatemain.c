@@ -56,7 +56,7 @@ void interpolatestatemain(ITG *ne,ITG *ipkon,ITG *kon,char *lakon,ITG *ne0,
 
   /* local declaration prevails, if strictly positive */
 
-  envloc = getenv("CCX_NPROC_INTERPOLSTATE");
+  envloc = ccxopt_getenv("CCX_NPROC_INTERPOLSTATE");
   if(envloc){
     num_cpus=atoi(envloc);
     if(num_cpus<0){
