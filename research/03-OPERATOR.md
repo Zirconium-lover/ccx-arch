@@ -194,6 +194,36 @@ consistent softening contribution — which is why the elastic control and the
 walled state at increment 99 (element 1227, `dam=1.0067`, 20604 of 20604
 coefficients OK) both come back clean.
 
+### It is not one bad increment: it is the whole damaging phase
+
+The stock symmetric tangent, `fast-wrapped`, iteration 2, probed at ten
+increments across the run. `wrong` counts coefficients that are WRONG or
+BOTH out of 20604 bulk coefficients per probe:
+
+| increment | wrong | worst rel. err | probed element | dam |
+|---|---|---|---|---|
+| 10 | 345 | 9.3e-03 | 1206 | 0.118 |
+| 20 | 270 | 3.1e-02 | 1205 | 2.000 |
+| 30 | 204 | 6.2e-02 | 1464 | 2.000 |
+| 40 | 175 | 1.1e-01 | 1237 | 2.000 |
+| 45 | 245 | 7.5e-02 | 1195 | 2.000 |
+| 55 | 121 | 4.4e-02 | 1727 | 1.438 |
+| 65 | 24 | 1.3e-03 | 1227 | 1.007 |
+| 75 | 25 | 1.3e-03 | 1227 | 1.007 |
+| 85 | 166 | 4.4e-02 | 1232 | 1.970 |
+| 95 | 34 | 9.7e-03 | 1232 | 2.000 |
+
+It is never zero after damage starts, and it is already 345 coefficients at
+increment 10 where the probed element is only at `dam=0.118`. The two small
+readings (65 and 75) are the two increments where the probe happened to land
+on an element sitting at `dam=1.007` — the same element both times, and the
+one that is barely moving.
+
+So this is not a state the solver visits occasionally. **The operator is not
+the differential of the residual for the whole damaging phase of the run**,
+and the size of the disagreement tracks how fast the probed element's damage
+is changing rather than how much damage it has.
+
 ## 6. What this means
 
 `src/pardiso.c` records, from the other end and without knowing it was the
