@@ -55,8 +55,10 @@ def census(log):
         if worst is None or v<worst: worst=v
     return mx,worst
 
-def selftests(log,required):
-    """every named self test must report PASSED and none may report a failure."""
+def selftests(log,required,lines):
+    """every named self test must report PASSED, no unit may report a failure
+    or an error, and every required line must be present - a report that
+    silently stopped being emitted is a regression too."""
     try: txt=open(log,errors='replace').read()
     except OSError: return ["no log"]
     bad=[]
@@ -65,6 +67,10 @@ def selftests(log,required):
             if name in txt: bad.append("%s did not report PASSED"%name)
     for m in re.finditer(r'\[([A-Z0-9 _]+)\][^\n]*?([1-9]\d*) failure',txt):
         bad.append("%s reported %s failure(s)"%(m.group(1),m.group(2)))
+    for m in re.finditer(r'\[([A-Z0-9 _]+)\][^\n]*?\*ERROR([^\n]*)',txt):
+        bad.append("%s reported an error:%s"%(m.group(1),m.group(2)[:80]))
+    for want in lines:
+        if want not in txt: bad.append("log does not contain %r"%want)
     return bad
 
 def run_fast(case,rundir,exe):
@@ -79,7 +85,7 @@ def run_mixed(case,rundir,exe):
     r=sh('%s -i mixed > run.log 2>&1'%exe,env,cwd=rundir)
     return r.returncode,rundir/'run.log',rundir/'mixed.sta',None
 
-def one(case,outroot,exe,required):
+def one(case,outroot,exe,required,lines):
     rundir=outroot/case['name']
     if rundir.exists(): shutil.rmtree(rundir)
     t0=time.time()
@@ -105,7 +111,7 @@ def one(case,outroot,exe,required):
         else:
             ok = have==want
         if not ok: fails.append("%s: want %r, got %r"%(k,want,have))
-    fails+=selftests(log,required)
+    fails+=selftests(log,required,lines)
     return {'name':case['name'],'what':case['what'],'seconds':round(time.time()-t0,1),
             'got':got,'fails':fails,'rundir':str(rundir)}
 
@@ -118,6 +124,12 @@ def main():
     exe=os.environ.get('CCX_EXE')
     if not exe or not os.access(exe,os.X_OK):
         sys.exit("set CCX_EXE to a PARDISO-enabled ccx_2.23 binary")
+    # Preflight: the switch registry is generated from the sources, so a
+    # new switch that nobody regenerated would make every run.log understate
+    # its own configuration.  Cheap, and it fails before any solver runs.
+    pre=sh('python3 %s/tools/mkswitches.py --check'%ROOT,base_env([]))
+    print("preflight  switch registry: %s"%pre.stdout.strip().replace('\n','; '))
+    preflight_bad = 1 if pre.returncode!=0 else 0
     spec=json.load(open(HERE/'cases.json'))
     cases=[c for c in spec['cases'] if not a.k or a.k in c['name']]
     outroot=pathlib.Path(a.o or (HERE/'_runs'/time.strftime('%Y%m%d-%H%M%S'))).resolve()
@@ -125,7 +137,8 @@ def main():
     print("binary %s\nruns   %s\ncases  %d, %d at a time\n"%(exe,outroot,len(cases),a.j))
     res={}
     with cf.ThreadPoolExecutor(max_workers=a.j) as ex:
-        futs={ex.submit(one,c,outroot,exe,spec['selftests_required']):c for c in cases}
+        futs={ex.submit(one,c,outroot,exe,spec['selftests_required'],
+                        spec.get('required_lines',[])):c for c in cases}
         for f in cf.as_completed(futs):
             r=f.result(); res[r['name']]=r
             print("  %-24s %6.1fs  %s"%(r['name'],r['seconds'],
@@ -156,8 +169,11 @@ def main():
             for f in r['fails']: print("   FAIL %s"%f)
         else:
             print("   ok")
-    print("\n%d of %d case(s) failed"%(nbad,len(cases)))
-    return nbad
+    if preflight_bad:
+        print("\npreflight FAILED: the switch registry is stale")
+    print("\n%d of %d case(s) failed%s"%(nbad,len(cases),
+          ", plus the preflight" if preflight_bad else ""))
+    return nbad+preflight_bad
 
 if __name__=='__main__':
     sys.exit(main())

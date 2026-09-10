@@ -2853,6 +2853,13 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     printf(" increment size smaller than one millionth of step size\n");
     printf(" increase increment size\n\n");
   }
+  /* [SWITCHES] State the configuration of this run before anything acts on
+     it, and name any CCX_* variable that is set but not read.  A flag that
+     was never read is the difference between an A/B that is wrong and one
+     that is uninformative, and the second kind costs a whole run to notice.
+     Reports only; reads nothing, decides nothing. */
+  damswitch_report();
+
   /* [DAMAGE TMIN] statics.f:234-247 silently raises the deck's minimum
      increment to min(tinc,1e-6*tper) under automatic incrementation.  With
      tinc=1e-3 and tper=1 every deck in this project has therefore been run

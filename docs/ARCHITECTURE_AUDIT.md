@@ -206,3 +206,26 @@ are point fixes: each identified a real mechanism, measured it, and repaired
 it where it surfaced.  Each was also a new switch.  That is how the count got
 to 140, and this session contributed to it rather than reversing it.  The
 audit exists because the fourth wall made the pattern impossible to miss.
+
+---
+
+## Status of the plan, updated as steps land
+
+| step | state |
+|---|---|
+| a validation that runs in minutes | **done** - `test/regress/run.py`, 6 cases, ~3 min, proven able to go red |
+| one owner for the load-path judgement | **done** - `src/damstate.c`, verified bit-identical on a deck where the predicate actually decides, and over 849 attempts / 3135 deletions of `s3rad` |
+| the crack-face closure discontinuity | **done** - `CCX_UC6_CONTACT_SMOOTH`, measured to remove the wall without moving the fracture |
+| every switch documented and reported | **partly** - `tools/mkswitches.py` generates `docs/SWITCHES.md` and the registry `src/damswitch.c` reports every run's configuration and names anything set that the binary does not read; 94 of the 139 still have no prose anywhere |
+| the other three discontinuities | open |
+| viscous stabilization | open |
+| retire switches | open |
+
+### Housekeeping noticed while doing the above
+
+`src/ccx_2.22` is a 6.5 MB ELF executable **tracked in git**, inherited from
+the `Import: CalculiX 2.22 original sources` commit and present at this
+branch's base.  The working brief says binaries stay out of Git.  Left alone
+because removing a file from the vendored import is the repository owner's
+call, not a side effect of a fracture investigation.
+

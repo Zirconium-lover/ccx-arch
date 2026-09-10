@@ -4902,6 +4902,11 @@ typedef struct{
   double dmaxmax;  /* largest committed maximum separation             */
 }crackcontrol_census;
 
+/* damswitch.c - the registry of CCX_* switches this binary reads.  Reports
+   the configuration of every run and names anything set that is not read. */
+void damswitch_report(void);
+ITG  damswitch_selftest(void);
+
 /* ---- THE judgement about what no longer carries load (damstate.c) -----
 
    One owner for a decision that used to be made in three places for three
