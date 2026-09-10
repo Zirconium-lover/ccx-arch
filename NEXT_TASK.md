@@ -1,140 +1,166 @@
-# Next task
+# The work queue
 
-## Read this first
+`PROMPT.md` is the brief and the discipline. `handover/08-OBJECT-MODEL.md` is
+the design — which objects, why, and the idiom. **This file is the order of
+work and how you know each item is done.**
 
-Three things in this tree are cheap and were not, and they change how you
-should work:
+Treat the order as argued, not sacred. If you find a better one, say why and
+take it — but do items 0 and 1 first regardless, because everything after
+them is guesswork without them.
 
-| | |
-|---|---|
-| `test/regress/run.py` | **6 cases, ~3 minutes.** Run it before and after every change. It is proven able to go red. |
-| `test/fast/run_fast.sh` | a 2160-element specimen that reaches a node with **no bulk support left**, in 24 s |
-| `[SWITCHES]` at the top of every `run.log` | states the run's own configuration and names any `CCX_*` set that the binary does not read |
+---
 
-`s3rad` still costs ~2.5 h on 2 threads. It is the last gate, not the first.
+## 0. A build and a recorded baseline
 
-## Settled, with evidence. Do not re-derive.
+You cannot refactor what you cannot re-run.
 
-**The walls are not one thing.** Cross the two mechanisms on the fast wrapped
-deck and the mask changes nothing while the kink changes everything; on
-`s3rad` the opposite holds. Calling them all "the wall" is part of why fixing
-one kept producing the next.
+- `apt` has `intel-mkl` (2020.4.304-4 worked); `./src/build_mkl.sh <dir>`
+  produces `ccx_2.23_pardiso` in about a minute.
+- **Five of the nine gate cases need PARDISO** — `mkfast.py` writes
+  `*Static, Solver=Pardiso`. The other four run on SPOOLES. A four-green run
+  is not a passing gate, and the four that would be missing are exactly the
+  ones about bulk damage, deletion and load path.
+- Run the gate and **commit its output as the baseline** — every scalar, so a
+  later "it still passes" means something.
 
-**Second `s3rad` wall (increment 554, `theta=0.2555742`).** The peak force
-residual sat on node 1246, a fragment held by ONE live bulk element with all
-six of its cohesive facets failed and open. Equilibrating it needs a
-displacement of order one against a grip that has moved 0.2556, so its
-residual fell 0.1% per iteration. The component was inherited by every
-following increment - 15.7, 50.4, 74.9, 94.5, 105.7% of tolerance over
-increments 551-555 - **while `dtheta` collapsed 48x**. Cutting the step made
-equilibrium worse, because the part that will not reduce is not proportional
-to the step. `CCX_DAMAGE_AUTOSPC_FORCE=1` extends the load-path judgement to
-the force residual: increment 554 -> 930, `theta` 0.2556 -> 0.5575, `dtime`
-recovered 1000x, pre-wall history bit-identical over all 1147 attempts.
-Refuted for this wall, each because they repair the step and the step was
-never the problem: Newton-Krylov (stops EARLIER at 0.191828), event
-truncation, collapsed-node projection of the step, and a smaller increment.
+**Done when**: 9/9 green, the binary's sha256 and the baseline numbers are in
+the tree.
 
-**The crack-face closure kink.** `cohesive_uc6.f` leaves the normal traction
-continuous at `deltal(1)=0` but jumps its slope from `g*kn` to `kn`, a factor
-of `1/gmin`. On the fast wrapped deck's wall, seven UC6 points sit on that
-kink and change category at EVERY line-search rung down to `eps=6.1e-5`,
-while the residual grows strictly linearly in `eps` and never falls below its
-base value. `CCX_UC6_CONTACT_SMOOTH=1.e-2` blends the slopes over a
-penetration band: transitions 19 -> 0, `|r0|2` 3.48e-02 -> 1.89e-10, the deck
-goes from `theta=0.158766` to 1.0, and the SAME 64 elements are deleted in the
-same order. Flat over two decades of the band.
+## 1. Profile the target deck
 
-**The load-path judgement has one owner**, `src/damstate.c`, verified
-bit-identical on a deck where the predicate actually decides and over 849
-attempts / 3135 deletions of `s3rad`.
+Nobody has ever done this. Everything in §4 of the object model is a
+hypothesis until it is done, and "optimise the algorithms" is not actionable
+without it.
 
-**Nothing in `s3rad` is adrift.** The diagonal test is blind by construction
-to a piece that is internally stiff but attached to nothing. Measured with
-`test/s3rad/fragments.py` rather than assumed: at every facet-stiffness
-threshold, 0 elements adrift. The same table shows the model in **two
-pieces, one at each grip**, when only facets above `g=0.5` count - the
-severance result again, by connectivity instead of reaction force.
+- Build the harness on a 24-second deck (`FAST_VARIANT=wrapped`), not on the
+  2.3-hour one.
+- Attribute time to: assembly, symbolic factorisation, numeric factorisation,
+  triangular solves, residual evaluations (and how many of those the
+  line-search ladder consumes), the erosion transaction, and diagnostics.
+- Then run it once on `s3rad` and record the breakdown.
 
-**The metal severs at `theta=0.3411981`**, and the run continues past it
-because `cohesive_uc6.f` pins `g` at `gmin` while terminal deletion scans
-`C3D4` only, so a dead facet reads as a load path for ever.
-`CCX_FRACTURE_DEADFACET=1` sees it; the fast plain deck demonstrates the same
-blindness in 58 s.
+**Done when**: a committed breakdown of where the runtime goes, at both
+scales, with the method reproducible by someone else.
 
-**Runs are not reproducible across thread counts.** `MKL_CBWR=COMPATIBLE`
-fixes reproducibility across instruction sets, not across thread counts. Two
-runs identical for 482 attempts diverged at 483 on a 6-against-5 iteration
-count. Fix `OMP_NUM_THREADS` and `MKL_NUM_THREADS` on both arms of any A/B.
+## 2. Comparison with tolerances — time-boxed
 
-## Refuted, so you do not spend a run on them again
+The gate can only compare bytes, so any decomposition that reorders a
+summation fails it for the wrong reason. This is the one thing that must
+exist before the first extraction.
 
-| | why |
-|---|---|
-| a "node with at most one live bulk element" gate | node 3053 at the third wall has **four** live bulk elements and no facets; the signature was the same and the mechanism was not |
-| a stiffness-ratio threshold tuned until a node is included | 76 nodes below 1e-3, 166 below 1e-2, 381 below 1e-1 - that is the chain of thresholds this project exists to avoid |
-| a connected-component / free-fragment unit | measured: nothing is adrift at any threshold |
-| a small wrapped inclusion, to manufacture a fragment | 0 of its 24 elements erode: the wrap debonds at `Tn0=300` before ZRH yields at 600, and an unloaded inclusion cannot damage |
-| a wrap stronger than the phase it wraps | the phase erodes, but the stripped nodes are then held by INTACT facets, flooring the ratio at 2.5e-2 |
-| more mesh, to make the fast deck wall | four variants, none walls; the mechanism is where the facets are, not how many elements there are |
+- Per-quantity absolute and relative tolerances; comparison of fields, not
+  only status lines; the tolerance used stated in the output.
+- Byte identity stays available as the strictest setting.
+- **Demonstrate it failing**, the way `test/regress/run.py` was proven.
 
-## The method that has worked
+**Done when**: a case can assert "equal to 1e-10" and that assertion goes red
+when it should. **If this grows past a day, stop and reconsider** — it is a
+prerequisite, not the project.
 
-1. State a falsifiable hypothesis and **name the one measurement that can
-   reject it**, before writing code.
-2. Reproduce the wall on the fast deck if you can. 24 s beats 2.5 h, and
-   diagnosis is what the speed buys.
-3. Read `CCX_DAMAGE_WALL_THETA`'s ladder. If the residual is linear in `eps`
-   and the active-set transition count does not decay, you are on a kink, not
-   a stiffness loss. If the residual peaks on nodes with a healthy diagonal
-   ratio and tiny `need_du = |R|/k`, likewise.
-4. Regularise the kink; do not damp the step. Then prove the answer did not
-   move: same deletion set, same order, bounded shift in deletion time.
-5. Feature off must be bit-identical. Run `test/regress/run.py`.
-6. Only then spend `s3rad`.
+## 3. Options
 
-## Open
+Mechanical, touches everything, breaks nothing — the right first extraction.
 
-- **The other three discontinuities** the audit lists: damage initiation
-  (`deff > d0`), loading/unloading (`deff` vs `dmax`), and element deletion.
-  The first two are kinks in the tangent and the method above applies; the
-  third changes the mesh and is partly irreducible.
-- **Viscous stabilization** in the `*STATIC, STABILIZE` sense. Note that the
-  class it is normally for - a free floating fragment - was measured NOT to
-  occur here, so build it against a measured failure, not against the name.
-- **94 of 139 switches** have no prose anywhere but the line that reads them
-  (`docs/SWITCHES.md`, generated). Retire or document.
-- **`src/ccx_2.22`** is a 6.5 MB executable tracked in git, inherited from the
-  original-sources import.
+- Declare a switch once: type, default, range, one line of documentation,
+  optional deprecation. Parse once. Validate. Report.
+- `docs/SWITCHES.md` becomes generated from the declarations rather than
+  scraped from `getenv` calls.
+- Then list the **122 switches no test sets** and start retiring them: a
+  switch with no declaration, no test and no prose has no defenders. Retiring
+  means making the behaviour the default or deleting it — either is progress,
+  leaving it is not.
+- PETSc's options database is the model; `-options_left` is what
+  `src/damswitch.c` reinvented at a tenth of the scope.
 
-## Validation and success
+**Done when**: switches are declared rather than scraped, the generated
+documentation comes from the declarations, feature-off is bit-identical, and
+the retirement list exists with a first batch actually retired.
 
-Same deck, same PARDISO binary family, same environment; the only functional
-difference is the change under test. Do not change physical parameters, the
-deck, tolerances, solver, viscosity, tangent mode, `DEADALL` or AUTOSPC inside
-a causal A/B. Validate first with crack-control engagement off.
+## 4. Monitor
 
-Compare more than the stopping increment: `theta` and reaction history,
-`deffmax`, process-zone and failed UC6 counts, cumulative deletions and the
-exact batches, residual and iteration and cutback counts, and connectivity.
+Pure extraction, no behaviour change — and it removes a standing embarrassment:
+**the same census is printed from three separate sites** in `nonlingeo.c`,
+because nobody owns it.
 
-**The Newton-Krylov arm is the cautionary case: it led in `theta` at every
-increment from 91 to 141 and still lost the run.** Being ahead early is not
-evidence. Only the stopping state is.
+- Separate producing a quantity from presenting it.
+- Emit structured records, so `handover/02-DIAGNOSTICS.md` can become a
+  program rather than eleven readings a human performs by eye.
 
-## Compute budget
+**Done when**: one owner computes the census, the three sites are gone, output
+is machine-readable, and the run is bit-identical.
 
-A full `s3rad` run to the wall is about 7400-8800 s on 2 threads, so an A/B
-pair is roughly four hours. Print the budget you have chosen before launching.
-A sensible default is four full runs per investigation. An extra run is
-allowed when it tests a new falsifiable hypothesis - say why first. Unit and
-benchmark runs do not count. Do not cap accepted increments arbitrarily and
-then call reaching the cap completion.
+## 5. Convergence
 
-## Delivery
+The first real interface, and the one with a known live problem: the handover
+records `AUTOSPC_FORCE` satisfying its own alarm condition for having become a
+fiction, with no structure that could express it.
 
-Report separately: reproduced facts, new measurements, the actual cause,
-functional changes, regressions, and whether `s3rad` completed or physically
-separated. Passing one wall is not the same as completing the specimen. If
-GitHub write access is unavailable, deliver a verified bundle with its base
-and head commits.
+- A composable tree of named tests, each able to say **why** it fired.
+  Trilinos NOX `StatusTest` maps onto this almost exactly.
+- AUTOSPC and `AUTOSPC_FORCE` become tests in the tree, not exceptions inside
+  the judgement.
+- Every increment records its reason, in the structured stream from item 4.
+
+**Done when**: the default tree reproduces current behaviour bit-identically,
+and "why did this increment converge" is answerable from the record.
+
+## 6. Topology, and the sparsity decision
+
+- Erosion behind an interface: what counts as eroded, the transaction that
+  commits it, and rollback.
+- Then the measured experiment item 1 will have made worth doing: **hold the
+  sparsity pattern fixed under erosion** — dead elements keep their entries,
+  zeroed, with a safe diagonal — so the symbolic factorisation happens once
+  per run instead of once per topology change. State the hypothesis, name the
+  measurement, and check the answer did not move.
+
+**Done when**: erosion has an owner with a self test; and the sparsity
+experiment has an answer, whichever way it goes.
+
+## 7. Globalization
+
+Six mechanisms with no interface: the line-search ladder, transactional
+backtracking, Rescue levels 1 and 2, a dogleg trust region, and path
+following. Measured evidence they do not all discriminate: at one wall,
+**three consecutive attempts produced bit-identical residual sequences.**
+
+- Put them behind one interface; map each onto the PETSc/NOX taxonomy.
+- Then the question "what is each for" is answerable, and the test for
+  keeping one is: **name the failure it addresses and the gate case that
+  would go red without it.** Delete what cannot pass it.
+
+**Done when**: one interface, each implementation justified by a case, and at
+least one mechanism either justified or gone.
+
+## 8. Direction and Newton
+
+Last, because everything else moves through it. By this point the loop should
+be small enough to read.
+
+---
+
+## Standing rules while you work
+
+- **Run the gate before and after every change.** Nine cases, three minutes.
+- **Pin `OMP_NUM_THREADS` and `MKL_NUM_THREADS`** on both arms of any
+  comparison. Runs are not reproducible across thread counts — measured.
+- **Say in which sense each extraction is equivalent** — bit-identical, or to
+  a stated tolerance. Both are honest; silence is not.
+- **`s3rad` is the last gate, not the first.** It costs 2.3 hours. Note that
+  roughly a fifth of that is spent after the specimen has physically broken,
+  which the parallel repository is fixing.
+- **Record what you reject**, in `handover/04-REFUTED.md`. Every entry there
+  is a run somebody else does not have to spend.
+
+## If you get stuck
+
+The two failure modes this project has actually suffered, both worth naming:
+
+**Designing without measuring.** Four separate mechanisms were built on
+plausible diagnoses that measurement later rejected. State the measurement
+that would reject your design before you build on it.
+
+**Comparing at the wrong point.** Two arms were once compared at the
+increment where each happened to stop — both inside a regime where the
+specimen no longer existed — and the conclusion came out backwards. Compare
+at a point that means something.

@@ -20,10 +20,11 @@ options prefixes) and is the idiom this code needs; Trilinos NOX
 `StatusTest` maps onto the convergence problem almost exactly. Cite with a
 link and a version.
 
-Then **strangle, do not rewrite**: extract one responsibility at a time,
-leave the call at the original site, prove bit-identity, repeat. This tree
-has done it twice (`src/lsladder.c`, `src/damstate.c`) and both times it
-worked.
+Then prefer **strangling to rewriting**: extract one responsibility at a
+time, leave the call at the original site, prove equivalence, repeat. This
+tree has done it twice (`src/lsladder.c`, `src/damstate.c`), so it is the
+default — but a clean-sheet subsystem is allowed where you can argue the old
+one is not worth carrying.
 
 **Optimising algorithms starts with a measurement.** Nobody has profiled
 this code; the target deck takes 2.3 hours and no one knows where it goes.
@@ -45,19 +46,22 @@ well-founded change:
 ## The parallel line of work
 
 A separate session works from the `ccx-crack-prop-arch` repository —
-different history, deliberate merge later. Do not contort your design to
-avoid it, but design so its `loadpath.c` (the "is this still a specimen"
-owner) drops into your object model. **If you find a defect in the damage
-module, write it in `handover/05-DEBT.md` and move on** — it is not your
-turn.
+different history, deliberate merge later. It is building `loadpath.c`, the
+owner of "is this still a specimen"; worth knowing, but design for what you
+judge right rather than for what you guess it will produce.
+
+Do not go hunting defects in the damage module. If one blocks a
+decomposition, fix it and record it in `handover/05-DEBT.md`.
 
 ## What is not negotiable
 
 The evidence discipline — it applies to tools as much as to physics.
 
-- **Every extraction is bit-identical, or it is not an extraction.** If it
-  changes behaviour it is a change: state a falsifiable hypothesis and name
-  the one measurement that can reject it.
+- **An extraction must be provably equivalent, and you must say in which
+  sense** — bit-identical for pure code movement, equivalent to a stated
+  tolerance where arithmetic is necessarily reordered. What is not allowed is
+  a behaviour change reported as a refactor; that needs a falsifiable
+  hypothesis and the measurement that can reject it.
 - **A tool you cannot demonstrate failing is not a tool.** Break it
   deliberately and show it goes red.
 - **Feature off must be bit-identical**, and you must check it.

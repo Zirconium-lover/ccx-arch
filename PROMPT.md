@@ -11,9 +11,11 @@ and every diagnostic — interleaved. Around it sit **139 environment
 switches**, 63 documented nowhere and 122 set by no test. Nothing here was
 designed; it was added, one wall at a time, for eight months.
 
-**Decomposing that is the job.** Not patching it, not building tools beside
-it, and not hunting the next bug — a parallel session in another repository is
-doing that, well.
+**Decomposing that is the job** — not patching it, and not hunting the next
+bug; a parallel session in another repository is doing that, well. Build
+whatever tools the decomposition needs along the way (you will need at least
+a profiler and a better comparison), but build them because the refactor
+needs them, not instead of it.
 
 Read `handover/08-OBJECT-MODEL.md` first: it is the concrete target — which
 objects, what each owns, the idiom to implement them in, and the migration
@@ -25,20 +27,23 @@ those decisions. `handover/01`–`06` are the measured state of the code.
 
 **Design, survey, then build — incrementally.**
 
-1. **Design on paper first.** Name the objects, their responsibilities, their
-   interfaces, their lifecycles, and who owns what state. Write it down and
-   argue it before writing code. A decomposition nobody can state in one page
-   is a decomposition that will not survive contact.
+1. **Have a design, and be able to state it.** Name the objects, their
+   responsibilities, their interfaces and who owns what state. Prototype in
+   code if that is how you think best — but a decomposition nobody can state
+   in one page is one that will not survive contact, so write it down before
+   you commit to it.
 2. **Survey before inventing.** Nearly every mechanism here was invented on
    the spot, and every one of them has a settled solution in PETSc, Trilinos,
    MOOSE, Code_Aster or deal.II. PETSc in particular is the reference
    implementation of object orientation *in C* — opaque handles, ops tables,
    `XXXSetType`, registration, options prefixes — which is exactly the idiom
    this code needs. Use web search; cite with a link and a version.
-3. **Migrate by strangling, not by rewriting.** Extract one responsibility at
-   a time, leave the call at the original site, prove bit-identity, repeat.
-   This tree has done it twice already (`src/lsladder.c`, `src/damstate.c`)
-   and both times it worked.
+3. **Prefer strangling to rewriting.** Extract one responsibility at a time,
+   leave the call at the original site, prove equivalence, repeat. This tree
+   has done it twice (`src/lsladder.c`, `src/damstate.c`) and both times it
+   worked, so it is the default. A clean-sheet subsystem is allowed where you
+   can argue the old one is not worth carrying — the evidence burden is the
+   same, and it is higher the more the change can hide.
 
 ## Algorithms are part of this, and start with a measurement
 
@@ -81,12 +86,16 @@ bold, well-founded change:
 - retire a switch with no test and no prose;
 - change a default when the evidence supports it, and say so.
 
-A parallel session works from `ccx-crack-prop-arch`. Separate repository,
-separate history, deliberate merge later. Do not contort your design to avoid
-it — but do read `handover/05-DEBT.md` and `06-TARGET.md`, and design so that
-its `loadpath.c` (the "is this still a specimen" owner) drops into your object
-model rather than fighting it. If you find a defect in the damage module,
-write it in `05-DEBT.md` and move on; it is not your turn.
+A parallel session works from `ccx-crack-prop-arch`: separate repository,
+separate history, deliberate merge later. It is building `loadpath.c`, the
+owner of "is this still a specimen" — worth knowing about, since your model
+will need a place for that question. Design for what you judge right, not for
+what you guess it will produce.
+
+You are not required to hunt defects in the damage module, and you should not
+go looking. If one gets in the way of a decomposition, fix it — that is not a
+violation, it is Tuesday — and record it in `handover/05-DEBT.md` so the other
+line of work is not surprised.
 
 ## What is not negotiable
 
@@ -94,9 +103,13 @@ The evidence discipline. It is the only reason anything here is trustworthy,
 and it applies to a refactor more strictly than to a bug fix, because a
 refactor is supposed to change nothing.
 
-- **Every extraction is bit-identical, or it is not an extraction.** If it
-  changes behaviour, it is a change: state a falsifiable hypothesis and name
-  the one measurement that can reject it.
+- **An extraction must be provably equivalent, and you must say in which
+  sense.** Pure code movement is **bit-identical** — check it, do not assume
+  it. An extraction that necessarily reorders arithmetic is equivalent
+  **to a stated tolerance**: say which tolerance and why it is the right one.
+  What is not allowed is an extraction that changes behaviour and is reported
+  as a refactor. If behaviour changes, it is a change: state a falsifiable
+  hypothesis and name the one measurement that can reject it.
 - **A tool you cannot demonstrate failing is not a tool.** Break it and show
   it goes red.
 - **Pin `OMP_NUM_THREADS` and `MKL_NUM_THREADS` on both arms of any
