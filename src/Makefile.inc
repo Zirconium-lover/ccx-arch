@@ -1114,6 +1114,8 @@ topodiag.c \
 lsladder.c \
 damstate.c \
 ccxopt.c \
+census.c \
+monitor.c \
 logview.c \
 pardiso_cp.c \
 pastix.c \

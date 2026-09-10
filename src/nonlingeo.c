@@ -1961,7 +1961,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_stab_maxdof=0,damage_stab_maxdead=0,*damage_stab_node=NULL,
     damage_deadsole_total=0,damage_deadall_total=0,damage_deadall_nodes=0,
     damage_fracture_link=0,damage_deadfacet=0,damage_facetdel=0,
-    damage_facetdel_new=0,damage_facetdel_total=0,damage_arc=0,damage_diss_step=1,damage_spc_neg=0,damage_stiff_nneg=0,
+    damage_facetdel_new=0,damage_facetdel_total=0,damage_arc=0,damage_diss_step=1,damage_spc_neg=0,damage_census_ok=1,
     damage_ls_trials=DAMAGE_LINESEARCH_MAX_TRIALS,
     damage_bare=0,damage_bare_rep=-1,damage_free_probe=0,
     damage_free_cnt=0,damage_free_rep=-1,*damage_free_nb=NULL,
@@ -1976,8 +1976,6 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_unsym_skiprep=-1,damage_unsym_adv=0,
     damage_unsym_advrep=-1,
     *damage_stiff_haz=NULL,
-    damage_stiff_n1=0,damage_stiff_n2=0,damage_stiff_n3=0,
-    damage_stiff_worst=-1,
     damage_topology_orphans=0,damage_indexe=0,
     damage_ls_bestused=0,damage_ls_legacy=0,damage_lsr=0,
     damage_de13_new=0,damage_de13_transaction=0,
@@ -2084,7 +2082,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_diss_dgold=0.,damage_diss_g=0.,damage_diss_slope=0.,
     damage_diss_dlam=0.,damage_diss_kpp=0.,damage_diss_fr=0.,
     damage_diss_ff=0.,damage_diss_den=0.,
-    damage_addmin=0.,damage_addrat=0.,damage_de13_batch_vmin=1.,
+    damage_de13_batch_vmin=1.,
     damage_stiff_min=0.,damage_path_lam=0.,damage_path_dev=0.,
     damage_fd_h=1.e-7,damage_fd_dmax=0.,damage_fd_num=0.,
     damage_fd_asm=0.,damage_fd_amax=0.,damage_fd_emax=0.,
@@ -3808,6 +3806,24 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         if(damage_stiff_min<0.) damage_stiff_min=0.;
         if(damage_stiff_min>0.1) damage_stiff_min=0.1;
         if(damage_stiff_min>0.) damage_stiff_probe=1;
+      }
+      /* [CENSUS] the same discipline, one level down: the census is a
+         MEASUREMENT and not a judgement, but a measurement that is wrong is
+         worse than none, because it is the number every reading in
+         02-DIAGNOSTICS.md section 3 is taken against.  Prove it before
+         printing it, on every run that arms it.
+
+         Note what is suppressed on failure: the REPORT, and only the report.
+         damage_stiff_probe also gates the assembly of damage_addiag, which
+         the load-path judgement reads - clearing it would silently change
+         the trajectory, which is exactly the kind of behaviour change a
+         self test must not smuggle in.  Measured: doing it the wrong way
+         round moved m.cvg on three gate cases. */
+      if((damage_stiff_probe>0)&&(stiffcensus_selftest()!=0)){
+        printf("[CENSUS] *ERROR: the stiffness census self test failed; "
+               "not printing a census rather than printing one that may be "
+               "wrong.  The solve is untouched.\n");
+        damage_census_ok=0;
       }
       /* Default 0 since E-22.  damdangle cannot distinguish a dangling
          sliver from the legitimate last element at a node, so it deletes
@@ -13074,29 +13090,11 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
              measure, which mesh topology and geometry both failed to
              do. */
           if((damage_stiff_probe>0)&&(damage_addiag!=NULL)){
-            damage_stiff_n1=0;damage_stiff_n2=0;damage_stiff_n3=0;
-            damage_stiff_nneg=0;
-            damage_stiff_worst=-1;damage_addmin=2.;
-            for(i=0;i<*nk;i++){
-              if((damage_addok!=NULL)&&(damage_addok[i]==0)) continue;
-              if(damage_addiag0[i]<=0.) continue;
-              if(damage_addiag[i]<=0.){damage_stiff_nneg++;continue;}
-              damage_addrat=damage_addiag[i]/damage_addiag0[i];
-              if(damage_addrat<1.e-3) damage_stiff_n1++;
-              if(damage_addrat<1.e-2) damage_stiff_n2++;
-              if(damage_addrat<1.e-1) damage_stiff_n3++;
-              if(damage_addrat<damage_addmin){
-                damage_addmin=damage_addrat;damage_stiff_worst=i+1;
-              }
-            }
-            printf("[DAMAGE STIFFNESS] inc=%" ITGFORMAT " time=%.12e "
-                   "below_1e-3=%" ITGFORMAT " below_1e-2=%" ITGFORMAT
-                   " below_1e-1=%" ITGFORMAT " nonpositive=%" ITGFORMAT
-                   " worst=node_%" ITGFORMAT "_at_%.4e\n",
-                   iinc,theta**tper,damage_stiff_n1,damage_stiff_n2,
-                   damage_stiff_n3,damage_stiff_nneg,
-                   damage_stiff_worst,damage_addmin);
-            fflush(stdout);
+            stiffcensus damage_census;
+            stiffcensus_take(&damage_census,*nk,damage_addiag,
+                             damage_addiag0,damage_addok);
+            if(damage_census_ok) monitor_stiffness(&damage_census,iinc,
+                                                   theta**tper);
           }
 
           /* Material left hanging on a single element.  BK4 tests for
@@ -14072,29 +14070,11 @@ damage_active_set_closed:
              measure, which mesh topology and geometry both failed to
              do. */
           if((damage_stiff_probe>0)&&(damage_addiag!=NULL)){
-            damage_stiff_n1=0;damage_stiff_n2=0;damage_stiff_n3=0;
-            damage_stiff_nneg=0;
-            damage_stiff_worst=-1;damage_addmin=2.;
-            for(i=0;i<*nk;i++){
-              if((damage_addok!=NULL)&&(damage_addok[i]==0)) continue;
-              if(damage_addiag0[i]<=0.) continue;
-              if(damage_addiag[i]<=0.){damage_stiff_nneg++;continue;}
-              damage_addrat=damage_addiag[i]/damage_addiag0[i];
-              if(damage_addrat<1.e-3) damage_stiff_n1++;
-              if(damage_addrat<1.e-2) damage_stiff_n2++;
-              if(damage_addrat<1.e-1) damage_stiff_n3++;
-              if(damage_addrat<damage_addmin){
-                damage_addmin=damage_addrat;damage_stiff_worst=i+1;
-              }
-            }
-            printf("[DAMAGE STIFFNESS] inc=%" ITGFORMAT " time=%.12e "
-                   "below_1e-3=%" ITGFORMAT " below_1e-2=%" ITGFORMAT
-                   " below_1e-1=%" ITGFORMAT " nonpositive=%" ITGFORMAT
-                   " worst=node_%" ITGFORMAT "_at_%.4e\n",
-                   iinc,theta**tper,damage_stiff_n1,damage_stiff_n2,
-                   damage_stiff_n3,damage_stiff_nneg,
-                   damage_stiff_worst,damage_addmin);
-            fflush(stdout);
+            stiffcensus damage_census;
+            stiffcensus_take(&damage_census,*nk,damage_addiag,
+                             damage_addiag0,damage_addok);
+            if(damage_census_ok) monitor_stiffness(&damage_census,iinc,
+                                                   theta**tper);
           }
 
           /* Material left hanging on a single element.  BK4 tests for
@@ -14570,29 +14550,11 @@ damage_controller_done:
              measure, which mesh topology and geometry both failed to
              do. */
           if((damage_stiff_probe>0)&&(damage_addiag!=NULL)){
-            damage_stiff_n1=0;damage_stiff_n2=0;damage_stiff_n3=0;
-            damage_stiff_nneg=0;
-            damage_stiff_worst=-1;damage_addmin=2.;
-            for(i=0;i<*nk;i++){
-              if((damage_addok!=NULL)&&(damage_addok[i]==0)) continue;
-              if(damage_addiag0[i]<=0.) continue;
-              if(damage_addiag[i]<=0.){damage_stiff_nneg++;continue;}
-              damage_addrat=damage_addiag[i]/damage_addiag0[i];
-              if(damage_addrat<1.e-3) damage_stiff_n1++;
-              if(damage_addrat<1.e-2) damage_stiff_n2++;
-              if(damage_addrat<1.e-1) damage_stiff_n3++;
-              if(damage_addrat<damage_addmin){
-                damage_addmin=damage_addrat;damage_stiff_worst=i+1;
-              }
-            }
-            printf("[DAMAGE STIFFNESS] inc=%" ITGFORMAT " time=%.12e "
-                   "below_1e-3=%" ITGFORMAT " below_1e-2=%" ITGFORMAT
-                   " below_1e-1=%" ITGFORMAT " nonpositive=%" ITGFORMAT
-                   " worst=node_%" ITGFORMAT "_at_%.4e\n",
-                   iinc,theta**tper,damage_stiff_n1,damage_stiff_n2,
-                   damage_stiff_n3,damage_stiff_nneg,
-                   damage_stiff_worst,damage_addmin);
-            fflush(stdout);
+            stiffcensus damage_census;
+            stiffcensus_take(&damage_census,*nk,damage_addiag,
+                             damage_addiag0,damage_addok);
+            if(damage_census_ok) monitor_stiffness(&damage_census,iinc,
+                                                   theta**tper);
           }
 
           /* Material left hanging on a single element.  BK4 tests for

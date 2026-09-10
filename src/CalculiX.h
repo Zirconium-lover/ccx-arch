@@ -4915,6 +4915,29 @@ void logview_end_named(const char *name);
 void logview_report(double totalseconds);
 ITG  logview_selftest(void);
 
+/* ---- the stiffness census (census.c) and its presenter (monitor.c) ----
+
+   How far the assembled nodal stiffness has fallen, as a fraction of each
+   node's OWN first positive value.  This loop was written out THREE TIMES,
+   character for character, in nonlingeo.c, because it had no owner.  It
+   measures; it decides nothing - damstate.c owns the judgement it is read
+   against.  02-DIAGNOSTICS.md section 3 says how to read it. */
+
+typedef struct{
+  ITG below1;        /* nodes below 1e-3 of their own intact diagonal  */
+  ITG below2;        /* below 1e-2                                     */
+  ITG below3;        /* below 1e-1                                     */
+  ITG nonpositive;   /* diagonals that are not positive at all         */
+  ITG worst;         /* the extreme node, 1-based, or -1               */
+  ITG nnode;         /* nodes that had an intact reference to compare  */
+  double worstratio; /* and its ratio                                  */
+}stiffcensus;
+
+void stiffcensus_take(stiffcensus *c,ITG nk,const double *addiag,
+                      const double *addiag0,const ITG *addok);
+ITG  stiffcensus_selftest(void);
+void monitor_stiffness(const stiffcensus *c,ITG iinc,double time);
+
 /* ccxopt.c - Options: the one place that knows what this binary can be told
    to do.  Every CCX_* read goes through ccxopt_getenv, which is getenv plus
    the note that this run read it; ccxopt_decl.h declares type, default,
