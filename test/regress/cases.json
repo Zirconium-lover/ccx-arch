@@ -1,0 +1,65 @@
+{
+  "comment": [
+    "Expected behaviour of every case that runs in minutes.  A change that",
+    "moves any of these numbers is a change in the answer and has to be",
+    "justified by a measurement, not by the fact that the next wall passed.",
+    "Numbers were recorded at commit 2e3bef3 on 1 thread; they are trajectory",
+    "quantities, so an A/B must fix OMP_NUM_THREADS and MKL_NUM_THREADS on",
+    "both arms (runs are NOT reproducible across thread counts)."
+  ],
+  "cases": [
+    {
+      "name": "fast-plain",
+      "what": "the bar with a partial cohesive plane: bulk damage, deletion, cutbacks",
+      "kind": "fast",
+      "variant": "plain",
+      "env": [],
+      "expect": {"rc": 0, "last_inc": 507, "theta": "0.100000E+01", "deletions": 90}
+    },
+    {
+      "name": "fast-wrapped",
+      "what": "the eroding phase wrapped in facets: reaches a node with no bulk support, and walls on the crack-face kink",
+      "kind": "fast",
+      "variant": "wrapped",
+      "env": [],
+      "expect": {"rc": 201, "last_inc": 99, "theta": "0.158766E+00", "deletions": 64,
+                 "masked_max": 1, "worst_ratio": 4.4641e-04}
+    },
+    {
+      "name": "fast-wrapped-smooth",
+      "what": "the same deck with the crack-face kink regularised: the wall is gone and the fracture is not",
+      "kind": "fast",
+      "variant": "wrapped",
+      "env": ["CCX_UC6_CONTACT_SMOOTH=1.e-2"],
+      "expect": {"rc": 0, "last_inc": 515, "theta": "0.100000E+01", "deletions": 64},
+      "same_deletion_set_as": "fast-wrapped"
+    },
+    {
+      "name": "fast-wrapped-nospc",
+      "what": "the same wall without the load-path mask, which must not change it",
+      "kind": "fast",
+      "variant": "wrapped",
+      "env": ["CCX_DAMAGE_AUTOSPC=0"],
+      "expect": {"rc": 201, "last_inc": 99, "theta": "0.158766E+00", "deletions": 64}
+    },
+    {
+      "name": "mixed-analytic",
+      "what": "inclined cohesive plane against the closed-form post-peak branch, 36 percent shear",
+      "kind": "mixed",
+      "env": ["CCX_PATHFOLLOW=1e30", "CCX_CRACK_CONTROL=4e-6",
+              "CCX_CRACK_CONTROL_ENGAGE=1", "CCX_PATHFOLLOW_DTHETA=2e-4"],
+      "expect": {"rc": 0, "check_mixed": "PASSED", "accepted": 4999, "postpeak": 2400}
+    },
+    {
+      "name": "mixed-analytic-smooth",
+      "what": "the same, with the kink regulariser armed: that facet never closes, so it must be bit-identical",
+      "kind": "mixed",
+      "env": ["CCX_UC6_CONTACT_SMOOTH=1.e-2", "CCX_PATHFOLLOW=1e30",
+              "CCX_CRACK_CONTROL=4e-6", "CCX_CRACK_CONTROL_ENGAGE=1",
+              "CCX_PATHFOLLOW_DTHETA=2e-4"],
+      "expect": {"rc": 0, "check_mixed": "PASSED"},
+      "identical_sta_as": "mixed-analytic"
+    }
+  ],
+  "selftests_required": ["DAMAGE TR SELFTEST", "DAMSTATE", "LSLADDER"]
+}
