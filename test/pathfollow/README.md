@@ -407,3 +407,42 @@ factor `1/s` short, so the prescribed dofs end up where the free dofs did
 not assume: the constraint row converged to 1e-19 while the equilibrium
 row stalled at 0.17, on nodes next to the loaded face.  Capturing over a
 small probe jump instead costs nothing and puts the ratio at 1.0000.
+
+## The closing benchmark: the normal law itself
+
+```sh
+python3 mkclose.py -o close.inp
+ccx_2.23_pardiso -i close
+python3 check_close.py <rundir> --zeta 0        # sharp law
+CCX_UC6_CONTACT_SMOOTH=1.e0 ccx_2.23_pardiso -i close
+python3 check_close.py <rundir> --zeta 1        # blended law
+```
+
+One facet, pulled past failure so `g` reaches `gmin`, then pushed back
+through zero separation and deep into contact.  Everything the check needs is
+printed every increment - the separation from `U` at the two coincident node
+sets, the damage from `SDV 2`, the traction from `S` - so the identity
+
+    sharp     T = kn*d                        d < 0
+              T = g*kn*d                      d >= 0
+    blended   T = g*kn*d - (1-g)*kn*psi(-d)
+              psi(u) = 0 (u<=0), u^2/(2w) (0<u<w), u-w/2 (u>=w), w = zeta*d0
+
+is checked on `cohesive_uc6.f` and on nothing else.  No bulk model, no
+structural branch and no finite-strain correction enters it.
+
+Measured, both arms, at `Kn=1e6`, `Tn0=400`, `gmin=1e-6`:
+
+| | sharp | blended, `zeta=1` |
+|---|---|---|
+| worst relative error against the law | 8.749e-06 | 8.749e-06 |
+| increments with the facet closed | 182 | 182, 6 of them inside the band |
+| `dT/dd` far in compression | 999999 (`Kn=1e6`) | 1e+06 |
+| `dT/dd` far in tension | 1 (`g*Kn=1`) | 1 |
+| **ratio** | **1e+06** | **1e+06** |
+
+8.749e-06 is the `.dat` file carrying seven significant digits, not the
+identity being approximate.  The ratio is where the five-orders tangent jump
+stops being an argument about the source and becomes a number: **the same far
+field on both sides, and the whole difference is how the code gets between
+them.**

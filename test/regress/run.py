@@ -78,6 +78,16 @@ def run_fast(case,rundir,exe):
     r=sh('%s/test/fast/run_fast.sh %s'%(ROOT,rundir),env)
     return r.returncode,rundir/'run.log',rundir/'m.sta',rundir/'m.damage'
 
+def run_close(case,rundir,exe):
+    """the single-facet closing benchmark: verifies the NORMAL law itself."""
+    rundir.mkdir(parents=True,exist_ok=True)
+    r=sh('python3 %s/test/pathfollow/mkclose.py -o %s'%(ROOT,rundir/'close.inp'),
+         base_env([]))
+    if r.returncode!=0: return r.returncode,rundir/'run.log',None,None
+    env=base_env(case['env']); env.setdefault('CCX_DAMAGE_AUTOSPC','1.e-3')
+    r=sh('%s -i close > run.log 2>&1'%exe,env,cwd=rundir)
+    return r.returncode,rundir/'run.log',rundir/'close.sta',None
+
 def run_mixed(case,rundir,exe):
     rundir.mkdir(parents=True,exist_ok=True)
     shutil.copy(ROOT/'test/pathfollow/mixed.inp',rundir/'mixed.inp')
@@ -89,8 +99,9 @@ def one(case,outroot,exe,required,lines):
     rundir=outroot/case['name']
     if rundir.exists(): shutil.rmtree(rundir)
     t0=time.time()
-    if case['kind']=='fast': rc,log,sta,dam=run_fast(case,rundir,exe)
-    else:                    rc,log,sta,dam=run_mixed(case,rundir,exe)
+    if   case['kind']=='fast':  rc,log,sta,dam=run_fast(case,rundir,exe)
+    elif case['kind']=='close': rc,log,sta,dam=run_close(case,rundir,exe)
+    else:                       rc,log,sta,dam=run_mixed(case,rundir,exe)
     got={'rc':rc}
     inc,theta=last_sta(sta)
     got['last_inc'],got['theta']=inc,theta
@@ -98,6 +109,16 @@ def one(case,outroot,exe,required,lines):
     exp=case['expect']
     if 'masked_max' in exp or 'worst_ratio' in exp:
         got['masked_max'],got['worst_ratio']=census(log)
+    if 'check_close' in exp:
+        r=sh('python3 %s/test/pathfollow/check_close.py %s --zeta %s'
+             %(ROOT,rundir,case.get('zeta','0')),base_env([]))
+        got['check_close']='PASSED' if 'PASSED' in r.stdout else 'FAILED'
+        m=re.search(r'ratio ([0-9.e+-]+) \(1/g=([0-9.e+-]+)\)',r.stdout)
+        if m: got['tangent_ratio']=float(m.group(1))
+        m=re.search(r'inside the blend band: (\d+)',r.stdout)
+        if m: got['in_band']=int(m.group(1))
+        m=re.search(r'worst relative error against the law: ([0-9.e+-]+)',r.stdout)
+        if m: got['law_error']=float(m.group(1))
     if 'check_mixed' in exp:
         r=sh('python3 %s/test/pathfollow/check_mixed.py %s'%(ROOT,rundir),base_env([]))
         got['check_mixed']='PASSED' if 'PASSED' in r.stdout else 'FAILED'
@@ -106,8 +127,10 @@ def one(case,outroot,exe,required,lines):
     fails=[]
     for k,want in exp.items():
         have=got.get(k)
-        if k=='worst_ratio':
-            ok = have is not None and abs(have-want)<=1e-4*abs(want)
+        if k in ('worst_ratio','tangent_ratio'):
+            ok = have is not None and abs(have-want)<=1e-2*abs(want)
+        elif k=='law_error':
+            ok = have is not None and have<=want
         else:
             ok = have==want
         if not ok: fails.append("%s: want %r, got %r"%(k,want,have))

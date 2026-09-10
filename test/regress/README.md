@@ -4,7 +4,7 @@
 CCX_EXE=/path/to/ccx_2.23_pardiso test/regress/run.py -j 2
 ```
 
-Six cases, **about three minutes** on two cores, exit status = number of
+Eight cases, **about three minutes** on two cores, exit status = number of
 failed cases.  `-k NAME` runs a subset, `-o DIR` puts the runs somewhere you
 can keep.
 
@@ -23,9 +23,12 @@ wall and another appears".
 | `fast-wrapped-nospc` | that the load-path mask does **not** change that wall.  Two walls, two mechanisms; this case keeps them apart |
 | `mixed-analytic` | the closed-form mixed-mode post-peak branch at 36% shear, through `check_mixed.py`: kinematics, reaction, displacement, snap-back and 2400 accepted post-peak increments |
 | `mixed-analytic-smooth` | that arming the regulariser on a facet that never closes is **bit-identical**, `mixed.sta` compared byte for byte |
+| `close-sharp` | the UC6 **normal law itself**, point by point, on a facet damaged to `gmin` and then pushed into contact.  This is where the five-orders tangent jump is *measured* - far-compression slope `999999` against `Kn=1e6`, far-tension slope `1` against `g*Kn=1`, **ratio 1e+06** - rather than argued from reading the source |
+| `close-blend` | the same facet under the regulariser: the far-field slopes are unchanged, so nothing physical moved, and the blend band is actually entered (6 increments inside it) |
 
-Every case also requires the `DAMAGE TR`, `DAMSTATE` and `LSLADDER` self
-tests to report `PASSED`, and fails on any `[X] ... N failure(s)` with `N>0`
+A preflight also fails the run if the generated switch registry is stale.
+Every case requires the `DAMAGE TR`, `DAMSTATE` and `LSLADDER` self
+tests to report `PASSED`, the `[SWITCHES]` line to be present, and fails on any `[X] ... N failure(s)` with `N>0`
 anywhere in its log.
 
 ## What it does not cover

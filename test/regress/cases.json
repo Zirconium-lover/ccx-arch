@@ -101,6 +101,35 @@
         "check_mixed": "PASSED"
       },
       "identical_sta_as": "mixed-analytic"
+    },
+    {
+      "name": "close-sharp",
+      "what": "the UC6 normal law itself, verified point by point on a facet damaged to gmin and then closed: this is where the five-orders tangent jump is measured rather than argued",
+      "kind": "close",
+      "zeta": "0",
+      "env": [],
+      "expect": {
+        "rc": 0,
+        "check_close": "PASSED",
+        "law_error": 2e-05,
+        "tangent_ratio": 1000000.0
+      }
+    },
+    {
+      "name": "close-blend",
+      "what": "the same facet under the regulariser: identical far-field slopes, so nothing physical moved, and the blend band actually exercised",
+      "kind": "close",
+      "zeta": "1",
+      "env": [
+        "CCX_UC6_CONTACT_SMOOTH=1.e0"
+      ],
+      "expect": {
+        "rc": 0,
+        "check_close": "PASSED",
+        "law_error": 2e-05,
+        "tangent_ratio": 1000000.0,
+        "in_band": 6
+      }
     }
   ],
   "selftests_required": [
