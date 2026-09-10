@@ -1,6 +1,9 @@
 # CCX crack-propagation COD workbench
 
-For the current second-wall investigation, start with [`NEXT_TASK.md`](NEXT_TASK.md).
+**This branch is the base for the architecture rebuild.** Start with
+[`PROMPT.md`](PROMPT.md), then [`handover/`](handover/README.md).
+[`NEXT_TASK.md`](NEXT_TASK.md) is the previous investigation's brief and is
+kept for its measurements, not as a statement of what to do next.
 
 This repository is a public experimental workbench for continuing a
 CalculiX 2.23 fracture calculation through a snap-back wall.  It is not a

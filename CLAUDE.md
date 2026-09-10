@@ -1,49 +1,63 @@
 # Working brief for coding agents
 
-Read `NEXT_TASK.md` before changing code or starting a long calculation.
+**Start with [`PROMPT.md`](PROMPT.md), then [`handover/`](handover/README.md).**
+This branch exists to rebuild the architecture, not to pass the next wall.
 
-## Current baseline
+## What you are free to do
 
-This branch already contains two evidence-backed results that must be kept as
-regressions:
+Wide latitude, deliberately. This is git and everything is revertible, so
+prefer the bold, well-founded change to the timid one:
 
-1. Mixed-mode UC6 crack control follows analytical post-peak branches at both
-   moderate and shear-dominated mode mix.
-2. The original `s3rad` stop near `theta=0.21218` was caused by the damage
-   line-search ladder, not by an orphan node or a repeated deletion batch.
-   `src/lsladder.c` fixes that defect and passes the same deck, unchanged at
-   `CCX_DAMAGE_DEADALL=1.e-2`, to `theta=0.255574`.
+- restructure or rewrite a subsystem;
+- delete a mechanism nobody can justify — the test for keeping one is *name
+  the failure it addresses and the gate case that would go red without it*;
+- change a default when the evidence supports it, and say so;
+- add whatever diagnostics you need, including expensive ones, as long as
+  they are off by default and the noisy or unsafe ones do not reach the final
+  patch;
+- build new test specimens, and retire ones that have stopped earning their
+  runtime.
 
-Do not tune either mechanism merely because the next wall is difficult.
+## What is not negotiable
 
-## Working discipline
+The evidence discipline, because it is the only reason anything here is
+trustworthy.
 
-- Work autonomously and follow measurements rather than the previous agents'
-  preferred explanation.
-- Before a material code change, state a falsifiable hypothesis and the one
-  measurement that can reject it.
-- Diagnostic instrumentation is welcome; remove noisy or unsafe probes from
-  the final patch.
-- Do not change physical parameters, the deck, convergence tolerances, solver,
-  viscosity, tangent mode, `DEADALL`, or AUTOSPC in a causal A/B experiment.
-- Use PARDISO for every quoted `s3rad` comparison. SPOOLES is suitable for
-  small unit tests, not as a substitute for the recorded target.
-- Keep binaries and generated solver output out of Git.
-- Commit only evidence-backed milestones. If a hypothesis is rejected, revert
-  its functional patch rather than stacking another workaround.
+- **Before a material change, state a falsifiable hypothesis and name the one
+  measurement that can reject it.** Then run it and believe it.
+- **If a hypothesis is rejected, revert its functional patch.** Do not stack
+  another workaround. Record the rejection in `handover/04-REFUTED.md` — every
+  entry there is a run somebody else does not have to spend.
+- **Feature off must be bit-identical**, and you must check it.
+- **Change one thing in a causal A/B.** Not the deck, tolerances, solver,
+  viscosity, tangent mode, `DEADALL`, AUTOSPC and the thing under test at
+  once.
+- **Pin `OMP_NUM_THREADS` and `MKL_NUM_THREADS` on both arms.** Runs are not
+  reproducible across thread counts — measured, not theoretical.
+- **Compare arms at a physically meaningful event, not at whichever increment
+  the solver gave up on.** Breaking this rule once here inverted a conclusion.
+- **Use PARDISO for any quoted `s3rad` comparison.** SPOOLES is fine for small
+  unit tests.
+- **Keep binaries and generated solver output out of git.**
 
-## Required regressions
+## Before and after every change
 
-Preserve feature-off behavior, all four current self-tests, the analytical
-Mode-I and mixed-mode benchmarks, and the old-wall line-search A/B. The first
-validation of a new fix must use stock/rescue with crack-control engagement
-disabled.
+    CCX_EXE=/path/to/ccx_2.23_pardiso test/regress/run.py -j 2
+
+Nine cases, about three minutes, exit status is the number of failures. It is
+proven able to go red. Regenerate the switch registry with
+`tools/mkswitches.py` if you add or remove a `getenv`; the gate's preflight
+fails if it is stale.
+
+Preserve, unless you have measured a reason not to and said so: feature-off
+behaviour, the three self tests (`DAMAGE TR`, `DAMSTATE`, `LSLADDER`), the
+analytical Mode-I and mixed-mode benchmarks, the constitutive law checks, and
+the old-wall line-search A/B.
 
 ## Delivery
 
-Report separately: reproduced facts, new measurements, the actual cause,
-functional changes, regressions, and whether `s3rad` completed or physically
-separated. Passing one wall is not the same as completing the specimen.
-
-If GitHub write access is unavailable, deliver a verified git bundle with its
-base and head commits.
+Report separately, and do not merge them: reproduced facts, new measurements,
+the actual cause, functional changes, regressions, and what is still open.
+Passing one wall is not the same as completing the specimen, and a green test
+suite is not the same as a sound architecture. If GitHub write access is
+unavailable, deliver a verified git bundle with its base and head commits.

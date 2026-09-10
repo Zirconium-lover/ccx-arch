@@ -43,3 +43,8 @@ __pycache__/
 *.pyc
 *.de1stats
 test/s3rad/_runs/
+
+# packaged binaries and bundles must not enter git
+*.gz
+*.xz
+*.bundle
