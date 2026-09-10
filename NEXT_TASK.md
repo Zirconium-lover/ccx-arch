@@ -1,158 +1,140 @@
-# Next task: drive `s3rad` to separation, now that the second wall is passed
+# Next task
 
-## Status
+## Read this first
 
-**The second wall is passed.**  `CCX_DAMAGE_AUTOSPC_FORCE=1`, one flag, deck
-and `DEADALL=1.e-2` and viscosity and tangent and AUTOSPC threshold and
-convergence criteria and PARDISO all unchanged:
+Three things in this tree are cheap and were not, and they change how you
+should work:
 
-| | stock | fix |
-|---|---|---|
-| last committed increment | 554 | **930** |
-| grip displacement `theta` | 0.2555742 then death | **0.5575** (2.18x) |
-| deletion batches | 415, last at inc 551 | **455** |
-| elements destroyed | 3734 | **3781** |
-| grip reaction | - | **0.056%** of its value at `theta=0.1955` |
+| | |
+|---|---|
+| `test/regress/run.py` | **6 cases, ~3 minutes.** Run it before and after every change. It is proven able to go red. |
+| `test/fast/run_fast.sh` | a 2160-element specimen that reaches a node with **no bulk support left**, in 24 s |
+| `[SWITCHES]` at the top of every `run.log` | states the run's own configuration and names any `CCX_*` set that the binary does not read |
 
-`dtime` has recovered by a factor of 1000 and sits at `dtmax`; the run is
-healthy, not limping.  The pre-wall history is bit-identical to stock over
-all 1147 attempts.
+`s3rad` still costs ~2.5 h on 2 threads. It is the last gate, not the first.
 
-## What the wall was - do not re-derive this
+## Settled, with evidence. Do not re-derive.
 
-The peak force residual sat on **node 1246, a fragment held by ONE live bulk
-element with all six of its cohesive facets failed and OPEN** (`ncomp=0`
-through increments 553-555, so not the compression switch).  Equilibrating it
-needs a displacement of order one against a grip that has moved 0.2556, so
-its residual fell 0.1% per Newton iteration and was irreducible in practice.
+**The walls are not one thing.** Cross the two mechanisms on the fast wrapped
+deck and the mask changes nothing while the kink changes everything; on
+`s3rad` the opposite holds. Calling them all "the wall" is part of why fixing
+one kept producing the next.
 
-That component was inherited by every following increment and accumulated -
-15.7, 50.4, 74.9, 94.5, 105.7% of the convergence tolerance over increments
-551 to 555 - **while `dtheta` collapsed 48x**.  Cutting the step 48x made the
-converged equilibrium 6x worse, because the part that will not reduce is not
-proportional to the step.  It was also a deadlock: the increment that could
-not converge was the one in which that fragment's last element would damage
-and delete.
+**Second `s3rad` wall (increment 554, `theta=0.2555742`).** The peak force
+residual sat on node 1246, a fragment held by ONE live bulk element with all
+six of its cohesive facets failed and open. Equilibrating it needs a
+displacement of order one against a grip that has moved 0.2556, so its
+residual fell 0.1% per iteration. The component was inherited by every
+following increment - 15.7, 50.4, 74.9, 94.5, 105.7% of tolerance over
+increments 551-555 - **while `dtheta` collapsed 48x**. Cutting the step made
+equilibrium worse, because the part that will not reduce is not proportional
+to the step. `CCX_DAMAGE_AUTOSPC_FORCE=1` extends the load-path judgement to
+the force residual: increment 554 -> 930, `theta` 0.2556 -> 0.5575, `dtime`
+recovered 1000x, pre-wall history bit-identical over all 1147 attempts.
+Refuted for this wall, each because they repair the step and the step was
+never the problem: Newton-Krylov (stops EARLIER at 0.191828), event
+truncation, collapsed-node projection of the step, and a smaller increment.
 
-Four remedies were tried and are refuted, each for the same reason - they
-repair the step, and the step was never the problem: the Newton-Krylov
-corrector (stops EARLIER, at `theta=0.191828`), event truncation (rejected
-from the eps ladder before being built), collapsed-node projection of the
-step (6.7x on `|R|2`, nothing on `|R|inf`, which is what is judged), and a
-smaller increment.
+**The crack-face closure kink.** `cohesive_uc6.f` leaves the normal traction
+continuous at `deltal(1)=0` but jumps its slope from `g*kn` to `kn`, a factor
+of `1/gmin`. On the fast wrapped deck's wall, seven UC6 points sit on that
+kink and change category at EVERY line-search rung down to `eps=6.1e-5`,
+while the residual grows strictly linearly in `eps` and never falls below its
+base value. `CCX_UC6_CONTACT_SMOOTH=1.e-2` blends the slopes over a
+penetration band: transitions 19 -> 0, `|r0|2` 3.48e-02 -> 1.89e-10, the deck
+goes from `theta=0.158766` to 1.0, and the SAME 64 elements are deleted in the
+same order. Flat over two decades of the band.
 
-## Two things to watch in the fix
+**The load-path judgement has one owner**, `src/damstate.c`, verified
+bit-identical on a deck where the predicate actually decides and over 849
+attempts / 3135 deletions of `s3rad`.
 
-* Acceptance at the wall came at iteration 10 under stock CalculiX's relaxed
-  late-iteration tolerance `rap=0.02`, not the strict `ran=0.005`.  At the
-  0.6% per iteration the remaining residual was contracting, strict would
-  have arrived near iteration 14, which is what `iest=14` said.  Watch that
-  this stays true and the fix is not quietly living on `rap`.
-* The excluded residual peaked at `0.0086 x qam`, 1.7x the tolerance, on one
-  node for eight increments, then returned to machine zero once the fragment
-  resolved.  Every excluded residual is printed next to the criterion it was
-  excluded from.  **If that number stops returning to zero, the fix has
-  become a fiction and must be revisited.**
+**Nothing in `s3rad` is adrift.** The diagonal test is blind by construction
+to a piece that is internally stiff but attached to nothing. Measured with
+`test/s3rad/fragments.py` rather than assumed: at every facet-stiffness
+threshold, 0 elements adrift. The same table shows the model in **two
+pieces, one at each grip**, when only facets above `g=0.5` count - the
+severance result again, by connectivity instead of reaction force.
 
-## The third wall, where the run now stops
+**The metal severs at `theta=0.3411981`**, and the run continues past it
+because `cohesive_uc6.f` pins `g` at `gmin` while terminal deletion scans
+`C3D4` only, so a dead facet reads as a load path for ever.
+`CCX_FRACTURE_DEADFACET=1` sees it; the fast plain deck demonstrates the same
+blindness in 58 s.
 
-`theta=0.5575`, increment 931, `rc=201` too many cutbacks.  It shares the
-second wall's residual signature and **is NOT the same fragment mechanism** -
-measured, not inferred.  The peak
-residual sits on node 3053 and contracts 0.1% per iteration - 0.006408,
-0.006400, 0.006393, 0.006387, `iest=1255` - which is the signature of the
-second wall exactly.  The exclusion is inert there (largest excluded residual
-1.2e-14 at node 1363), so node 3053's diagonal has not fallen below `1e-3` of
-its own intact value.
+**Runs are not reproducible across thread counts.** `MKL_CBWR=COMPATIBLE`
+fixes reproducibility across instruction sets, not across thread counts. Two
+runs identical for 482 attempts diverged at 483 on a 6-against-5 iteration
+count. Fix `OMP_NUM_THREADS` and `MKL_NUM_THREADS` on both arms of any A/B.
 
-Counting node neighbourhoods offline from the deck's mesh and the committed
-deletion list settles it: **node 3053 has four live bulk elements and no
-cohesive facets at all**, against zero live bulk and five live facets for
-node 1246 at the second wall.  It is an interior matrix node at the front
-that has lost 20 of its 24 elements, not a piece hanging by one tetrahedron.
-An "at most one live bulk element" gate would not catch it, and proposing one
-from the residual signature alone was wrong.
+## Refuted, so you do not spend a run on them again
 
-So do not reach for a stiffness ratio either (76 nodes below `1e-3`, 166
-below `1e-2`, 381 below `1e-1` - tuning until node 3053 is included is the
-chain of thresholds this project exists to avoid).  The dimensionally sound
-criterion is whether the node can be equilibrated by a physically meaningful
-displacement at all: compare `need_du = |R|/k`, which the `Rpeak` probe
-already prints, against a length scale - the local element size, or the
-current grip displacement.  **Measure `need_du` at node 3053 first**; if it
-is of order one on a grip that has moved 0.5575, the node cannot be
-equilibrated and the criterion is justified on its own terms rather than
-tuned to a case.
+| | why |
+|---|---|
+| a "node with at most one live bulk element" gate | node 3053 at the third wall has **four** live bulk elements and no facets; the signature was the same and the mechanism was not |
+| a stiffness-ratio threshold tuned until a node is included | 76 nodes below 1e-3, 166 below 1e-2, 381 below 1e-1 - that is the chain of thresholds this project exists to avoid |
+| a connected-component / free-fragment unit | measured: nothing is adrift at any threshold |
+| a small wrapped inclusion, to manufacture a fragment | 0 of its 24 elements erode: the wrap debonds at `Tn0=300` before ZRH yields at 600, and an unloaded inclusion cannot damage |
+| a wrap stronger than the phase it wraps | the phase erodes, but the stripped nodes are then held by INTACT facets, flooring the ratio at 2.5e-2 |
+| more mesh, to make the fast deck wall | four variants, none walls; the mechanism is where the facets are, not how many elements there are |
 
-Keep separate from this a genuinely different region at the same `theta`,
-where the peak was node 1177 contracting 2% per iteration with the
-slow-Newton extension arming normally (`est_total=12`, `cap=40`).  That is a
-cost problem, not a deadlock, and `DAMAGE_SLOW_NEWTON_MAX_EXTRA=20` is the
-parameter that bounds it.
+## The method that has worked
 
-## The task
+1. State a falsifiable hypothesis and **name the one measurement that can
+   reject it**, before writing code.
+2. Reproduce the wall on the fast deck if you can. 24 s beats 2.5 h, and
+   diagnosis is what the speed buys.
+3. Read `CCX_DAMAGE_WALL_THETA`'s ladder. If the residual is linear in `eps`
+   and the active-set transition count does not decay, you are on a kink, not
+   a stiffness loss. If the residual peaks on nodes with a healthy diagonal
+   ratio and tiny `need_du = |R|/k`, likewise.
+4. Regularise the kink; do not damp the step. Then prove the answer did not
+   move: same deletion set, same order, bounded shift in deletion time.
+5. Feature off must be bit-identical. Run `test/regress/run.py`.
+6. Only then spend `s3rad`.
 
-Drive the run to normal step termination at `theta=1.0` or to loss of
-load-carrying connectivity, and report which.  The specimen has NOT
-separated: at `theta=0.2635` it still carries load on roughly 6760 live bulk
-elements.
+## Open
 
-Expect further walls.  Before treating one as new, check whether it is the
-same fragment mechanism at a different node - the diagnosis above is cheap to
-re-test, because the fix already prints the excluded residual and
-`[DAMAGE STIFFNESS]` already counts collapsed nodes.
-
-If a new wall is NOT that mechanism, measure before building.  The tools now
-in the tree: `CCX_DAMAGE_WALL_THETA` (linearisation ladder, active-set
-census, residual and correction localisation, per-node stiffness at the
-residual peak), `CCX_DAMAGE_WALL_MASKSTEP` (the step with collapsed nodes
-projected out), `CCX_DAMAGE_BATCH_TRACE`, `CCX_DAMAGE_TMIN`, and
-`topodiag`.
+- **The other three discontinuities** the audit lists: damage initiation
+  (`deff > d0`), loading/unloading (`deff` vs `dmax`), and element deletion.
+  The first two are kinks in the tangent and the method above applies; the
+  third changes the mesh and is partly irreducible.
+- **Viscous stabilization** in the `*STATIC, STABILIZE` sense. Note that the
+  class it is normally for - a free floating fragment - was measured NOT to
+  occur here, so build it against a measured failure, not against the name.
+- **94 of 139 switches** have no prose anywhere but the line that reads them
+  (`docs/SWITCHES.md`, generated). Retire or document.
+- **`src/ccx_2.22`** is a 6.5 MB executable tracked in git, inherited from the
+  original-sources import.
 
 ## Validation and success
 
-The causal A/B must use the same deck, PARDISO binary family and environment;
-the only functional difference is the proposed new fix. Keep
-`CCX_DAMAGE_DEADALL=1.e-2`, the existing viscosity, tangent, AUTOSPC and
-stock convergence criteria. Validate first with crack-control engagement off.
+Same deck, same PARDISO binary family, same environment; the only functional
+difference is the change under test. Do not change physical parameters, the
+deck, tolerances, solver, viscosity, tangent mode, `DEADALL` or AUTOSPC inside
+a causal A/B. Validate first with crack-control engagement off.
 
-Compare more than the stopping increment:
+Compare more than the stopping increment: `theta` and reaction history,
+`deffmax`, process-zone and failed UC6 counts, cumulative deletions and the
+exact batches, residual and iteration and cutback counts, and connectivity.
 
-- `theta`/load factor and reaction history;
-- `deffmax`, process-zone and failed UC6 integration-point counts;
-- cumulative deleted elements and exact deletion batches;
-- residual, iterations, cutbacks and accepted line-search scales;
-- connectivity or physical separation of the specimen.
-
-A fix passes the second wall only if it leaves the old-wall regression
-intact, accepts sustained converged increments beyond `theta=0.255574` and
-produces physical fracture progress. A complete success additionally reaches
-normal step termination or demonstrates loss of load-carrying connectivity.
-If a new wall or a resource limit stops the run, call the result partial.
-
-**The Newton-Krylov arm is the cautionary case: it was ahead in `theta` at
-every increment from 91 to 141 and still lost the run.** Being ahead early is
-not evidence. Only the stopping state is.
+**The Newton-Krylov arm is the cautionary case: it led in `theta` at every
+increment from 91 to 141 and still lost the run.** Being ahead early is not
+evidence. Only the stopping state is.
 
 ## Compute budget
 
-Before launching long runs, print the chosen budget in the log. A sensible
-default is at most four full `s3rad` runs for this investigation: one
-baseline reproduction if existing artifacts are insufficient, one combined
-diagnostic run, and one final A/B pair. Suggested wall-clock limits are two
-hours for a diagnostic run and six hours for the final fixed arm. These are
-defaults, not a ban: an additional long run is allowed when it tests a new
-falsifiable hypothesis, but state why it is necessary first.
+A full `s3rad` run to the wall is about 7400-8800 s on 2 threads, so an A/B
+pair is roughly four hours. Print the budget you have chosen before launching.
+A sensible default is four full runs per investigation. An extra run is
+allowed when it tests a new falsifiable hypothesis - say why first. Unit and
+benchmark runs do not count. Do not cap accepted increments arbitrarily and
+then call reaching the cap completion.
 
-A full run to the wall costs about 7400 s on 2 threads on this container, so
-a full A/B pair is roughly four hours of wall clock. Budget for it.
+## Delivery
 
-Small unit/benchmark runs are not counted in that budget. Do not impose an
-arbitrary accepted-increment cap and then describe reaching it as completion.
-
-## Final delivery
-
-Keep only the proven fix, necessary regression tests and concise diagnostics.
-Commit the result, update `test/s3rad/README.md`, and provide either the
-pushed branch or a verified bundle. The report must say explicitly whether
-the sample fully separated.
+Report separately: reproduced facts, new measurements, the actual cause,
+functional changes, regressions, and whether `s3rad` completed or physically
+separated. Passing one wall is not the same as completing the specimen. If
+GitHub write access is unavailable, deliver a verified bundle with its base
+and head commits.
