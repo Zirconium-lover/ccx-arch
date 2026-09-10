@@ -10,7 +10,8 @@ Read in order. `02-DIAGNOSTICS.md` is the one to keep open while working.
 | [04-REFUTED.md](04-REFUTED.md) | measured and rejected — do not re-derive |
 | [05-DEBT.md](05-DEBT.md) | the crutches, in priority order |
 | [06-TARGET.md](06-TARGET.md) | properties to judge a change against |
-| [07-RESEARCH-AGENDA.md](07-RESEARCH-AGENDA.md) | **the tooling branch's brief**: eleven areas to survey, ranked, and what to build from each |
+| [07-RESEARCH-AGENDA.md](07-RESEARCH-AGENDA.md) | survey material: eleven areas, with the established solutions to study for each |
+| [08-OBJECT-MODEL.md](08-OBJECT-MODEL.md) | **the architecture brief**: the objects, the C idiom to build them in, the algorithms to measure, and the migration strategy |
 
 Two rules that carry most of the value of the rest:
 

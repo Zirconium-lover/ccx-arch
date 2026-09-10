@@ -1,92 +1,116 @@
-# Task: architecture and tooling for the CalculiX fracture branch
+# Task: rebuild the architecture of the CalculiX fracture branch
 
-This code works and is untrustworthy at the same time. It produces correct
-physics, it has passed several hard walls, and it did so by accumulating
-point fixes for eight months: 139 environment switches, six overlapping
-globalization mechanisms, a 14000-line function, and a validation story that
-until recently cost two and a half hours per question.
+The goal is **architecture**: an object model, clean interfaces, and
+algorithms chosen and measured rather than accreted.
 
-**Your job is not to find the next bug.** A parallel session is doing that,
-well, on another branch. Your job is the thing that has never been done here:
-**look outward, find how established codes solve these problems, and build the
-instruments this one is missing.**
+This code works and is unmaintainable at the same time. `nonlingeo()` is a
+single function body of **~14381 lines** carrying the increment loop, the
+Newton loop, assembly, the solve, the convergence judgement, six
+globalization mechanisms, erosion and topology bookkeeping, path following,
+and every diagnostic — interleaved. Around it sit **139 environment
+switches**, 63 documented nowhere and 122 set by no test. Nothing here was
+designed; it was added, one wall at a time, for eight months.
 
-Read `handover/` for the measured state of the code — it is shared with the
-other line of work and it is accurate. Then read
-`handover/07-RESEARCH-AGENDA.md`, which is *your* brief.
+**Decomposing that is the job.** Not patching it, not building tools beside
+it, and not hunting the next bug — a parallel session in another repository is
+doing that, well.
 
-## The character of this work
+Read `handover/08-OBJECT-MODEL.md` first: it is the concrete target — which
+objects, what each owns, the idiom to implement them in, and the migration
+strategy that has already worked twice in this tree.
+`handover/07-RESEARCH-AGENDA.md` is the survey material that should inform
+those decisions. `handover/01`–`06` are the measured state of the code.
 
-Roughly: **survey, decide, build.** Not patch.
+## The shape of the work
 
-For each area in the research agenda:
+**Design, survey, then build — incrementally.**
 
-1. **Survey.** Find out how PETSc, Trilinos/NOX, MOOSE, Code_Aster, deal.II,
-   Abaqus, LS-DYNA, Kratos, Akantu, OOFEM and the fracture literature solve
-   it. Use web search aggressively; this is explicitly wanted. Cite what you
-   find — a link and a version, not a recollection.
-2. **Decide.** Adopt, adapt, or reject, with the reason written down. A
-   rejection with a reason is a real deliverable; a survey with no verdict is
-   not.
-3. **Build.** Every adoption lands as a working tool with a test. This is the
-   part that must not be skipped.
+1. **Design on paper first.** Name the objects, their responsibilities, their
+   interfaces, their lifecycles, and who owns what state. Write it down and
+   argue it before writing code. A decomposition nobody can state in one page
+   is a decomposition that will not survive contact.
+2. **Survey before inventing.** Nearly every mechanism here was invented on
+   the spot, and every one of them has a settled solution in PETSc, Trilinos,
+   MOOSE, Code_Aster or deal.II. PETSc in particular is the reference
+   implementation of object orientation *in C* — opaque handles, ops tables,
+   `XXXSetType`, registration, options prefixes — which is exactly the idiom
+   this code needs. Use web search; cite with a link and a version.
+3. **Migrate by strangling, not by rewriting.** Extract one responsibility at
+   a time, leave the call at the original site, prove bit-identity, repeat.
+   This tree has done it twice already (`src/lsladder.c`, `src/damstate.c`)
+   and both times it worked.
 
-**The failure mode to avoid is a beautiful literature review and no working
-code.** By the end of this work there must be at least **three tools in the
-tree that someone else can run**, each with a test that fails when the tool
-breaks. If you find yourself on the fifth document without a runnable
-artefact, stop and build something.
+## Algorithms are part of this, and start with a measurement
 
-## Where to start, and why
+"Optimise the algorithms" has a precondition nobody has met: **nobody has
+profiled this code.** The target deck takes 2.3 hours and no one knows where
+it goes — assembly, factorisation, residual evaluations in the line-search
+ladder, or the census recomputed at three separate sites.
 
-The agenda ranks the areas. The first is not negotiable, because it blocks
-everything else you might want to do:
+Measure that first. Then the candidates in `08-OBJECT-MODEL.md` §4 stop being
+speculation: a sparsity pattern held fixed under erosion so the symbolic
+factorisation is done once instead of per topology change; an interpolating
+line search instead of a fixed ladder of full residual evaluations; a tangent
+reuse policy. Each is an *architecture* decision as much as a numerical one,
+which is why they belong here.
 
-**The gate can only compare bytes.** `test/regress/run.py` pins outcomes with
-scalars and byte-for-byte identity. Byte identity is a wonderful check and a
-terrible foundation for refactoring: any restructuring that changes a
-summation order — which is most of them — fails it, and there is currently no
-way to say *"the answer is the same to 1e-10"*. Until a tolerance-aware field
-comparison exists, **no bold refactor can be validated at all**, which is
-exactly the constraint that produced the mess you are here to fix.
+## One enabling step before the first extraction
 
-Build that first. Then the options database, then operator verification, then
-convergence as composable objects.
+The gate can only compare **bytes**. It pins cases by scalars and
+byte-for-byte identity, so it can prove a change is a no-op and cannot prove a
+change is *correct to a tolerance*. The moment a decomposition reorders a
+summation — which most do — it fails for the wrong reason.
 
-## What you may change, and what to leave alone
+So build a tolerance-aware comparison first. **Time-box it.** It is a
+prerequisite, not the project; if it grows past a day's work you have lost the
+thread. `handover/07-RESEARCH-AGENDA.md` rank 1 says where to look.
 
-Wide latitude on everything you build. This is git; everything is revertible.
-Prefer the bold, well-founded change.
+## Latitude
 
-Two coexistence rules, because a parallel session is working on the same code:
+Wide, deliberately. This is git and everything is revertible, so prefer the
+bold, well-founded change:
 
-- **Keep `src/nonlingeo.c` edits minimal and additive.** Your work is
-  scaffolding around the physics, not inside it. The other line of work is
-  moving judgements out of that file; design so its results land in your
-  structures rather than colliding with them.
-- **Do not chase defects in the damage module.** If you find one, write it in
-  `handover/05-DEBT.md` and move on. Someone else's turn.
+- **`src/nonlingeo.c` is yours to take apart.** That is the assignment. An
+  earlier draft of this brief told you to keep edits there minimal, which
+  would have made the goal impossible; ignore any such instruction if you find
+  it elsewhere in the tree.
+- replace a home-grown mechanism with an established one, and say what you
+  replaced;
+- delete a mechanism nobody can justify — the test for keeping one is *name
+  the failure it addresses and the gate case that would go red without it*;
+- retire a switch with no test and no prose;
+- change a default when the evidence supports it, and say so.
+
+A parallel session works from `ccx-crack-prop-arch`. Separate repository,
+separate history, deliberate merge later. Do not contort your design to avoid
+it — but do read `handover/05-DEBT.md` and `06-TARGET.md`, and design so that
+its `loadpath.c` (the "is this still a specimen" owner) drops into your object
+model rather than fighting it. If you find a defect in the damage module,
+write it in `05-DEBT.md` and move on; it is not your turn.
 
 ## What is not negotiable
 
-The evidence discipline, because it is the only reason anything here is
-trustworthy — and it applies to tools as much as to physics:
+The evidence discipline. It is the only reason anything here is trustworthy,
+and it applies to a refactor more strictly than to a bug fix, because a
+refactor is supposed to change nothing.
 
-- **Before a material change, state a falsifiable hypothesis and name the one
-  measurement that can reject it.**
-- **A tool you cannot demonstrate failing is not a tool.** Break it
-  deliberately and show it goes red, the way `test/regress/run.py` was proven.
-- **Feature off must be bit-identical**, and you must check it.
+- **Every extraction is bit-identical, or it is not an extraction.** If it
+  changes behaviour, it is a change: state a falsifiable hypothesis and name
+  the one measurement that can reject it.
+- **A tool you cannot demonstrate failing is not a tool.** Break it and show
+  it goes red.
 - **Pin `OMP_NUM_THREADS` and `MKL_NUM_THREADS` on both arms of any
   comparison.** Runs are not reproducible across thread counts — measured.
-- **Report faithfully.** A tool that half works is reported as half working.
+- **Compare arms at a physically meaningful event, not at whichever increment
+  the solver gave up on.** Breaking this rule once here inverted a conclusion.
+- **Report faithfully.** A half-built object is reported as half built.
 
 ## Delivery
 
-Report separately: what you surveyed and where it came from, what you adopted
-and rejected and why, what you built, what it is tested by, and what is still
-open.
+Report separately: the design and its rationale, what you surveyed and where
+it came from, what you extracted and what proves it bit-identical, what you
+measured and optimised, and what is still open.
 
-The measure of success is not a green suite. It is whether the next person
-can make a bold change to this code and find out in three minutes whether it
-was right.
+Success is not a green suite and not a document. It is that the next person
+can find where a thing is decided, change it, and find out in three minutes
+whether they were right.

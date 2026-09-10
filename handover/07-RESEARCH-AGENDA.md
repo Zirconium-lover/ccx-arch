@@ -1,4 +1,15 @@
-# 7. Research agenda: what to survey, and what to build from it
+# 7. Research agenda: what to survey
+
+**This is survey material, not the brief.** The brief is
+[`08-OBJECT-MODEL.md`](08-OBJECT-MODEL.md) — the decomposition. What follows
+is where to look before inventing, area by area, because nearly everything in
+this tree was invented on the spot and nearly all of it has a settled
+solution elsewhere.
+
+The ranking below is by *how badly this tree needs the idea*, not by what to
+do first. Rank 1 is the one prerequisite: a refactor reorders summations, so
+without tolerance-aware comparison a correct decomposition fails the gate for
+the wrong reason. Time-box it and move on to the object model.
 
 Eleven areas, ranked. The first five are expected to produce **tools**; the
 rest may legitimately end in a written verdict. Everything named below is a

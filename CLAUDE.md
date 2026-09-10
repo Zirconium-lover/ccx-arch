@@ -1,53 +1,63 @@
 # Working brief for coding agents
 
 **Start with [`PROMPT.md`](PROMPT.md), then
-[`handover/07-RESEARCH-AGENDA.md`](handover/07-RESEARCH-AGENDA.md).**
-`handover/01`–`06` are the measured state of the code and are shared with a
-parallel line of work; they are accurate, read them for context.
+[`handover/08-OBJECT-MODEL.md`](handover/08-OBJECT-MODEL.md).**
+`handover/07` is survey material; `handover/01`–`06` are the measured state of
+the code and are shared with a parallel line of work.
 
-This branch is for **architecture and tooling**. Survey how established codes
-solve these problems, decide, and build the instruments. Not patching.
+This repository is for **architecture**: an object model, clean interfaces,
+and algorithms chosen and measured rather than accreted. `nonlingeo()` is a
+single function body of ~14381 lines — **decomposing it is the job**.
 
 ## The shape of the work
 
-**Survey → decide → build.** Web research is explicitly wanted here: find how
-PETSc, Trilinos/NOX, MOOSE, Code_Aster, deal.II, Abaqus, LS-DYNA, Kratos,
-Akantu, OOFEM and the fracture literature handle each problem, cite what you
-find with a link and a version, and state a verdict.
+**Design, survey, then migrate incrementally.**
 
-**Every adoption lands as a working tool with a test.** The failure mode to
-avoid is a beautiful literature review and no working code. At least three
-runnable tools by the end, or the brief has not been met. A rejection with a
-written reason is a real deliverable; a survey without a verdict is not.
+Design the object model on paper and argue it before writing code. Survey
+before inventing — PETSc is the reference implementation of object
+orientation *in C* (opaque handles, ops tables, `SetType`, registration,
+options prefixes) and is the idiom this code needs; Trilinos NOX
+`StatusTest` maps onto the convergence problem almost exactly. Cite with a
+link and a version.
+
+Then **strangle, do not rewrite**: extract one responsibility at a time,
+leave the call at the original site, prove bit-identity, repeat. This tree
+has done it twice (`src/lsladder.c`, `src/damstate.c`) and both times it
+worked.
+
+**Optimising algorithms starts with a measurement.** Nobody has profiled
+this code; the target deck takes 2.3 hours and no one knows where it goes.
+Profile first, then decide.
 
 ## What you may change
 
-Wide latitude on everything you build. This is git and everything is
-revertible, so prefer the bold, well-founded change:
+Wide latitude. This is git and everything is revertible, so prefer the bold,
+well-founded change:
 
-- design new subsystems rather than extending old ones;
+- **`src/nonlingeo.c` is yours to take apart** — that is the assignment;
 - replace a home-grown mechanism with an established one, and say what you
   replaced;
-- retire a switch that has no declaration, no test and no prose — it has no
-  defenders;
-- build new test infrastructure and retire what has stopped earning its
-  runtime.
+- delete a mechanism nobody can justify — the test for keeping one is *name
+  the failure it addresses and the gate case that would go red without it*;
+- retire a switch with no test and no prose;
+- change a default when the evidence supports it, and say so.
 
-## Two coexistence rules
+## The parallel line of work
 
-A parallel session is working on the same code, on `arch/rebuild-base`.
-
-- **Keep `src/nonlingeo.c` edits minimal and additive.** Your work is
-  scaffolding around the physics, not inside it.
-- **Do not chase defects in the damage module.** Find one, write it in
-  `handover/05-DEBT.md`, move on.
+A separate session works from the `ccx-crack-prop-arch` repository —
+different history, deliberate merge later. Do not contort your design to
+avoid it, but design so its `loadpath.c` (the "is this still a specimen"
+owner) drops into your object model. **If you find a defect in the damage
+module, write it in `handover/05-DEBT.md` and move on** — it is not your
+turn.
 
 ## What is not negotiable
 
 The evidence discipline — it applies to tools as much as to physics.
 
-- **Before a material change, state a falsifiable hypothesis and name the one
-  measurement that can reject it.**
+- **Every extraction is bit-identical, or it is not an extraction.** If it
+  changes behaviour it is a change: state a falsifiable hypothesis and name
+  the one measurement that can reject it.
 - **A tool you cannot demonstrate failing is not a tool.** Break it
   deliberately and show it goes red.
 - **Feature off must be bit-identical**, and you must check it.
@@ -65,16 +75,19 @@ Nine cases, about three minutes, exit status is the number of failures.
 Regenerate the switch registry with `tools/mkswitches.py` if you add or
 remove a `getenv`; the gate's preflight fails if it is stale.
 
-Note what this gate can and cannot do, because rank 1 of the agenda exists
-for it: it pins outcomes by scalars and by **byte identity**. It can prove a
-change is a no-op. It cannot yet prove a change is *correct to a tolerance* —
-so until you build that, any refactor that reorders a summation will fail it
-for the wrong reason.
+Note what this gate can and cannot do: it pins outcomes by scalars and by
+**byte identity**. It can prove a change is a no-op. It cannot yet prove a
+change is *correct to a tolerance* — so any refactor that reorders a
+summation fails it for the wrong reason. Building tolerance-aware comparison
+is the one prerequisite before the first extraction (`07`, rank 1).
+**Time-box it**: it is a prerequisite, not the project.
 
 ## Delivery
 
 Report separately: what you surveyed and where it came from, what you adopted
 and rejected and why, what you built, what tests it, and what is still open.
 
-Success is not a green suite. It is whether the next person can make a bold
-change to this code and find out in three minutes whether it was right.
+Success is not a green suite and not a design document. It is that a reader
+can find where a thing is decided — ask "what counts as converged here" and
+arrive at one file with a self test, instead of five places and an
+environment variable.
