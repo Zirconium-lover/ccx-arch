@@ -23,6 +23,23 @@
       }
     },
     {
+      "name": "fast-plain-smooth",
+      "what": "the regulariser on a deck with real bulk damage and 90 deletions where no DAMAGED facet ever closes: it must be a byte-for-byte no-op, because the blend differs from the sharp law only when g<1 AND the facet is in compression",
+      "kind": "fast",
+      "variant": "plain",
+      "env": [
+        "CCX_UC6_CONTACT_SMOOTH=1.e-2"
+      ],
+      "expect": {
+        "rc": 0,
+        "last_inc": 507,
+        "theta": "0.100000E+01",
+        "deletions": 90
+      },
+      "identical_sta_as": "fast-plain",
+      "same_deletion_set_as": "fast-plain"
+    },
+    {
       "name": "fast-wrapped",
       "what": "the eroding phase wrapped in facets: reaches a node with no bulk support, and walls on the crack-face kink",
       "kind": "fast",

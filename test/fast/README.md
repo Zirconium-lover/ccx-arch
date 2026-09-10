@@ -187,6 +187,12 @@ penetration band of 1% of `d0`:
 | largest shift in a deletion time | - | 7.4e-04 in `theta` |
 | worst diagonal ratio | 4.4641e-04 | 4.4639e-04 |
 
+It costs nothing to leave armed.  On the plain deck the two arms are
+**byte-identical** - 542 attempts, 1283 Newton iterations, `m.sta` and
+`m.damage` equal byte for byte, 46 s against 47 s - because the blend differs
+from the sharp law only where a **damaged** facet is in compression: at `g=1`
+the blended expression reduces to `kn*d` exactly.
+
 and the result is flat over two decades of the band (`1.e-2`, `1.e-1`, `1.e0`
 give 515, 514, 514 increments), which is what a regularisation should look
 like rather than a tuned constant.

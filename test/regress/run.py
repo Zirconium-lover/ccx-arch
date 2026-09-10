@@ -182,9 +182,10 @@ def main():
                                        %(other,len(A^B)))
         other=c.get('identical_sta_as')
         if other and other in res:
-            A=(pathlib.Path(res[other]['rundir'])/'mixed.sta').read_bytes()
-            B=(pathlib.Path(r['rundir'])/'mixed.sta').read_bytes()
-            if A!=B: r['fails'].append("mixed.sta is not identical to %s"%other)
+            name='mixed.sta' if c['kind']=='mixed' else 'm.sta'
+            A=(pathlib.Path(res[other]['rundir'])/name).read_bytes()
+            B=(pathlib.Path(r['rundir'])/name).read_bytes()
+            if A!=B: r['fails'].append("%s is not identical to %s"%(name,other))
     # Which switches did any case actually put in force?  The [SWITCHES]
     # banner makes this measurable instead of assumed, and the number is
     # worth knowing: a switch no test ever sets is a switch whose behaviour

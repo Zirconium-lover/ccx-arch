@@ -4,7 +4,7 @@
 CCX_EXE=/path/to/ccx_2.23_pardiso test/regress/run.py -j 2
 ```
 
-Eight cases, **about three minutes** on two cores, exit status = number of
+Nine cases, **about three minutes** on two cores, exit status = number of
 failed cases.  `-k NAME` runs a subset, `-o DIR` puts the runs somewhere you
 can keep.
 
@@ -18,6 +18,7 @@ wall and another appears".
 | case | what it pins |
 |---|---|
 | `fast-plain` | bulk damage, terminal deletion, cutbacks, 3-D topology: 507 increments, 90 elements deleted, reaches `theta=1` |
+| `fast-plain-smooth` | that the regulariser is a **byte-for-byte no-op** on a deck with real bulk damage and 90 deletions where no *damaged* facet ever closes.  `m.sta` and the deletion set are compared byte for byte.  The blend differs from the sharp law only when `g<1` **and** the facet is in compression, and this case is what holds that claim to it |
 | `fast-wrapped` | a node with **no bulk support left**, held by cohesive facets alone (ratio `4.4641e-04`), and the crack-face kink wall it sits next to |
 | `fast-wrapped-smooth` | that the kink regulariser removes the wall **and** deletes the same 64 elements - the deletion sets are compared element by element |
 | `fast-wrapped-nospc` | that the load-path mask does **not** change that wall.  Two walls, two mechanisms; this case keeps them apart |
