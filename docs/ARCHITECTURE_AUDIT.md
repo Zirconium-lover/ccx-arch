@@ -221,6 +221,37 @@ audit exists because the fourth wall made the pattern impossible to miss.
 | viscous stabilization | open |
 | retire switches | open |
 
+### A hypothesis this raised and measurement rejected
+
+The load-path judgement is a **per-node diagonal** test, so it is blind by
+construction to a piece of the model that is internally stiff but attached to
+nothing: every node in it has healthy elements of its own, and only the
+assembled system is singular, in that piece's six rigid-body modes.  That is
+the class Abaqus's `*STATIC, STABILIZE` exists for, and the obvious next unit
+looked like a connected-component check.
+
+Measured on the reference run instead of assumed (`test/s3rad/fragments.py`,
+state at increment 800, `theta=0.4064`, against the FINAL deletion set, which
+makes the test conservative):
+
+| a facet counts as a load path only above `g` | components | adrift |
+|---|---|---|
+| 0 (any surviving facet) | 1 | 0 |
+| 1e-3 | 1 | 0 |
+| 0.1 | 1 | 0 |
+| **0.5** | **2** | **0** |
+
+Of 5316 facets carrying state, 1904 are already at the residual floor and
+2099 still above `g=0.5`.  **Nothing is adrift at any threshold.**  So the
+free-fragment class does not occur here, and building a unit for it would
+have been building for a failure this model does not have.
+
+The same table says something else worth keeping: counting only facets that
+retain more than half their stiffness, the model is **in two pieces, one at
+each grip**.  That is the severance result again - previously measured from
+the reaction force falling 2676.81 to 1.51 - arrived at independently, by
+connectivity, from a different file.
+
 ### Housekeeping noticed while doing the above
 
 `src/ccx_2.22` is a 6.5 MB ELF executable **tracked in git**, inherited from
