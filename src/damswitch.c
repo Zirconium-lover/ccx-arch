@@ -95,6 +95,12 @@ ITG damswitch_selftest(void){
 void damswitch_report(void){
   char **e;
   ITG narmed=0,nunknown=0;
+  /* nonlingeo() is entered once per *STEP, and the environment cannot change
+     between them, so a second report would be noise that trains the reader
+     to skip the block - which is the one way this can fail. */
+  static ITG damswitch_done=0;
+  if(damswitch_done) return;
+  damswitch_done=1;
   if(damswitch_selftest()!=0){
     printf("[SWITCHES] the registry self test failed; reporting nothing "
            "rather than reporting something that may be wrong\n");
