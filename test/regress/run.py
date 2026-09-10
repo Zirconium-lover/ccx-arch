@@ -143,6 +143,10 @@ def main():
     ap.add_argument('-j',type=int,default=2,help='cases to run at once')
     ap.add_argument('-k',default=None,help='run only cases whose name contains this')
     ap.add_argument('-o',default=None,help='where to put the runs')
+    ap.add_argument('--record-coverage',action='store_true',
+                    help='rewrite test/regress/covered.txt from this run, so '
+                         'docs/SWITCHES.md can say which switches any test '
+                         'actually exercises')
     a=ap.parse_args()
     exe=os.environ.get('CCX_EXE')
     if not exe or not os.access(exe,os.X_OK):
@@ -181,6 +185,20 @@ def main():
             A=(pathlib.Path(res[other]['rundir'])/'mixed.sta').read_bytes()
             B=(pathlib.Path(r['rundir'])/'mixed.sta').read_bytes()
             if A!=B: r['fails'].append("mixed.sta is not identical to %s"%other)
+    # Which switches did any case actually put in force?  The [SWITCHES]
+    # banner makes this measurable instead of assumed, and the number is
+    # worth knowing: a switch no test ever sets is a switch whose behaviour
+    # nobody is checking.
+    cov=set()
+    for r in res.values():
+        try: txt=open(pathlib.Path(r['rundir'])/'run.log',errors='replace').read()
+        except OSError: continue
+        for m in re.finditer(r'^\[SWITCHES\]   (CCX_[A-Z0-9_]+) =',txt,re.M):
+            cov.add(m.group(1))
+    (outroot/'covered.txt').write_text("".join(x+"\n" for x in sorted(cov)))
+    if a.record_coverage and not a.k:
+        (HERE/'covered.txt').write_text("".join(x+"\n" for x in sorted(cov)))
+        print("\nrecorded %d exercised switches in test/regress/covered.txt"%len(cov))
     print()
     nbad=0
     for c in cases:
@@ -194,6 +212,7 @@ def main():
             print("   ok")
     if preflight_bad:
         print("\npreflight FAILED: the switch registry is stale")
+    print("\nswitches put in force by these cases: %d"%len(cov))
     print("\n%d of %d case(s) failed%s"%(nbad,len(cases),
           ", plus the preflight" if preflight_bad else ""))
     return nbad+preflight_bad

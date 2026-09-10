@@ -16,6 +16,7 @@ ROOT=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC=os.path.join(ROOT,'src')
 HDR=os.path.join(SRC,'damswitch_list.h')
 DOC=os.path.join(ROOT,'docs','SWITCHES.md')
+COV=os.path.join(ROOT,'test','regress','covered.txt')
 GETENV=re.compile(r'getenv\s*\(\s*[\'"](CCX_[A-Z0-9_]+)[\'"]')
 
 BANNER=re.compile(r'printf\s*\(\s*"((?:[^"\\\\]|\\\\.)*)"((?:\s*"(?:[^"\\\\]|\\\\.)*")*)')
@@ -115,7 +116,16 @@ def header(sw):
     L+=["};",""]
     return "\n".join(L)
 
+def coverage():
+    """Switches that the three-minute gate actually puts in force.
+
+    Recorded by test/regress/run.py --record-coverage from the [SWITCHES]
+    banner of each case, so it is measured rather than declared."""
+    if not os.path.exists(COV): return set()
+    return {l.strip() for l in open(COV) if l.strip()}
+
 def document(sw,dtxt,stxt,desc):
+    cov=coverage()
     known=set(sw)
     nd=[k for k in sw if k not in dtxt and k not in desc]
     L=["# Environment switches",
@@ -128,6 +138,8 @@ def document(sw,dtxt,stxt,desc):
        "| that print a banner of their own | %d |"%len([k for k in sw if k in desc]),
        "| mentioned in some other `.md` | %d |"%len([k for k in sw if k in dtxt]),
        "| **explained nowhere at all** | **%d** |"%len(nd),
+       "| exercised by `test/regress/run.py` | %d |"%len([k for k in sw if k in cov]),
+       "| **never set by any test in this tree** | **%d** |"%len([k for k in sw if k not in cov]),
        "",
        "Every run prints the ones that are set, and names anything in the",
        "environment starting with `CCX_` that is not in this list - see",
@@ -142,12 +154,13 @@ def document(sw,dtxt,stxt,desc):
        "rather than that one knob.  A blank means the code says nothing",
        "there at all; guessing would have produced confident nonsense.",
        "",
-       "| switch | read by | elsewhere | what it says of itself |",
-       "|---|---|---|---|"]
+       "| switch | read by | elsewhere | in the gate | what it says of itself |",
+       "|---|---|---|---|---|"]
     for k in sw:
-        L.append("| `%s` | %s | %s | %s |"
+        L.append("| `%s` | %s | %s | %s | %s |"
                  %(k,", ".join("`%s`"%f for f in sw[k]),
                    "yes" if k in dtxt else "**no**",
+                   "yes" if k in cov else "-",
                    desc.get(k,"").replace("|","\\|")))
     L+=["",
         "\"elsewhere\" means the name appears in some other markdown file in",
