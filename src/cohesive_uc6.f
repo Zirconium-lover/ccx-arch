@@ -40,6 +40,20 @@
       real*8 d0,df,deff,dmax,dmax0,dback,dvisc,dvisc0,alpha,g
       real*8 ddback,ddvisc,tol,initialgap,scale
 !
+!     CCX_UC6_CONTACT_SMOOTH.  The normal law is continuous at
+!     deltal(1)=0 but its SLOPE jumps from g*kn to kn there, a factor of
+!     1/gmin.  Measured on the fast wrapped deck at its wall: seven UC6
+!     integration points sit on that kink and flip category at EVERY
+!     line-search rung down to eps=6.1e-5, while the residual grows
+!     strictly linearly in eps and never falls below its base value.
+!     This blends the two slopes over a penetration band, so the normal
+!     law becomes C1 and Newton has a differentiable problem.  Zero (the
+!     default) reproduces the sharp law bit for bit.
+!
+      real*8 zsmooth,wsm,upen,psism,dpsism,ctan11
+      character*256 csm
+      save zsmooth
+!
 !     Diagnostic-only local rescue.  Acts on an explicit list of
 !     element numbers and on nothing else: no material card, no
 !     global damage law, no deletion logic, no controller.  Its
@@ -194,6 +208,18 @@
         ndump=0
         gresc=0.d0
         irescinc=0
+        zsmooth=0.d0
+        call getenv('CCX_UC6_CONTACT_SMOOTH',csm)
+        if(csm(1:1).ne.' ') read(csm,*,err=9103,end=9103) zsmooth
+ 9103   continue
+        if(zsmooth.lt.0.d0) zsmooth=0.d0
+        if(zsmooth.gt.0.d0) then
+          write(*,'(a,e12.5,a)')
+     &      '[UC6 CONTACT SMOOTH] the normal slope is blended from g*kn'
+     &      //' to kn over a penetration band of ',zsmooth,
+     &      ' x d0.  The law stays continuous and monotone; only its'
+     &      //' derivative changes, and only within that band.'
+        endif
         call getenv('CCX_UC6_RESCUE_INC',cresc)
         if(cresc(1:1).ne.' ') read(cresc,*,err=9102,end=9102) irescinc
  9102   continue
@@ -233,10 +259,33 @@
 !     Local traction.  Compression retains the full normal penalty;
 !     shear and positive normal traction are degraded by the same damage.
 !
-      if(deltal(1).lt.0.d0) then
+      wsm=zsmooth*d0
+      if(wsm.gt.0.d0) then
+!
+!        psi(u), u = -deltal(1) the penetration: 0 for u<=0, u^2/(2 wsm)
+!        on [0,wsm], u-wsm/2 beyond.  psi and psi' are both continuous,
+!        psi' rises monotonically from 0 to 1, so the normal slope goes
+!        from g*kn to kn without ever exceeding kn.
+!
+         upen=-deltal(1)
+         if(upen.le.0.d0) then
+            psism=0.d0
+            dpsism=0.d0
+         elseif(upen.lt.wsm) then
+            psism=upen*upen/(2.d0*wsm)
+            dpsism=upen/wsm
+         else
+            psism=upen-0.5d0*wsm
+            dpsism=1.d0
+         endif
+         traction(1)=g*kn*deltal(1)-(1.d0-g)*kn*psism
+         ctan11=g*kn+(1.d0-g)*kn*dpsism
+      elseif(deltal(1).lt.0.d0) then
          traction(1)=kn*deltal(1)
+         ctan11=kn
       else
          traction(1)=g*kn*deltal(1)
+         ctan11=g*kn
       endif
       traction(2)=g*kn*beta*deltal(2)
       traction(3)=g*kn*beta*deltal(3)
@@ -248,11 +297,7 @@
             ctan(i,j)=0.d0
          enddo
       enddo
-      if(deltal(1).lt.0.d0) then
-         ctan(1,1)=kn
-      else
-         ctan(1,1)=g*kn
-      endif
+      ctan(1,1)=ctan11
       ctan(2,2)=g*kn*beta
       ctan(3,3)=g*kn*beta
 !

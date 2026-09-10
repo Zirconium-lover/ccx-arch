@@ -148,7 +148,50 @@ refactor) and under `8edfec6`:
 with the predicate **actually deciding** - 14 increments where it masks node
 440 - rather than never being asked, which is all the plain deck could prove.
 
-### The wall it hits is NOT the s3rad wall
+### What the wall turned out to be
+
+Being able to run the wall in 24 seconds is what made it diagnosable.  The
+line-search ladder at the wall reads:
+
+```
+pass 2 eps=0.003906250  |res|2/|r0|2=437.4   active-set transitions 18
+pass 2 eps=0.001953125  |res|2/|r0|2=218.7   active-set transitions 21
+pass 2 eps=0.000976562  |res|2/|r0|2=109.2   active-set transitions 19
+pass 2 eps=0.000488281  |res|2/|r0|2= 54.5   active-set transitions 19
+pass 2 eps=0.000244141  |res|2/|r0|2= 27.1   active-set transitions 19
+pass 2 eps=0.000122070  |res|2/|r0|2= 13.5   active-set transitions 19
+pass 2 eps=0.000061035  |res|2/|r0|2=  6.67  active-set transitions 19
+```
+
+The residual is **strictly linear in the step and never below 1**: halving the
+step halves the damage it does, and the Newton direction never helps.  The
+transition count does **not** decay - 12 UC6 loading/unloading plus 7 UC6
+tension/compression flip at every rung, so those points sit exactly on a
+switching surface and any step at all crosses it.  That is a kink, not a
+stiffness loss, and the residual peaks are on nodes with `ratio` 0.75 to 1.0
+and `need_du = |R|/k` of 1e-4 to 1e-6: healthy nodes needing a microscopic
+displacement they never get.
+
+`cohesive_uc6.f` is where the kink is.  The normal traction is continuous at
+`deltal(1)=0` but its slope jumps from `g*kn` to `kn` - a factor of `1/gmin`,
+five orders.  `CCX_UC6_CONTACT_SMOOTH=1.e-2` blends the two slopes over a
+penetration band of 1% of `d0`:
+
+| | sharp | smoothed |
+|---|---|---|
+| return code | 201 | **0** |
+| last increment / `theta` | 99 / 0.158766 | 515 / **1.0** |
+| active-set transitions at the smallest rung | **19** | **0** |
+| `|r0|2` at that iterate | 3.480060e-02 | **1.885763e-10** |
+| elements deleted | 64 | 64, **the same 64, in the same order** |
+| largest shift in a deletion time | - | 7.4e-04 in `theta` |
+| worst diagonal ratio | 4.4641e-04 | 4.4639e-04 |
+
+and the result is flat over two decades of the band (`1.e-2`, `1.e-1`, `1.e0`
+give 515, 514, 514 increments), which is what a regularisation should look
+like rather than a tuned constant.
+
+### The wall it hits without that switch is NOT the s3rad wall
 
 It stops with `increment size smaller than minimum` at increment 99, and
 `CCX_DAMAGE_AUTOSPC_FORCE=1` does **not** move it: same increment, same

@@ -59,7 +59,7 @@ The model contains genuine discontinuous switches:
 |---|---|
 | damage initiation, `deff > d0` | onto the softening branch |
 | loading/unloading, `deff` vs `dmax` | tangent changes discontinuously |
-| crack-face closure, `deltal(1) = 0` | normal stiffness `g*Kn -> Kn`, **five orders** |
+| crack-face closure, `deltal(1) = 0` | normal stiffness `g*Kn -> Kn`, **five orders** - *now removable, see below* |
 | element deletion, `D > 1-DEADALL` | **the mesh topology changes** |
 
 Parallel assembly and PARDISO sum in a thread-count-dependent order, and
@@ -74,6 +74,18 @@ differs.  Measured here: two runs identical for 482 attempts diverged at
 attempt 483 with the *same* `theta` and the *same* `dtime`, differing only by
 6 Newton iterations against 5 - a borderline convergence decision tipped by
 round-off.  Twenty increments later they were on different walls.
+
+**One of the four has since been measured to the ground and regularised.**
+The crack-face closure switch leaves the traction continuous but its slope
+jumps by `1/gmin`.  On the fast wrapped deck at its wall, seven UC6 points sit
+exactly on that kink and change category at *every* line-search rung down to
+`eps=6.1e-5`, while the residual grows strictly linearly in `eps` and never
+falls below its base value - Newton cannot converge on a kink it cannot step
+off.  `CCX_UC6_CONTACT_SMOOTH` blends the two slopes over a penetration band;
+the transitions go 19 -> 0, the base residual goes `3.48e-02 -> 1.89e-10`, and
+the deck runs from `theta=0.158766` to `theta=1`.  The same 64 elements are
+deleted, in the same order.  That is the shape the remaining three should be
+taken in: measure the kink, regularise it, and prove the answer did not move.
 
 Part of this is irreducible: quasi-brittle fracture with element erosion IS a
 sequence of topology jumps.  Commercial codes meet the same problem, which is
