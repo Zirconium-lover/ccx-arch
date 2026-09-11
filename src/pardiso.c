@@ -172,7 +172,15 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
 
   reuse_requested=pardiso_reuse_eligible(*symmetryflag,*inputformat);
   if(reuse_requested){
+    /* The price of the reuse mechanism, measured separately from what it
+       buys.  This is an O(neq+nzs) pass taken on EVERY factorisation in
+       order to decide whether to skip an analysis that is needed on about
+       one call in seventy.  At s3rad scale the whole of pardiso_factor
+       outside the solver call costs 82 ms against a 764 ms factorisation -
+       6.3% of the run - and this event says how much of that is the hash. */
+    logview_begin_named("pardiso structure hash");
     structure_hash=pardiso_structure_hash(icol,irow,*neq,*nzs);
+    logview_end_named("pardiso structure hash");
     if((pardiso_cache_valid)&&
        (pardiso_cache_neq==*neq)&&(pardiso_cache_nzs==*nzs)&&
        (pardiso_cache_symmetry==*symmetryflag)&&
