@@ -285,6 +285,57 @@ consequences:
   against 472 Newton iterations is 1.62 per iteration, the same ratio as the
   fast deck, but residual evaluation is now only 7.1% of the run.
 
+## The cost split at scale: `s3rad`, finally measured
+
+Item 1 of `NEXT_TASK.md` has been open since the beginning because nobody had
+a profile of the deck the project is aimed at - two 2.3-hour runs were killed
+and produced nothing.  This is that measurement, from the run at
+`test/s3rad/_runs/prof2`: shipped configuration (so `CCX_DAMAGE_TANGENT=UNSYM`
+among eleven other exports from `run_s3rad.sh`), `OMP_NUM_THREADS =
+MKL_NUM_THREADS = 4`, nothing else on the machine, interim tables every 120 s.
+
+Self time as a share of wall clock, one row per interim table:
+
+| at | phase 22 | assembly | **CSR fill** | residual | solve | phase 12 | analyses / factorisations |
+|---|---|---|---|---|---|---|---|
+| 120 s | 49.26% | 17.68% | **9.75%** | 8.38% | 3.38% | 0.70% | 1 / 152 |
+| 240 s | 49.21% | 17.64% | **9.66%** | 7.67% | 3.46% | 0.60% | 2 / 307 |
+| 361 s | 48.25% | 17.53% | **9.47%** | 7.97% | 3.45% | 1.07% | 6 / 458 |
+| 481 s | 48.06% | 17.41% | **9.36%** | 7.81% | 3.49% | 1.31% | 10 / 606 |
+
+Instrumented total 87.4%; the remaining 12.6% is everything not named by an
+event - deck I/O, the damage bookkeeping, the `.frd` and `.dat` writing.
+
+**The split is stable to a few tenths of a percent over four tables.**  That
+matters more than any single row: it says the shape is a property of the deck
+rather than of a transient, so a decision taken on it now will not be
+overturned by the next hour of the run.
+
+Three things to take from it.
+
+**Numeric factorisation is half the run, and that is the asymmetric one.**
+48% in phase 22 at 388 ms a call.  `research/06-TANGENT-VERDICT.md` measures
+what buys that on the fast deck: `CCX_DAMAGE_TANGENT=UNSYM` costs +37% of
+wall time for 0.2% fewer Newton iterations and a byte-identical fracture.
+Here it is 48% of a 2.3-hour run being paid for the same thing, and the
+asymmetric factorisation's share grows with `N` faster than the symmetric
+one's.
+
+**The CSR repacking is 9.4% and is not going away on its own.**  74 ms every
+factorisation, 606 factorisations in eight minutes - about **13 minutes of a
+2.3-hour run** spent rewriting CalculiX's `(ad,au,icol,irow)` into PARDISO's
+row-by-row form.  On the fast deck it was 6.1%; it is larger here because
+`UNSYM` makes the fill 54 times bigger.  It is `pardiso factor`'s self time -
+work done around the solver call, not by it - which is why it was invisible
+until the call tree existed.  Note that the per-call cost *falls* slightly as
+the run goes on (77.1 -> 74.3 ms) while the number of calls climbs: this is
+not a leak, it is a fixed cost per factorisation.
+
+**Symbolic reuse is working.**  Ten analyses in 606 factorisations, 1.3% of
+the run.  The mechanism retracted and then re-measured earlier on this page
+is carrying its weight at scale: without it those 606 calls would each pay
+the 632 ms phase 12 rather than the 388 ms phase 22.
+
 ## What is still open
 
 - **The `s3rad` breakdown at scale.** Two attempts were killed part way
