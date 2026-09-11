@@ -336,6 +336,61 @@ the run.  The mechanism retracted and then re-measured earlier on this page
 is carrying its weight at scale: without it those 606 calls would each pay
 the 632 ms phase 12 rather than the 388 ms phase 22.
 
+### The triangular solve steps 3x, and the factorisation does not
+
+The interim tables are every 120 s, so differencing consecutive ones gives
+the *instantaneous* cost per call rather than a cumulative average.  Doing
+that turns a gentle-looking drift into a step:
+
+| window | solve ms/call | phase 22 ms/call | assembly ms/call |
+|---|---|---|---|
+| 120-962 s | 27.3 - 29.2 | 369 - 395 | 137 - 145 |
+| **962-1082 s** | **48.9** | 361.6 | 136.2 |
+| **1082-1203 s** | **85.7** | 355.7 | 134.3 |
+| 1203-2525 s | 85.6 - 88.2 | 350 - 394 | 130 - 139 |
+
+The back substitution goes from ~28 ms to ~87 ms across two windows and then
+sits there.  **The numeric factorisation that produced those factors does not
+move at all** - 375 ms a call before, during and after.  Neither does
+assembly.  The residual drifts *down* (42.7 -> 32.3 ms).
+
+What it is not:
+
+- **not the system size.**  `neq` falls from 29501 to 29414 over the whole
+  run, 0.3%.
+- **not extra solves.**  Solves per factorisation is exactly 1.00 in every
+  one of the twenty windows, and residual evaluations per factorisation is
+  1.6 throughout.  Nothing in the globalization is firing more often.
+- **not fill-in.**  Growing fill would make the factorisation more expensive
+  too, and it is flat.
+- **not the CGS path.**  `CCX_PARDISO_CGS` is unset in this run.
+- **not a damage-state threshold, in any obvious reading.**  `D>0.9` peaks at
+  285 elements at t=1082 and falls back to ~180; `Dfull` peaks at 140 and
+  falls to ~35.  Nothing steps 3x.
+
+What it does coincide with: the window `t = 962-1203 s` is increments 195-222,
+and increment 222 is where the count of live damage-bearing elements turns
+over for the first time - 7882, 7837, then 7692 and falling - i.e. the onset
+of sustained element removal.  By increment 407 the run has deleted 2998
+elements.
+
+**The hypothesis, and the measurement that decides it.**  A triangular solve
+that gets three times more expensive while its own factorisation does not is
+doing more passes, and the obvious candidate is PARDISO's **iterative
+refinement**: `iparm(8)` bounds the refinement steps and PARDISO performs them
+only when the computed solution is poor, which is exactly what a system full
+of elements pinned at the residual-stiffness floor `damggmin=1e-4` would
+produce.  `resultsmech.f` says this in prose already - "a notch process zone
+holds thousands of them at once and the operator becomes badly scaled: that is
+the regime where the DHC runs stall" - and this would be the first time it has
+a number.
+
+PARDISO reports the refinement steps it actually performed in **`iparm(7)`**,
+which `src/pardiso.c` currently never reads.  Reading it and reporting it per
+solve settles the question in one line; if it is refinement, then the cost of
+the floor is measurable and `damggmin` becomes a knob with a price on it
+rather than a comment.  **Stated before the measurement.**
+
 ## What is still open
 
 - **The `s3rad` breakdown at scale.** Two attempts were killed part way
