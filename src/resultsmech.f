@@ -53,7 +53,7 @@
      &     irowt(*),jqt(*),jqte(21),irowte(96),icmdcpy,length,id,
      &     islavquadel(*),node1,node2,j2,ii,mortartrafoflag,
      &     hasdamage,de12onepass,de12tangent,ndmat_,ndmcon(2,*),
-     &     ivmap(21),jvmap(21),mattypp,ielasp,nlgeom_undop,de12fdskip
+     &     mattypp,ielasp,nlgeom_undop,de12fdskip
 !     
       real*8 co(3,*),v(0:mi(2),*),shp(4,20),stiini(6,mi(1),*),
      &     stx(6,mi(1),*),xl(3,20),vl(0:mi(2),20),stre(6),prop(*),
@@ -82,7 +82,8 @@
      &     damvbeta,damvphys,damvbase,damvtrial,
      &     dmcon(0:ndmat_,ntmat_,*),dambase(mi(1),*),
      &     strebase(6),strep(6),stiffp(21),emecp(6),betap(6),
-     &     damageq(6),damtrial0,damageDtrial,damageDp,damageh,
+     &     damageq(6),damqeng(6),damsdev(6),
+     &     damtrial0,damageDtrial,damageDp,damageh,
      &     depviscp,pnewdtp,vjp
       real*8, allocatable :: xstatesav(:)
 !
@@ -98,8 +99,6 @@
       save damggmin,damginit,damgmintan,damcompress,damcnumax
       save damtanhi,damtanh,damtandump
       data damginit /0/
-      data ivmap /1,1,2,1,2,3,1,2,3,4,1,2,3,4,5,1,2,3,4,5,6/
-      data jvmap /1,2,2,3,3,3,4,4,4,4,5,5,5,5,5,6,6,6,6,6,6/
 !     
       include "gauss.f"
 !
@@ -183,8 +182,7 @@
       qa(3)=-1.d0
       qa(4)=0.d0
       enerscal=0.d0
-      if(((de12tangent.eq.1).or.(de12tangent.eq.2)).and.
-     &     (nstate_.gt.0)) then
+      if((de12tangent.eq.2).and.(nstate_.gt.0)) then
         allocate(xstatesav(nstate_))
       endif
 !
@@ -1108,6 +1106,8 @@ c          write(*,*) 'resultsmech4 ',i,jj,(stre(m1),m1=1,6)
           do m1=1,6
             strebase(m1)=stre(m1)
             damageq(m1)=0.d0
+            damqeng(m1)=0.d0
+            damsdev(m1)=0.d0
           enddo
           damtrial0=0.d0
           if((hasdamage.ne.0).and.(i.le.ne0)) then
@@ -1128,7 +1128,7 @@ c          write(*,*) 'resultsmech4 ',i,jj,(stre(m1),m1=1,6)
               damjac(m1,jj,i)=0.d0
             enddo
           endif
-          if(((de12tangent.eq.1).or.(de12tangent.eq.2)).and.
+          if((de12tangent.eq.2).and.
      &       (de12fdskip.eq.0).and.
      &       (de12onepass.ne.0).and.
      &       (icmd.ne.3).and.(nstate_.gt.0).and.
@@ -1179,22 +1179,41 @@ c          write(*,*) 'resultsmech4 ',i,jj,(stre(m1),m1=1,6)
             enddo
             dam(jj,i)=damtrial0
 !
-!           Store sigma_eff and dD/d(eps) for the asymmetric pass.
+!           ONE owner for the convention of dD/d(eps).
+!
 !           damageq holds dD/d(emec).  incplas builds the right
 !           Cauchy-Green tensor as c(4)=2*emec(4), so emec(4:6) are
 !           TENSOR shears while the constitutive matrix that e_c3d
-!           consumes is expressed in ENGINEERING shear.  The shear
-!           components therefore need the factor 1/2 to live in the
-!           same convention as the 21-entry tangent.
+!           consumes is expressed in ENGINEERING shear; the shear
+!           components therefore need the factor 1/2.  With viscous
+!           regularisation the degradation follows Dvis, so what the
+!           consistent tangent needs is d(Dvis)/d(eps) = beta*dD/d(eps).
 !
-!           With viscous regularisation the degradation follows Dvis, so
-!           the consistent tangent needs d(Dvis)/d(eps) = beta*dD/d(eps).
+!           There used to be a second consumer: a SYMMETRIC path
+!           (CCX_DAMAGE_TANGENT=FD_SYM) that folded the symmetric part of
+!           the rank-1 term into the 21-entry tangent.  It read the raw
+!           damageq, so every entry touching a shear index was a factor 2
+!           too large, every shear-shear entry a factor 4, and none of it
+!           carried beta.  Corrected, it completed runs it used to
+!           destroy - and then cost 13 percent more Newton iterations
+!           than applying NO correction at all, on both fast decks, and
+!           moved the fracture by one element.  The symmetric part of a
+!           nonsymmetric operator is a third operator, not a tangent.  It
+!           was deleted on 2026-09-11; research/06-TANGENT-VERDICT.md has
+!           the table.
+!
+            damvbeta=1.d0
+            if((damvisceta.gt.0.d0).and.(dtime.gt.0.d0)) then
+              damvbeta=dtime/(damvisceta+dtime)
+            endif
+            do m1=1,3
+              damqeng(m1)=damvbeta*damageq(m1)
+            enddo
+            do m1=4,6
+              damqeng(m1)=0.5d0*damvbeta*damageq(m1)
+            enddo
 !
             if((de12tangent.eq.2).and.(i.le.ne0)) then
-              damvbeta=1.d0
-              if((damvisceta.gt.0.d0).and.(dtime.gt.0.d0)) then
-                damvbeta=dtime/(damvisceta+dtime)
-              endif
 !
 !             What the rank-1 term is actually WORTH.  The structural
 !             probe measures the operator error; this measures the size
@@ -1230,12 +1249,7 @@ c          write(*,*) 'resultsmech4 ',i,jj,(stre(m1),m1=1,6)
               endif
               do m1=1,6
                 damjac(m1,jj,i)=strebase(m1)
-              enddo
-              do m1=1,3
-                damjac(6+m1,jj,i)=damvbeta*damageq(m1)
-              enddo
-              do m1=4,6
-                damjac(6+m1,jj,i)=0.5d0*damvbeta*damageq(m1)
+                damjac(6+m1,jj,i)=damqeng(m1)
               enddo
             endif
           endif
@@ -1359,6 +1373,26 @@ c          write(*,*) 'resultsmech4 ',i,jj,(stre(m1),m1=1,6)
                 spmean=1.d0
               endif
               if((damcompress.eq.1).and.(spmean.lt.0.d0)) then
+!
+!               Only the deviatoric normals and the shears are degraded
+!               here, so only they carry a d(g)/d(eps) term.  Using the
+!               full effective stress in the rank-1 correction - which
+!               both paths did until 2026-09-11 - adds a hydrostatic
+!               column that the stress update never produced.  The
+!               correction is written against damsdev, and damjac is
+!               corrected in place for the asymmetric pass.
+!
+                do m1=1,3
+                  damsdev(m1)=strebase(m1)-spmean
+                enddo
+                do m1=4,6
+                  damsdev(m1)=strebase(m1)
+                enddo
+                if((de12tangent.eq.2).and.(i.le.ne0)) then
+                  do m1=1,6
+                    damjac(m1,jj,i)=damsdev(m1)
+                  enddo
+                endif
                 do m1=1,3
                   stre(m1)=damageg*(stre(m1)-spmean)+spmean
                 enddo
@@ -1385,13 +1419,6 @@ c          write(*,*) 'resultsmech4 ',i,jj,(stre(m1),m1=1,6)
                   do m1=1,21
                     stiff(m1)=damageg*stiff(m1)
                   enddo
-                  if(de12tangent.eq.1) then
-                    do m1=1,21
-                      stiff(m1)=stiff(m1)-0.5d0*
-     &                     (strebase(ivmap(m1))*damageq(jvmap(m1))+
-     &                      strebase(jvmap(m1))*damageq(ivmap(m1)))
-                    enddo
-                  endif
                 endif
               else
               do m1=1,6
@@ -1410,13 +1437,6 @@ c          write(*,*) 'resultsmech4 ',i,jj,(stre(m1),m1=1,6)
                 do m1=1,21
                   stiff(m1)=damageg*stiff(m1)
                 enddo
-                if(de12tangent.eq.1) then
-                  do m1=1,21
-                    stiff(m1)=stiff(m1)-0.5d0*
-     &                   (strebase(ivmap(m1))*damageq(jvmap(m1))+
-     &                    strebase(jvmap(m1))*damageq(ivmap(m1)))
-                  enddo
-                endif
               endif
               endif
             endif

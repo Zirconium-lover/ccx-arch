@@ -92,24 +92,41 @@ def read_damage(path):
     return {'kind':'rows','rows':rows,'keyname':'(element)'}
 
 _NUM=re.compile(r'^[-+]?(\d+\.?\d*|\.\d+)([eEdD][-+]?\d+)?$')
+_INT=re.compile(r'^\d+$')
 
 def read_dat(path):
     """Whatever the deck printed.  A section is a heading line plus the rows
     under it; the heading carries the time, so two runs that printed at
-    different times are a structural difference, not a numeric one."""
-    rows=[]; head=None
+    different times are a structural difference, not a numeric one.
+
+    Two shapes of row occur and they must not be confused.  A nodal row
+    begins with an integer node number and the rest are values.  A SUMMED
+    row - "total force (fx,fy,fz) for set ... and time ..." - has no label
+    at all, only the components, and the first of them is the grip reaction,
+    which is the single most interesting number the fast decks print.  Until
+    2026-09-11 both shapes went through the nodal branch, so the reaction
+    became part of the KEY: a run whose grip force changed was reported as
+    one record vanishing and another appearing, never as a value differing,
+    and no tolerance was ever applied to it.  Headless rows are therefore
+    keyed by their position within the section and compared in full."""
+    rows=[]; head=None; ordinal={}
     for line in open(path,errors='replace'):
         s=line.rstrip()
         if not s.strip(): continue
         f=s.split()
-        if _NUM.match(f[0]) and len(f)>1 and all(_NUM.match(x) for x in f[1:]):
+        if _NUM.match(f[0]) and all(_NUM.match(x) for x in f[1:]):
             if head is None: continue
-            rows.append(((head,f[0]),{},
+            if _INT.match(f[0]) and len(f)>1:
+                key=(head,f[0]); vals=f[1:]
+            else:
+                n=ordinal.get(head,0); ordinal[head]=n+1
+                key=(head,'#%d'%n); vals=f
+            rows.append((key,{},
                          {'c%d'%i:float(x.replace('D','E').replace('d','e'))
-                          for i,x in enumerate(f[1:])}))
+                          for i,x in enumerate(vals)}))
         else:
             head=' '.join(f)
-    return {'kind':'rows','rows':rows,'keyname':'(section,node)'}
+    return {'kind':'rows','rows':rows,'keyname':'(section,row)'}
 
 def read_frd(path):
     """The nodal result blocks.  100CL gives the block's time and step; -4
@@ -247,6 +264,26 @@ def resolution(path,limit=400000):
     rels.sort()
     return rels[len(rels)//2]
 
+_CLOCK=re.compile(rb'^(    1UTIME +)\d\d:\d\d:\d\d *$',re.M)
+
+def _strip_clock(data):
+    """The ONE exception to byte identity, and it is not a tolerance.
+
+    CalculiX stamps the wall clock into the .frd header as a 1UTIME
+    record.  Two runs of the same binary on the same deck therefore
+    never compare byte-identical, which quietly made --exact useless on
+    the file that carries the nodal results - the extraction of
+    damrank1.f on 2026-09-11 was reported as changing m.frd in all nine
+    cases, and the change was the clock.
+
+    Only that record is blanked, only in its exact fixed-width form, and
+    the report says so whenever it fired.  Anything else in the header -
+    the version, the node count, a block name - is still compared byte
+    for byte.
+    """
+    out,n=_CLOCK.subn(rb'\g<1>HH:MM:SS',data)
+    return out,n
+
 def compare_file(refdir,newdir,fname,rtol,atol,exact,quiet=False):
     a=pathlib.Path(refdir)/fname; b=pathlib.Path(newdir)/fname
     if not a.exists() and not b.exists():
@@ -255,9 +292,11 @@ def compare_file(refdir,newdir,fname,rtol,atol,exact,quiet=False):
         if not p.exists():
             print("  %-12s MISSING: %s"%(fname,p)); return 1
     if exact:
-        same=a.read_bytes()==b.read_bytes()
-        print("  %-12s %s  (exact: byte for byte)"
-              %(fname,"identical" if same else "DIFFERS"))
+        ra,na=_strip_clock(a.read_bytes()); rb,nb=_strip_clock(b.read_bytes())
+        same=ra==rb
+        print("  %-12s %s  (exact: byte for byte%s)"
+              %(fname,"identical" if same else "DIFFERS",
+                "" if not (na or nb) else ", wall clock excepted"))
         return 0 if same else 1
     rd=reader_for(fname)
     if rd is None:
@@ -355,11 +394,38 @@ def selftest():
         run("a changed material id is caught at any tolerance",R,T/'lab',True,
             files=['m.damage'],rtol=1.,atol=1.e30)
 
+        # The grip reaction: a SUMMED m.dat row has no node number.  If the
+        # reader keys it by its first field the reaction is a label, so the
+        # dial does not turn on it at all - which is the failure this pair
+        # of checks demonstrates.  Red at a tight tolerance AND green at a
+        # loose one together prove the number is compared as a number.
+        def _dat(fx):
+            return (" forces (fx,fy,fz) for set G and time  0.1000000E+01\n\n"
+                    "       519 -1.463154E+00  0.000000E+00  0.000000E+00\n\n"
+                    " total force (fx,fy,fz) for set G and time  0.1000000E+01\n\n"
+                    "        %.6E  0.000000E+00  0.000000E+00\n"%fx)
+        _mk(T/'dat','m.dat',_dat(61.22186)); _mk(T/'datp','m.dat',_dat(61.22265))
+        run("a changed grip reaction is caught at rtol=1e-6",T/'dat',T/'datp',
+            True,files=['m.dat'],rtol=1.e-6)
+        run("the same is a VALUE difference, forgiven at rtol=1e-4",
+            T/'dat',T/'datp',False,files=['m.dat'],rtol=1.e-4)
+
         # a different deletion SET, which is the check the gate already valued
         _mk(T/'set','m.damage',_dam(dbase[:-1]))
         run("a missing deletion record is caught",R,T/'set',True,files=['m.damage'])
         _mk(T/'set2','m.damage',_dam(dbase[:-1]+[(999,1,5,5.e-2,5.e-2,2,1.0,1,5)]))
         run("a substituted element id is caught",R,T/'set2',True,files=['m.damage'])
+
+        # the wall clock in the .frd header, and ONLY the wall clock
+        frd=(" "*4+"1UTIME              17:38:47"+" "*24+"\n"
+             +"    1UVERSION  CalculiX 2.23\n")
+        _mk(T/'clk','m.frd',frd)
+        _mk(T/'clk2','m.frd',frd.replace("17:38:47","18:15:39"))
+        run("a differing .frd wall clock is not a difference",
+            T/'clk',T/'clk2',False,files=['m.frd'],exact=True)
+        _mk(T/'clk3','m.frd',frd.replace("2.23","2.24"))
+        run("anything else in the same header still is",
+            T/'clk',T/'clk3',True,files=['m.frd'],exact=True)
 
         # and --exact must be strictly stronger than any tolerance
         _mk(T/'ws','m.sta',_sta(base).replace('\n',' \n',1))

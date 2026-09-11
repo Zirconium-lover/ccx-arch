@@ -267,29 +267,31 @@ def main():
         # 1e-10, so an extraction that necessarily reorders a summation had
         # no way to be asserted at all.  tools/ccxdiff.py --selftest proves
         # this comparison goes red, and goes red for the right reason.
-        spec=c.get('equal_to')
-        if spec and spec['case'] in res:
-            refdir=pathlib.Path(res[spec['case']]['rundir'])
-            newdir=pathlib.Path(r['rundir'])
-            rtol=spec.get('rtol',1.e-10); atol=spec.get('atol',1.e-12)
-            exact=spec.get('exact',False)
-            buf=io.StringIO()
-            with contextlib.redirect_stdout(buf):
-                nbadf=sum(ccxdiff.compare_file(refdir,newdir,f,rtol,atol,exact)
-                          for f in spec['files'])
-            r['got']['equal_to']="%s at rtol=%g atol=%g%s"%(
-                spec['case'],rtol,atol," (exact)" if exact else "")
-            if nbadf:
-                lines=[l.strip() for l in buf.getvalue().splitlines() if l.strip()]
-                head=[l for l in lines if ('DIFFERS' in l) or ('MISSING' in l)]
-                detail=[l for l in lines if l not in head]
-                r['fails'].append("not equal to %s: %s"%(spec['case'],"; ".join(head)))
-                # the first few offenders and a count.  A gate that prints
-                # four hundred lines of difference is a gate nobody reads.
-                for l in detail[:5]: r['fails'].append("   %s"%l)
-                if len(detail)>5:
-                    r['fails'].append("   ... and %d more differing value(s)"
-                                      %(len(detail)-5))
+        specs=c.get('equal_to')
+        if isinstance(specs,dict): specs=[specs]
+        for spec in (specs or []):
+          if spec['case'] in res:
+              refdir=pathlib.Path(res[spec['case']]['rundir'])
+              newdir=pathlib.Path(r['rundir'])
+              rtol=spec.get('rtol',1.e-10); atol=spec.get('atol',1.e-12)
+              exact=spec.get('exact',False)
+              buf=io.StringIO()
+              with contextlib.redirect_stdout(buf):
+                  nbadf=sum(ccxdiff.compare_file(refdir,newdir,f,rtol,atol,exact)
+                            for f in spec['files'])
+              r['got']['equal_to']="%s at rtol=%g atol=%g%s"%(
+                  spec['case'],rtol,atol," (exact)" if exact else "")
+              if nbadf:
+                  lines=[l.strip() for l in buf.getvalue().splitlines() if l.strip()]
+                  head=[l for l in lines if ('DIFFERS' in l) or ('MISSING' in l)]
+                  detail=[l for l in lines if l not in head]
+                  r['fails'].append("not equal to %s: %s"%(spec['case'],"; ".join(head)))
+                  # the first few offenders and a count.  A gate that prints
+                  # four hundred lines of difference is a gate nobody reads.
+                  for l in detail[:5]: r['fails'].append("   %s"%l)
+                  if len(detail)>5:
+                      r['fails'].append("   ... and %d more differing value(s)"
+                                        %(len(detail)-5))
     # Which switches did any case actually put in force?  The [SWITCHES]
     # banner makes this measurable instead of assumed, and the number is
     # worth knowing: a switch no test ever sets is a switch whose behaviour

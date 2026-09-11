@@ -4195,6 +4195,8 @@ void FORTRAN(damsnapcheck,(double *co,ITG *kon,ITG *ipkon,char *lakon,
    elements, assembled on top of the symmetric pass that mafillsmas.f
    has already mirrored into the upper half of au */
 
+void FORTRAN(damrank1test,(ITG *nbad));
+
 void FORTRAN(mafilldamas,(double *co,ITG *kon,ITG *ipkon,char *lakon,
           ITG *ne0,ITG *nactdof,ITG *jq,ITG *irow,ITG *neq,ITG *nzs,
           double *au,double *ad,double *vold,ITG *mi,double *damjac,

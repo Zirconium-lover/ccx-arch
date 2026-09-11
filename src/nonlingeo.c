@@ -1902,7 +1902,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_de1_nactive=0,damage_de1_gt01=0,damage_de1_gt05=0,
     damage_de1_gt09=0,damage_de1_nfull=0,damage_de1_nchanged=0,
     damage_de12_enabled=0,damage_de12_matcount=0,damage_dm20_matcount=0,
-    damage_tangent_mode=0,damage_reeq_scale_mode=0,
+    damage_tangent_mode=0,damage_rank1_bad=0,damage_reeq_scale_mode=0,
     damage_linesearch_mode=0,damage_linesearch_active=0,
     damage_linesearch_applied=0,damage_linesearch_nsoft=0,
     damage_linesearch_trial=0,damage_linesearch_contracted=0,
@@ -2917,12 +2917,26 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     }
     if(damage_de12_matcount>0) damage_de12_enabled=1;
     if(damage_de12_enabled){
+      /* FD_SYM - mode 1, the symmetric part of the rank-1 term folded
+         into the 21-entry tangent - was DELETED on 2026-09-11.  It had
+         two convention defects that made it destroy runs; corrected, it
+         cost 13% more Newton iterations than applying no correction at
+         all on both fast decks and moved the fracture by one element.
+         research/06-TANGENT-VERDICT.md carries the table.  The spelling
+         is still recognised so that a deck or a script carrying it is
+         TOLD, rather than silently running the stock tangent. */
+
       damage_tangent_env=ccxopt_getenv("CCX_DAMAGE_TANGENT");
       if((damage_tangent_env!=NULL)&&
          ((strcmp(damage_tangent_env,"FD_SYM")==0)||
           (strcmp(damage_tangent_env,"fd_sym")==0)||
           (strcmp(damage_tangent_env,"1")==0))){
-        damage_tangent_mode=1;
+        printf("*ERROR: CCX_DAMAGE_TANGENT=FD_SYM was removed.  The "
+               "symmetric part of a nonsymmetric rank-1 term is not a "
+               "Newton tangent; measured, it cost 13%% more iterations "
+               "than no correction at all.  Use UNSYM for the consistent "
+               "tangent, or leave the switch unset for g(D)*Cep.\n");
+        FORTRAN(stop,());
       }else if((damage_tangent_env!=NULL)&&
                ((strcmp(damage_tangent_env,"UNSYM")==0)||
                 (strcmp(damage_tangent_env,"unsym")==0)||
@@ -4388,16 +4402,34 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                "it.\n",damage_snap_bad);
       }
 
-      if(damage_tangent_mode==1){
-        printf("[DAMAGE TANGENT BK2] FD_SYM enabled; finite-difference "
-               "dD/deps with symmetric damage Jacobian correction\n");
-      }else if(damage_tangent_mode==2){
+      if(damage_tangent_mode==2){
         printf("[DAMAGE TANGENT UNSYM] stage 1: asymmetric assembly and "
                "solve with the unchanged symmetric g(D)*Cep tangent; "
                "results must match the symmetric path exactly\n");
+
+        /* The rank-1 projection is the one piece of this mode the
+           structural FD probe cannot exonerate on its own: a discrepancy
+           it measures could equally be damjac, the projection, or the
+           probe's reading of the CSR.  damrank1test settles the middle
+           one offline, against e_c3d's own quadruple sum and against a
+           finite difference of the element internal force.  If it fails,
+           the mode is refused rather than run, because every number the
+           mode would then produce is suspect. */
+
+        printf("[DAMRANK1 SELFTEST] the rank-1 element projection\n");
+        FORTRAN(damrank1test,(&damage_rank1_bad));
+        if(damage_rank1_bad!=0){
+          printf("[DAMAGE TANGENT UNSYM] *ERROR: the rank-1 projection self "
+                 "test failed; the asymmetric tangent is DISARMED rather "
+                 "than run with a projection known to be wrong.\n");
+          damage_tangent_mode=0;
+        }
       }else{
-        printf("[DAMAGE TANGENT BK2] secant g(D)*Cep baseline enabled; "
-               "set CCX_DAMAGE_TANGENT=FD_SYM for tangent trial\n");
+        printf("[DAMAGE TANGENT BK2] secant g(D)*Cep baseline enabled - "
+               "this is the DEFAULT and the measured best on both fast "
+               "decks; set CCX_DAMAGE_TANGENT=UNSYM for the consistent "
+               "tangent, which buys 0.2%% of iterations for 37%% of "
+               "runtime (research/06-TANGENT-VERDICT.md)\n");
       }
       if(damage_reeq_scale_mode==1){
         printf("[DAMAGE SOLVER NC2] terminal same-load correction scale "

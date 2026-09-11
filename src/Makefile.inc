@@ -500,6 +500,7 @@ localaxes.f \
 lump.f \
 machpi.f \
 mafillcorio.f \
+damrank1.f \
 mafilldamas.f \
 mafilldm.f \
 mafilldmss.f \

@@ -69,18 +69,13 @@
       integer kon(*),ipkon(*),ne0,nactdof(0:mi(2),*),jq(*),irow(*),
      &     neq(*),nzs(3),nmpc,ndamas,nskip,nadv,nhole,nfloor,
      &     nlive,ndegen,damcat(*),
-     &     i,j,k,l,m,i1,j1,k1,ii,jj,ll,indexe,nope,konl(4),
-     &     jdof1,jdof2,iflag
+     &     i,j,k,l,m,ii,jj,ll,indexe,nope,konl(4),
+     &     jdof1,jdof2
 !
       real*8 co(3,*),au(*),ad(*),vold(0:mi(2),*),damjac(12,mi(1),*),
      &     dam(mi(1),*),dambase(mi(1),*),
-     &     xl(3,4),voldl(3,4),shp(4,4),shpj(3,4),vo(3,3),fdef(3,3),
-     &     tt(3,3),qq(3,3),avec(12),bvec(12),
-     &     xi,et,ze,xsj,xsjj,weight,tsum,value,damuscale,damgmin
-!
-      include "gauss.f"
-!
-      iflag=2
+     &     xl(3,4),voldl(3,4),avec(12),bvec(12),
+     &     xsj,weight,tsum,value,damuscale,damgmin
 !
 !     Scale on the rank-1 term, for measuring rather than guessing.
 !     mpfd validates the 6x6 material tangent - including the shear
@@ -226,13 +221,13 @@
           enddo
         enddo
 !
-!       C3D4 has a single integration point
+!       C3D4 has a single integration point.  The projection itself -
+!       shape functions, deformation gradient, the Voigt expansion of
+!       damjac and the two outer-product vectors - lives in
+!       damrank1.f, which has a self test.  This routine keeps the
+!       accounting and the assembly.
 !
-        xi=gauss3d4(1,1)
-        et=gauss3d4(2,1)
-        ze=gauss3d4(3,1)
-        weight=weight3d4(1)
-        call shape4tet(xi,et,ze,xl,xsj,shp,iflag)
+        call damrank1blk(xl,voldl,damjac(1,1,i),avec,bvec,xsj,weight)
 !
 !       A degenerate Jacobian drops an element that HAS a rank-1 term to
 !       contribute.  It was counted nowhere: not in ndamas, and not in
@@ -243,64 +238,6 @@
           damcat(i)=7
           cycle
         endif
-        xsjj=dsqrt(xsj)
-        do j=1,nope
-          do k=1,3
-            shpj(k,j)=shp(k,j)*xsjj
-          enddo
-        enddo
-!
-!       deformation gradient
-!
-        do i1=1,3
-          do j1=1,3
-            vo(i1,j1)=0.d0
-            do k1=1,nope
-              vo(i1,j1)=vo(i1,j1)+shp(j1,k1)*voldl(i1,k1)
-            enddo
-            fdef(i1,j1)=vo(i1,j1)
-          enddo
-          fdef(i1,i1)=fdef(i1,i1)+1.d0
-        enddo
-!
-!       effective stress and dD/d(eps) as symmetric 3x3 tensors
-!
-        tt(1,1)=damjac(1,1,i)
-        tt(2,2)=damjac(2,1,i)
-        tt(3,3)=damjac(3,1,i)
-        tt(1,2)=damjac(4,1,i)
-        tt(2,1)=damjac(4,1,i)
-        tt(1,3)=damjac(5,1,i)
-        tt(3,1)=damjac(5,1,i)
-        tt(2,3)=damjac(6,1,i)
-        tt(3,2)=damjac(6,1,i)
-!
-        qq(1,1)=damjac(7,1,i)
-        qq(2,2)=damjac(8,1,i)
-        qq(3,3)=damjac(9,1,i)
-        qq(1,2)=damjac(10,1,i)
-        qq(2,1)=damjac(10,1,i)
-        qq(1,3)=damjac(11,1,i)
-        qq(3,1)=damjac(11,1,i)
-        qq(2,3)=damjac(12,1,i)
-        qq(3,2)=damjac(12,1,i)
-!
-!       a and b
-!
-        do ii=1,nope
-          do i1=1,3
-            avec(3*(ii-1)+i1)=0.d0
-            bvec(3*(ii-1)+i1)=0.d0
-            do m=1,3
-              do k=1,3
-                avec(3*(ii-1)+i1)=avec(3*(ii-1)+i1)
-     &               +fdef(i1,m)*tt(m,k)*shpj(k,ii)
-                bvec(3*(ii-1)+i1)=bvec(3*(ii-1)+i1)
-     &               +fdef(i1,m)*qq(m,k)*shpj(k,ii)
-              enddo
-            enddo
-          enddo
-        enddo
 !
 !       assembling -weight * a (x) b over the full square; the first
 !       index of the element matrix is the row, matching the (i,j)

@@ -132,12 +132,17 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "dissipation report on",NULL},
 
 /* ---- the operator ------------------------------------------------- */
-{"CCX_DAMAGE_TANGENT",CCXOPT_ENUM,"stock symmetric",CCXOPT_UNBOUNDED,
- "FD_SYM|fd_sym|1|UNSYM|unsym|2",
- "which tangent to assemble: FD_SYM (1) a finite-difference symmetric "
- "tangent, UNSYM (2) the asymmetric path with the constitutive tangent left "
- "untouched.  NOTHING IN THIS TREE VERIFIES THE TANGENT AGAINST THE "
- "RESIDUAL (07-RESEARCH-AGENDA.md rank 3)",NULL},
+{"CCX_DAMAGE_TANGENT",CCXOPT_ENUM,"unset - g(D)*Cep, the measured best",
+ CCXOPT_UNBOUNDED,"UNSYM|unsym|2|FD_SYM|fd_sym|1",
+ "which tangent to assemble.  Unset is the secant g(D)*Cep and is the "
+ "default.  UNSYM (2) adds the consistent rank-1 correction "
+ "-sigma_eff (x) dD/d(eps) through the asymmetric assembly; on fast-plain "
+ "it produces a byte-identical fracture for 0.2 percent fewer Newton "
+ "iterations and 37 percent MORE wall time, so it is off by default "
+ "(research/06-TANGENT-VERDICT.md).  FD_SYM (1) was DELETED on 2026-09-11 "
+ "and now stops the run with a message rather than being ignored.  The "
+ "rank-1 projection itself is verified by damrank1test in src/damrank1.f",
+ NULL},
 
 {"CCX_DAMAGE_VISCOSITY",CCXOPT_REAL,"0 (off)",CCXOPT_UNBOUNDED,NULL,
  "viscous regularisation eta for the damage evolution; negative values are "

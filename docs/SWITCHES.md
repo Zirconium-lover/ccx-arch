@@ -9,10 +9,10 @@ Two tables, and the difference between them is the point.
 | names the binary reads | **146** |
 | **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **38** |
 | undeclared, documented only by whatever the source says of them | 108 |
-| **explained nowhere at all** | **53** |
+| **explained nowhere at all** | **52** |
 | exercised by `test/regress/run.py` | 17 |
 | **never set by any test in this tree** | **129** |
-| **no declaration, no test and no prose - the retirement queue** | **53** |
+| **no declaration, no test and no prose - the retirement queue** | **52** |
 
 Every run prints the ones that are set (`[SWITCHES]` at the top of any
 `run.log`), validates the declared ones against their type and range,
@@ -41,7 +41,7 @@ are read from the declaration, not from the line that reads it.
 | `CCX_DAMAGE_REEQ_SCALE` | enum | off | PHYSICAL\|physical\|1 | yes | scale the re-equilibration step by a physical length rather than by the residual norm |
 | `CCX_DAMAGE_STIFF_MIN` | real | 0 (off) | [0, 0.1] | - | report nodes whose assembled diagonal has fallen below this fraction of their intact value; silently clamped to [0,0.1] like CCX_DAMAGE_AUTOSPC |
 | `CCX_DAMAGE_STIFF_PROBE` | bool | unset (off) | - | - | print the stiffness census - how many nodes have lost what fraction of their OWN intact assembled diagonal (02-DIAGNOSTICS.md section 3).  Armed automatically whenever CCX_DAMAGE_AUTOSPC is |
-| `CCX_DAMAGE_TANGENT` | enum | stock symmetric | FD_SYM\|fd_sym\|1\|UNSYM\|unsym\|2 | yes | which tangent to assemble: FD_SYM (1) a finite-difference symmetric tangent, UNSYM (2) the asymmetric path with the constitutive tangent left untouched.  NOTHING IN THIS TREE VERIFIES THE TANGENT AGAINST THE RESIDUAL (07-RESEARCH-AGENDA.md rank 3) |
+| `CCX_DAMAGE_TANGENT` | enum | unset - g(D)*Cep, the measured best | UNSYM\|unsym\|2\|FD_SYM\|fd_sym\|1 | yes | which tangent to assemble.  Unset is the secant g(D)*Cep and is the default.  UNSYM (2) adds the consistent rank-1 correction -sigma_eff (x) dD/d(eps) through the asymmetric assembly; on fast-plain it produces a byte-identical fracture for 0.2 percent fewer Newton iterations and 37 percent MORE wall time, so it is off by default (research/06-TANGENT-VERDICT.md).  FD_SYM (1) was DELETED on 2026-09-11 and now stops the run with a message rather than being ignored.  The rank-1 projection itself is verified by damrank1test in src/damrank1.f |
 | `CCX_DAMAGE_TANGENT_CENSUS` | bool | unset (off) | - | - | per-iteration census of the damage tangent: how many elements got the rank-1 term -sigma_eff (x) dD/d(eps), how many with ADVANCING damage did not, and how many were skipped.  This is the report that names WHY the assembled tangent is not the differential of the residual (research/03-OPERATOR.md); it was in the retirement queue |
 | `CCX_DAMAGE_TANGENT_DUMP` | int | 0 (off) | - | - | print, for this element, the two factors of the rank-1 correction - \|dD/d(eps)\| and \|sigma_eff\| - and their product, so the size of the correction can be compared against the operator error the structural probe measures at the same point |
 | `CCX_DAMAGE_TANGENT_H` | real | 1.e-7 | [1.e-12, 1.e-3] | - | perturbation of the forward difference that builds dD/d(eps) for the rank-1 term.  A forward difference carries O(h) truncation and O(eps/h) roundoff, so the operator error against h is a curve with a minimum; the shipped value had never been placed on it |
@@ -90,7 +90,7 @@ code says nothing there at all.
 | `CCX_DAMAGE_BT_FLOOR` | `nonlingeo.c` | **no** | - | [DAMAGE BT] transactional backtracking ENABLED in idamagereeq: alpha 1, 1/2 ... 1/64, Armijo on \|R\|inf with c1=1e-4, committed baseline restored before every probe, full step restored and the increment handed to the standard cutback if no probe is acceptable. THIS CHANGES THE ANSWER. growth=<value> window=% |
 | `CCX_DAMAGE_BT_GROWTH` | `nonlingeo.c` | **no** | - | (from the comment above it) Three tunables, each aimed at a MEASURED failure of the first version (J-15 -> bandrad regressed 25%). _GROWTH : engage only when the full step makes the residual worse by more than this factor. Damping a step that merely fails Armijo is what made the method more aggressive than BK3 (which needs 1.10) and is what stalled bandrad. 1.0 = old behaviour. _WINDOW : non-monotone reference (Grippo-Lampariello- Lucidi). Acceptance compares against the MAX of the last WINDOW residuals, not the current one, so Newton may worsen the residual briefly and cross the kink - which is exactly what the undamped control does. 1 = monotone = old. _FLOOR : refuse to accept a step shorter than this. The measured death mode was a chain of accepts at alpha=0.031 and 0.016 buying 1-3% each while the iteration budget drained. 0.015625 = old. |
 | `CCX_DAMAGE_BT_WINDOW` | `nonlingeo.c` | **no** | - |  |
-| `CCX_DAMAGE_COMPRESSION` | `resultsmech.f` | **no** | - |  |
+| `CCX_DAMAGE_COMPRESSION` | `resultsmech.f` | yes | - |  |
 | `CCX_DAMAGE_COMPRESSION_NUMAX` | `resultsmech.f` | **no** | - |  |
 | `CCX_DAMAGE_CONTINUATION` | `nonlingeo.c` | yes | - | (from the comment above it) ---- CCX_DAMAGE_CONTINUATION (SPEC FREEZE v1) ------------------ Bounded EXPERIMENTAL coupled local continuation. Arms only as rescue LEVEL 4, i.e. only after Rescue2 levels 1 and 2 AND the dogleg have all failed on one wall. Its single purpose is to find out whether coupled local continuation crosses the s3rad wall near inc=589 with physical front advance. R(u,lambda) = f(u,xbounact(lambda)) - fext = 0 c(u,lambda) = m.(delta - delta_c) - ds = 0 lambda is a genuine unknown of a bordered system, not a corrected theta. It owns the boundary for the rest of the step once armed. This is NOT a production continuation: there is no terminal landing at lambda=1, no return to stock control, no completed step and no restart. Every ending is PARTIAL. |
 | `CCX_DAMAGE_CORR_EXIT` | `nonlingeo.c` | **no** | - |  |
@@ -145,7 +145,7 @@ code says nothing there at all.
 | `CCX_DAMAGE_RESCUE_WINDOW` | `nonlingeo.c` | **no** | - |  |
 | `CCX_DAMAGE_RESIDUAL_RAY` | `nonlingeo.c` | **no** | - |  |
 | `CCX_DAMAGE_STABILISE` | `nonlingeo.c` | **no** | - | [DAMAGE STABILISE] detached pieces held with alpha= |
-| `CCX_DAMAGE_TANGENT_FULL` | `nonlingeo.c`, `resultsmech.f` | **no** | - | [DAMAGE TANGENT FULL] the consistent-tangent cut-off is taken on the SAME damage variable the stress uses instead of the stock D<0.999. This CHANGES THE OPERATOR and |
+| `CCX_DAMAGE_TANGENT_FULL` | `nonlingeo.c`, `resultsmech.f` | yes | - | [DAMAGE TANGENT FULL] the consistent-tangent cut-off is taken on the SAME damage variable the stress uses instead of the stock D<0.999. This CHANGES THE OPERATOR and |
 | `CCX_DAMAGE_TMIN` | `nonlingeo.c` | **no** | - | [DAMAGE TMIN] minimum increment overridden: <value> -> <value> (physical units). The statics.f 1e-6*tper floor is bypassed; the stock cutback machinery is otherwise untouched. |
 | `CCX_DAMAGE_TR_D0` | `nonlingeo.c` | **no** | - |  |
 | `CCX_DAMAGE_TR_LINCHECK` | `nonlingeo.c` | yes | - |  |
@@ -193,7 +193,7 @@ this tree.  It is a presence check, not a quality one.
 
 ## The retirement queue
 
-53 option(s) have no declaration, no test that sets them and no
+52 option(s) have no declaration, no test that sets them and no
 prose anywhere but the line that reads them.  A switch in this state
 has no defenders: retiring it means making its behaviour the default
 or deleting it, and either is progress where leaving it is not.
@@ -201,7 +201,6 @@ or deleting it, and either is progress where leaving it is not.
 - `CCX_DAMAGE_ABA_INC` (`nonlingeo.c`)
 - `CCX_DAMAGE_BATCH_LIST` (`nonlingeo.c`)
 - `CCX_DAMAGE_BT_WINDOW` (`nonlingeo.c`)
-- `CCX_DAMAGE_COMPRESSION` (`resultsmech.f`)
 - `CCX_DAMAGE_COMPRESSION_NUMAX` (`resultsmech.f`)
 - `CCX_DAMAGE_CORR_EXIT` (`nonlingeo.c`)
 - `CCX_DAMAGE_CORR_GRACE` (`nonlingeo.c`)
