@@ -6,12 +6,12 @@ Two tables, and the difference between them is the point.
 
 | | |
 |---|---|
-| names the binary reads | **143** |
-| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **35** |
+| names the binary reads | **144** |
+| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **36** |
 | undeclared, documented only by whatever the source says of them | 108 |
 | **explained nowhere at all** | **53** |
 | exercised by `test/regress/run.py` | 17 |
-| **never set by any test in this tree** | **126** |
+| **never set by any test in this tree** | **127** |
 | **no declaration, no test and no prose - the retirement queue** | **53** |
 
 Every run prints the ones that are set (`[SWITCHES]` at the top of any
@@ -57,6 +57,7 @@ are read from the declaration, not from the line that reads it.
 | `CCX_PATHFOLLOW` | real | unset (off) | - | yes | dissipation path following: tau per increment.  Must be strictly positive; the code refuses to arm otherwise |
 | `CCX_PATHFOLLOW_DTHETA` | real | 1.e-3 | - | yes | the load-factor increment at which path following engages; a non-positive value falls back to the default |
 | `CCX_STRUCT_FD_BASE` | enum | V | V\|VOLD\|vold | - | which state the operator check differentiates around.  V is the iterate the residual was last evaluated at, which is one Newton step AFTER the state the matrix was assembled from; VOLD is that state itself.  The difference between the two settings is the size of the offset-of-one-iterate objection to any discrepancy the check reports |
+| `CCX_STRUCT_FD_ELEM` | int | 0 (the most damaged C3D4) | - | - | probe this bulk element instead of the most damaged one, so a measured discrepancy can be attributed to a chosen population of the rank-1 census rather than to whichever element happened to be worst |
 | `CCX_STRUCT_FD_H` | real | 1.e-7 | - | - | the perturbation of the central difference.  Measured: the answer is flat over 1e-11 to 1e-8 and has moved by 1e-3, so the default sits inside the converged plateau |
 | `CCX_STRUCT_FD_INC` | int | 0 (off) | - | - | arm the operator check at this increment: compare the ASSEMBLED tangent, column by column, against a central difference of the internal force.  The run stops afterwards - the probe perturbs the displacement repeatedly, so the run is diagnostic only |
 | `CCX_STRUCT_FD_ITER` | int | 0 | - | - | the Newton iteration at which the operator check runs |

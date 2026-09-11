@@ -4199,7 +4199,8 @@ void FORTRAN(mafilldamas,(double *co,ITG *kon,ITG *ipkon,char *lakon,
           ITG *ne0,ITG *nactdof,ITG *jq,ITG *irow,ITG *neq,ITG *nzs,
           double *au,double *ad,double *vold,ITG *mi,double *damjac,
           ITG *nmpc,ITG *ndamas,double *dam,double *dambase,
-          ITG *nskip,ITG *nadv,ITG *nhole,ITG *nfloor));
+          ITG *nskip,ITG *nadv,ITG *nhole,ITG *nfloor,
+          ITG *nlive,ITG *ndegen,ITG *damcat));
 
 void results(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,
              ITG *ne,double *v,double *stn,ITG *inum,

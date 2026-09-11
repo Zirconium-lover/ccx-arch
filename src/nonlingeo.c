@@ -1909,6 +1909,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_topology_deferred_mode=0,damage_topology_rebuild=1,
     damage_unsym_active=0,damage_unsym_elems=0,damage_unsym_report=0,
     damage_unsym_hole=0,damage_unsym_floor=0,damage_unsym_holerep=0,
+    damage_unsym_live=0,damage_unsym_degen=0,*damage_damcat=NULL,
     damage_unsym_census=0,damage_unsym_tanfull=0,
     damage_snap_elem=0,damage_snap_bad=0,
     damage_diss_report=0,damage_diss_init=0,damage_diss_ctrl=0,
@@ -1941,7 +1942,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_fd_inc=0,damage_fd_it=1,damage_fd_ncol=0,damage_fd_el=-1,
     damage_fd_j=0,damage_fd_s=0,damage_fd_node=0,damage_fd_step=0,
     damage_fd_uel=-1,damage_fd_t=0,damage_fd_tel=-1,damage_fd_tnn=0,
-    damage_fd_base=0,
+    damage_fd_base=0,damage_fd_pick=0,
     damage_fd_col=0,damage_unsym_skip=0,
     damage_unsym_skiprep=-1,damage_unsym_adv=0,
     damage_unsym_advrep=-1,
@@ -2850,6 +2851,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_fd_h=atof(damage_de13_env);
   if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_STEP"))!=NULL)
     damage_fd_step=atoi(damage_de13_env);
+  if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_ELEM"))!=NULL)
+    damage_fd_pick=atoi(damage_de13_env);
   if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_BASE"))!=NULL)
     damage_fd_base=((strcmp(damage_de13_env,"VOLD")==0)||
                     (strcmp(damage_de13_env,"vold")==0))?1:0;
@@ -4297,6 +4300,10 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 
       if(damage_tangent_mode==2){
         NNEW(damage_damjac,double,12*mi[0]*ne0);
+        /* why each element did or did not get the rank-1 term, kept so
+           that the structural operator probe can attribute a discrepancy
+           on a NAMED element to a named population */
+        NNEW(damage_damcat,ITG,ne0);
       }
 
       /* R4 viscous regularisation buffers.  damage_damvisc is the trial
@@ -7585,7 +7592,9 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 				 neq,nzs,au,ad,vold,mi,damage_damjac,nmpc,
 				 &damage_unsym_elems,dam,damdamageini,
 				 &damage_unsym_skip,&damage_unsym_adv,
-				 &damage_unsym_hole,&damage_unsym_floor));
+				 &damage_unsym_hole,&damage_unsym_floor,
+				 &damage_unsym_live,&damage_unsym_degen,
+				 damage_damcat));
 	    /* J-10: what the operator looks like on THIS iteration, not as a
 	       running maximum.  A count that moves between iterations of a
 	       SAME-LOAD solve means the operator is changing shape mid-Newton,
@@ -7594,9 +7603,11 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	      printf("[DAMAGE TANGENT CENSUS] inc=%" ITGFORMAT " iit=%" ITGFORMAT
 		     " assembled=%" ITGFORMAT " adv=%" ITGFORMAT
 		     " gap=%" ITGFORMAT " hi=%" ITGFORMAT
-		     " skip=%" ITGFORMAT "\n",
+		     " skip=%" ITGFORMAT " live=%" ITGFORMAT
+		     " degen=%" ITGFORMAT "\n",
 		     iinc,iit,damage_unsym_elems,damage_unsym_adv,
-		     damage_unsym_hole,damage_unsym_floor,damage_unsym_skip);
+		     damage_unsym_hole,damage_unsym_floor,damage_unsym_skip,
+		     damage_unsym_live,damage_unsym_degen);
 	      fflush(stdout);
 	    }
 	    if(damage_unsym_adv>damage_unsym_advrep){
@@ -9725,10 +9736,56 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
            process zone is precisely the error every earlier test would
            have missed */
 
+        /* Which population is each element in?  damage_damcat is filled by
+           mafilldamas and is the only thing that can attribute a measured
+           discrepancy on a NAMED element to a named reason.  It is written
+           only under CCX_DAMAGE_TANGENT=UNSYM; in the other modes there is
+           no rank-1 term anywhere and the census would be a row of zeros
+           pretending to mean something, so say that instead. */
+        if(damage_damcat!=NULL){
+          ITG damage_fd_cc[8],damage_fd_c;
+          for(damage_fd_c=0;damage_fd_c<8;damage_fd_c++) damage_fd_cc[damage_fd_c]=0;
+          for(i=0;i<ne0;i++){
+            damage_fd_c=damage_damcat[i];
+            if((damage_fd_c>=0)&&(damage_fd_c<8)) damage_fd_cc[damage_fd_c]++;
+          }
+          printf("[OPCHECK] rank-1 term by population: assembled=%" ITGFORMAT
+                 " pre-initiation=%" ITGFORMAT " not-advancing=%" ITGFORMAT
+                 " on-floor=%" ITGFORMAT " terminal-hole=%" ITGFORMAT
+                 " advancing-live=%" ITGFORMAT " degenerate=%" ITGFORMAT "\n",
+                 damage_fd_cc[1],damage_fd_cc[2],damage_fd_cc[3],
+                 damage_fd_cc[4],damage_fd_cc[5],damage_fd_cc[6],
+                 damage_fd_cc[7]);
+          for(damage_fd_c=1;damage_fd_c<8;damage_fd_c++){
+            ITG shown=0;
+            if((damage_fd_c==2)||(damage_fd_c==3)) continue;
+            if(damage_fd_cc[damage_fd_c]==0) continue;
+            printf("[OPCHECK]   category %" ITGFORMAT " elements:",damage_fd_c);
+            for(i=0;(i<ne0)&&(shown<10);i++){
+              if(damage_damcat[i]!=damage_fd_c) continue;
+              printf(" %" ITGFORMAT,i+1);shown++;
+            }
+            printf("%s\n",(damage_fd_cc[damage_fd_c]>shown)?" ...":"");
+          }
+          fflush(stdout);
+        }else{
+          printf("[OPCHECK] no rank-1 census: mafilldamas runs only under "
+                 "CCX_DAMAGE_TANGENT=UNSYM, so in this mode NO element "
+                 "carries the -sigma_eff (x) dD/d(eps) term at all\n");
+        }
+
         damage_fd_el=-1;damage_fd_dmax=-1.;
-        for(i=0;(i<ne0)&&(*ndmat_>0)&&(dam!=NULL);i++){
+        /* A NAMED element needs no damage array: the decisive comparison is
+           the same element probed on a deck with the damage module and on one
+           without it, and the second has no dam[] at all. */
+        for(i=0;(i<ne0)&&((damage_fd_pick>0)||((*ndmat_>0)&&(dam!=NULL)));i++){
           if(ipkon[i]<0) continue;
           if(strncmp(&lakon[8*i],"C3D4",4)!=0) continue;
+          if(damage_fd_pick>0){
+            if(i+1!=damage_fd_pick) continue;
+            damage_fd_dmax=(dam!=NULL)?dam[mi[0]*i]:-1.;
+            damage_fd_el=i;break;
+          }
           if(dam[mi[0]*i]>damage_fd_dmax){
             damage_fd_dmax=dam[mi[0]*i];damage_fd_el=i;
           }
@@ -9769,8 +9826,17 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
              "VOLD (the state the matrix was assembled at)":
              "V (the post-solve iterate)");
           if(damage_fd_el>=0)
-            printf("[OPCHECK]   bulk     element %" ITGFORMAT " dam=%.6f\n",
-                   damage_fd_el+1,damage_fd_dmax);
+            printf("[OPCHECK]   bulk     element %" ITGFORMAT " dam=%.6f "
+                   "population=%" ITGFORMAT "%s\n",
+                   damage_fd_el+1,damage_fd_dmax,
+                   (damage_damcat!=NULL)?damage_damcat[damage_fd_el]:-1,
+                   (damage_damcat!=NULL)?
+                   ((damage_damcat[damage_fd_el]==1)?" (ASSEMBLED)":
+                    (damage_damcat[damage_fd_el]==4)?" (on the floor - zero is correct)":
+                    (damage_damcat[damage_fd_el]==5)?" (terminal hole)":
+                    (damage_damcat[damage_fd_el]==6)?" (advancing, no term)":
+                    (damage_damcat[damage_fd_el]==7)?" (degenerate, dropped)":
+                    " (no term needed)"):" (no census in this mode)");
           if(damage_fd_uel>=0)
             printf("[OPCHECK]   cohesive element %" ITGFORMAT " dv=%.6f "
                    "(g=%.3e)\n",damage_fd_uel+1,damage_fd_udmax,
@@ -10450,15 +10516,19 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
             if(lii==14){
               ITG e1i,e1c,e1k,e1r;
               double *e1ad=NULL,*e1au=NULL,*e1y=NULL,e1n=0.,e1d=0.,e1w=0.;
-              ITG e1nd,e1sk,e1ad2,e1ho,e1fl;
+              ITG e1nd,e1sk,e1ad2,e1ho,e1fl,e1lv,e1dg;
+              ITG *e1cat=NULL;
               NNEW(e1ad,double,neq[1]);
               NNEW(e1au,double,(nasym+1)*nzs[1]);
               NNEW(e1y,double,neq[1]);
-              e1nd=0;e1sk=0;e1ad2=0;e1ho=0;e1fl=0;
+              e1nd=0;e1sk=0;e1ad2=0;e1ho=0;e1fl=0;e1lv=0;e1dg=0;
+              NNEW(e1cat,ITG,ne0);
               FORTRAN(mafilldamas,(co,kon,ipkon,lakon,&ne0,nactdof,jq,irow,
                                    neq,nzs,e1au,e1ad,vold,mi,damage_damjac,
                                    nmpc,&e1nd,dam,damdamageini,
-                                   &e1sk,&e1ad2,&e1ho,&e1fl));
+                                   &e1sk,&e1ad2,&e1ho,&e1fl,&e1lv,&e1dg,
+                                   e1cat));
+              SFREE(e1cat);
               for(e1k=0;e1k<neq[1];e1k++)
                 e1y[e1k]=e1ad[e1k]*damage_dl_pn[e1k];
               for(e1c=0;e1c<neq[1];e1c++){

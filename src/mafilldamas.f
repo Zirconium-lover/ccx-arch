@@ -18,7 +18,7 @@
 !
       subroutine mafilldamas(co,kon,ipkon,lakon,ne0,nactdof,
      &     jq,irow,neq,nzs,au,ad,vold,mi,damjac,nmpc,ndamas,dam,
-     &     dambase,nskip,nadv,nhole,nfloor)
+     &     dambase,nskip,nadv,nhole,nfloor,nlive,ndegen,damcat)
 !
 !     UNSYM stage 2: assembles the asymmetric part of the damage-consistent
 !     material tangent
@@ -68,6 +68,7 @@
 !
       integer kon(*),ipkon(*),ne0,nactdof(0:mi(2),*),jq(*),irow(*),
      &     neq(*),nzs(3),nmpc,ndamas,nskip,nadv,nhole,nfloor,
+     &     nlive,ndegen,damcat(*),
      &     i,j,k,l,m,i1,j1,k1,ii,jj,ll,indexe,nope,konl(4),
      &     jdof1,jdof2,iflag
 !
@@ -114,6 +115,33 @@
       nhole=0
       nfloor=0
       nadv=0
+      nlive=0
+      ndegen=0
+!
+!     damcat(i) records, per element, WHY it did or did not get the
+!     rank-1 term, so that a discrepancy the structural probe measures on
+!     a named element can be attributed to a named population instead of
+!     to a count.  Until this existed, nadv conflated three populations
+!     with different verdicts and two of them had no name at all.
+!
+!       0  not a damage-bearing element here
+!       1  ASSEMBLED - the term is in the operator
+!       2  not past initiation; damjac empty and that is correct
+!       3  past initiation, damage NOT advancing this increment;
+!          dD/d(eps)=0, so a zero correction is correct
+!       4  advancing, on the residual-stiffness floor; dg/dD=0, correct
+!       5  advancing, past the terminal threshold but not yet floored;
+!          resultsmech refuses the fill.  The hole this routine already
+!          named.
+!       6  advancing, BELOW the terminal threshold, and still no term.
+!          Previously counted inside nadv and never separated from the
+!          points that advanced earlier in the increment and unload now.
+!       7  damjac was filled and the element was dropped anyway, for a
+!          degenerate Jacobian.  Counted nowhere before this.
+!
+      do i=1,ne0
+        damcat(i)=0
+      enddo
 !
       do i=1,ne0
 !
@@ -136,7 +164,9 @@
 !       entries, stable as the iteration converges.
 !
         if(tsum.le.0.d0) then
+          damcat(i)=2
           if(dam(1,i).gt.1.d0+1.d-12) then
+            damcat(i)=3
             nskip=nskip+1
 !
 !           An unloading point legitimately has no rank-1 term,
@@ -146,6 +176,7 @@
 !
             if(dam(1,i)-dambase(1,i).gt.1.d-14) then
               nadv=nadv+1
+              damcat(i)=6
 !
 !             nadv alone is not evidence of a defect: dambase is the
 !             damage at the START OF THE INCREMENT, so this branch
@@ -156,11 +187,17 @@
               if(dam(1,i).ge.2.d0-damgmin) then
 !               on the residual-stiffness floor: dg/dD=0, zero correct
                 nfloor=nfloor+1
+                damcat(i)=4
               elseif(dam(1,i).ge.1.999d0) then
 !               past the terminal threshold but not yet floored, so
 !               resultsmech refuses the fill and the element carries
 !               g*C_ep alone.  This is the genuine hole.
                 nhole=nhole+1
+                damcat(i)=5
+              else
+!               advancing, below the terminal threshold, no term.  This
+!               band had no counter and no name; nlive is both.
+                nlive=nlive+1
               endif
             endif
           endif
@@ -196,7 +233,16 @@
         ze=gauss3d4(3,1)
         weight=weight3d4(1)
         call shape4tet(xi,et,ze,xl,xsj,shp,iflag)
-        if(xsj.lt.1.d-20) cycle
+!
+!       A degenerate Jacobian drops an element that HAS a rank-1 term to
+!       contribute.  It was counted nowhere: not in ndamas, and not in
+!       any of the skip bands, because the skip test is upstream of here.
+!
+        if(xsj.lt.1.d-20) then
+          ndegen=ndegen+1
+          damcat(i)=7
+          cycle
+        endif
         xsjj=dsqrt(xsj)
         do j=1,nope
           do k=1,3
@@ -278,6 +324,7 @@
           enddo
         enddo
         ndamas=ndamas+1
+        damcat(i)=1
 !
       enddo
 !

@@ -179,6 +179,12 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "which is the wrong one whenever the interesting state is reached by "
  "unloading, as the crack-face closure benchmark is",NULL},
 
+{"CCX_STRUCT_FD_ELEM",CCXOPT_INT,"0 (the most damaged C3D4)",
+ CCXOPT_UNBOUNDED,NULL,
+ "probe this bulk element instead of the most damaged one, so a measured "
+ "discrepancy can be attributed to a chosen population of the rank-1 "
+ "census rather than to whichever element happened to be worst",NULL},
+
 {"CCX_STRUCT_FD_BASE",CCXOPT_ENUM,"V",CCXOPT_UNBOUNDED,"V|VOLD|vold",
  "which state the operator check differentiates around.  V is the iterate "
  "the residual was last evaluated at, which is one Newton step AFTER the "

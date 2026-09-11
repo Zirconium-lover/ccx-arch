@@ -194,14 +194,25 @@ they cost:
 
 1. **`mafilldamas` runs only under `CCX_DAMAGE_TANGENT=UNSYM`.** The stock
    symmetric path and `FD_SYM` have no such term at all.
-2. **Even under `UNSYM` it reaches about half the points that need it.** The
-   tree prints this itself and has been printing it all along:
-   `[DAMAGE TANGENT HOLE] 11 element(s) with ADVANCING damage carry no
-   rank-1 term […] 10 assembled`.
-3. **So the assembled operator is not the differential of the residual
-   anywhere in the damaging phase**, in every tangent mode: 151, 157 and 161
-   wrong coefficients of 20604 for stock, `UNSYM` and `FD_SYM` respectively,
-   on a residual verified locally smooth.
+2. **The assembled operator is not the differential of the residual anywhere
+   in the damaging phase**, in every tangent mode: 151, 157 and 161 wrong
+   coefficients of 20604 for stock, `UNSYM` and `FD_SYM`, on a residual
+   verified locally smooth.
+3. **Corrected 2026-09-11 — it is not the missing rank-1 term.**
+   `research/05-TANGENT-POPULATIONS.md` cross-checked the counters against the
+   elements the probe reports wrong, per element rather than per count:
+   - every *defect* population — terminal hole, advancing-below-terminal,
+     degenerate — is **empty** on this deck at every increment probed;
+   - the element measuring wrong is the one element that **has** the term;
+   - turning the term off with `CCX_DAMAGE_UNSYM_SCALE=0` changes the worst
+     coefficient by 10%.
+
+   What the discrepancy is instead: **two** errors. A plasticity floor of
+   about `1e-3` relative, which survives **removing the damage cards from the
+   deck** (identical to four significant figures, same element, same
+   increment), and a damage contribution about **ten times larger** after
+   initiation. The next suspect for the second is the `damageg*stiff` scaling
+   in `resultsmech.f` rather than the assembly in `mafilldamas.f`.
 
 What this costs is in `02-DIAGNOSTICS.md` §1: not the converged answer, but
 quadratic convergence and the guarantee that the Newton direction descends —
@@ -209,12 +220,10 @@ which makes every globalization mechanism look worse than it is and
 contaminates the ladder census in the process zone. Six globalization
 mechanisms accumulated in exactly that regime.
 
-Not fixed here: `PROMPT.md` says not to go hunting in the damage module, and
-this is squarely in it. What is needed next is narrow — the counters already
-separate `adv`, `gap`, `hi` and `skip`, and reading them against the elements
-the operator probe reports would say which of those populations is a defect
-and which is legitimate (an unloading point correctly has no rank-1 term).
-`CCX_STRUCT_FD_*` would confirm a fix in one 25-second run.
+That reading has been done. `mafilldamas` now records a per-element category
+instead of four counts, two of its populations had no name before, and
+`CCX_STRUCT_FD_ELEM` aims the probe at a chosen one. The classification and
+its verdicts are in `research/05-TANGENT-POPULATIONS.md` §1.
 
 `CCX_DAMAGE_TANGENT_CENSUS`, the switch that prints the per-iteration
 version, was in the generated retirement queue.
