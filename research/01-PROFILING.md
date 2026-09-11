@@ -191,11 +191,38 @@ elements and beyond the symbolic share can only be *smaller*.
 **What would change the verdict**: a deck where erosion invalidates the
 pattern often enough that the analysis runs on a large fraction of
 factorisations. `fast-wrapped` deletes 64 elements and re-analyses 3 times;
-`s3rad` deletes 3706. The `s3rad` profile is running and will say.
+`s3rad` deletes 3790 in 455 batches, which is a different regime and the
+right place to be sceptical of a fast-deck refutation.
+
+**First data at `s3rad` scale: the churn is nine times higher.** From a run
+killed at increment 231 (see *what is still open*), with 1330 deletions
+committed in 115 batches:
+
+| | factorisations | fresh symbolic analyses | share |
+|---|---|---|---|
+| `fast-wrapped`, 64 deletions | 606 | 3 | **0.50%** |
+| `s3rad` partial, 1330 deletions | 1600 | 73 | **4.6%** |
+
+So the pattern does churn an order of magnitude more at scale, exactly as
+scepticism predicted. What that is *worth* still needs the cost split — 4.6%
+of factorisations paying an analysis that is itself some fraction of a
+factorisation — and that number needs the profile the killed run never
+printed. **`NEXT_TASK.md` item 1 stays open until it does.**
+
+73 re-analyses against 115 committed batches, because a batch that is rolled
+back (`[DAMAGE DE1.3 ROLLBACK]`) leaves the pattern where it was.
 
 ## What is still open
 
-- The `s3rad` breakdown at scale (running; 2 threads, `MKL_CBWR=COMPATIBLE`).
+- **The `s3rad` breakdown at scale.** Two attempts were killed part way
+  through — increments 340 and 231, both with the log ending mid-sentence, no
+  `*ERROR`, no `Job finished`, no `[LOGVIEW]` table, and no OOM or cgroup
+  limit to explain it. Both produced **no profile at all**, because the table
+  was printed from `atexit`. That is a defect in the instrument, not bad
+  luck, and it is fixed: `CCX_LOG_VIEW_EVERY` (default 600 s) prints an
+  `INTERIM` table at the top level between events. A third attempt runs from
+  a private copy of the binary so a rebuild cannot disturb it; 2 threads,
+  `MKL_CBWR=COMPATIBLE`.
 - **Why assembly costs 13 ms** on a deck this small. Nobody has looked
   inside `mafillsmmain`, and it is a third of the run.
 - `CCX_PARDISO_CGS` reuses the LU across Newton iterations and nobody has
