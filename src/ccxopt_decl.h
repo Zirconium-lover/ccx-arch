@@ -179,6 +179,13 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "which is the wrong one whenever the interesting state is reached by "
  "unloading, as the crack-face closure benchmark is",NULL},
 
+{"CCX_STRUCT_FD_BASE",CCXOPT_ENUM,"V",CCXOPT_UNBOUNDED,"V|VOLD|vold",
+ "which state the operator check differentiates around.  V is the iterate "
+ "the residual was last evaluated at, which is one Newton step AFTER the "
+ "state the matrix was assembled from; VOLD is that state itself.  The "
+ "difference between the two settings is the size of the "
+ "offset-of-one-iterate objection to any discrepancy the check reports",NULL},
+
 {"CCX_STRUCT_FD_H",CCXOPT_REAL,"1.e-7",CCXOPT_UNBOUNDED,NULL,
  "the perturbation of the central difference.  Measured: the answer is flat "
  "over 1e-11 to 1e-8 and has moved by 1e-3, so the default sits inside the "
@@ -187,6 +194,13 @@ static const ccxopt_decl ccxopt_decl_table[]={
 /* ---- diagnostics that were in the retirement queue only because nobody
    had written them down.  Each answers a question 02-DIAGNOSTICS.md asks a
    human to answer by eye. */
+{"CCX_DAMAGE_TANGENT_CENSUS",CCXOPT_BOOL,"unset (off)",CCXOPT_UNBOUNDED,NULL,
+ "per-iteration census of the damage tangent: how many elements got the "
+ "rank-1 term -sigma_eff (x) dD/d(eps), how many with ADVANCING damage did "
+ "not, and how many were skipped.  This is the report that names WHY the "
+ "assembled tangent is not the differential of the residual "
+ "(research/03-OPERATOR.md); it was in the retirement queue",NULL},
+
 {"CCX_DAMAGE_NODE_DUMP",CCXOPT_INT,"0 (off)",CCXOPT_UNBOUNDED,NULL,
  "dump one named node every increment: every element that touches it, its "
  "type, whether it is still assembled, the damage at each integration point "

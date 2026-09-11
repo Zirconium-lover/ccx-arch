@@ -13,7 +13,7 @@
    Regenerate with tools/mkswitches.py; tools/mkswitches.py --check
    fails if this file is stale. */
 
-#define CCXOPT_KNOWN_COUNT 142
+#define CCXOPT_KNOWN_COUNT 143
 
 static const char *const ccxopt_known_name[CCXOPT_KNOWN_COUNT]={
   "CCX_CRACK_CONTROL",
@@ -148,6 +148,7 @@ static const char *const ccxopt_known_name[CCXOPT_KNOWN_COUNT]={
   "CCX_PATHFOLLOW_PROBE",
   "CCX_PATHFOLLOW_PROJECT",
   "CCX_PATHFOLLOW_SOLVECHECK",
+  "CCX_STRUCT_FD_BASE",
   "CCX_STRUCT_FD_H",
   "CCX_STRUCT_FD_INC",
   "CCX_STRUCT_FD_ITER",
@@ -256,6 +257,7 @@ static const char ccxopt_known_fortran[CCXOPT_KNOWN_COUNT]={
   0,
   0,
   1,
+  0,
   0,
   0,
   0,

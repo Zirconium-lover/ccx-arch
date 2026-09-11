@@ -1941,6 +1941,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_fd_inc=0,damage_fd_it=1,damage_fd_ncol=0,damage_fd_el=-1,
     damage_fd_j=0,damage_fd_s=0,damage_fd_node=0,damage_fd_step=0,
     damage_fd_uel=-1,damage_fd_t=0,damage_fd_tel=-1,damage_fd_tnn=0,
+    damage_fd_base=0,
     damage_fd_col=0,damage_unsym_skip=0,
     damage_unsym_skiprep=-1,damage_unsym_adv=0,
     damage_unsym_advrep=-1,
@@ -2054,7 +2055,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_de13_batch_vmin=1.,
     damage_stiff_min=0.,damage_path_lam=0.,damage_path_dev=0.,
     damage_fd_h=1.e-7,damage_fd_dmax=0.,damage_fd_udmax=-1.,
-    *damage_fd_vsav=NULL,*damage_fd_fp=NULL,*damage_fd_fm=NULL,
+    *damage_fd_vsav=NULL,*damage_fd_vtrue=NULL,
+    *damage_fd_fp=NULL,*damage_fd_fm=NULL,
     *damage_fd_f0=NULL,*damage_fd_ad=NULL,*damage_fd_au=NULL,
     damage_path_devmax=-1.,damage_path_ref=0.,
     damage_path_lamcom=0.,damage_path_drop=0.25,
@@ -2848,6 +2850,9 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_fd_h=atof(damage_de13_env);
   if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_STEP"))!=NULL)
     damage_fd_step=atoi(damage_de13_env);
+  if((damage_de13_env=ccxopt_getenv("CCX_STRUCT_FD_BASE"))!=NULL)
+    damage_fd_base=((strcmp(damage_de13_env,"VOLD")==0)||
+                    (strcmp(damage_de13_env,"vold")==0))?1:0;
 
   /* [DAMAGE TMIN] statics.f:234-247 silently raises the deck's minimum
      increment to min(tinc,1e-6*tper) under automatic incrementation.  With
@@ -9689,10 +9694,31 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         opcheck damage_fd_all,damage_fd_col_o,damage_fd_bulk,damage_fd_coh;
 
         NNEW(damage_fd_vsav,double,mt**nk);
+        NNEW(damage_fd_vtrue,double,mt**nk);
         NNEW(damage_fd_fp,double,mt**nk);
         NNEW(damage_fd_fm,double,mt**nk);
         NNEW(damage_fd_f0,double,mt**nk);
-        memcpy(damage_fd_vsav,v,sizeof(double)*mt**nk);
+        /* v must come back exactly as it was, whatever the probe uses as its
+           base, or the solve continues from a state the probe invented. */
+        memcpy(damage_fd_vtrue,v,sizeof(double)*mt**nk);
+
+        /* WHICH STATE TO DIFFERENTIATE AROUND.  This decides whether the
+           comparison means anything at all.
+
+           The matrix was assembled from xstiff at the top of this Newton
+           iteration, where the iterate is vold.  The solve then produced b,
+           and the results() call just above evaluated the residual at
+           v = vold + b.  Probing around v therefore compares K(vold) against
+           dR/du(vold+b) - an offset of one Newton step, which would look
+           exactly like a wrong tangent: smooth, h-independent, and growing
+           with how fast the state moves.
+
+           vold is still untouched here; nonlingeo advances it 2600 lines
+           further down.  So CCX_STRUCT_FD_BASE=VOLD differentiates around the
+           state the matrix actually came from, and the difference between the
+           two settings IS the size of that objection. */
+        memcpy(damage_fd_vsav,
+               (damage_fd_base==1)?vold:v,sizeof(double)*mt**nk);
 
         /* columns are taken at the nodes of the most damaged element: a
            tangent that is right in the elastic bulk and wrong in the
@@ -9738,7 +9764,10 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           damage_fd_el=-1;damage_fd_uel=-1;
         }else{
           printf("[OPCHECK] inc=%" ITGFORMAT " iter=%" ITGFORMAT
-      	   " step=%" ITGFORMAT " h=%.3e\n",iinc,iit,*istep,damage_fd_h);
+      	   " step=%" ITGFORMAT " h=%.3e base=%s\n",iinc,iit,*istep,
+             damage_fd_h,(damage_fd_base==1)?
+             "VOLD (the state the matrix was assembled at)":
+             "V (the post-solve iterate)");
           if(damage_fd_el>=0)
             printf("[OPCHECK]   bulk     element %" ITGFORMAT " dam=%.6f\n",
                    damage_fd_el+1,damage_fd_dmax);
@@ -9844,9 +9873,9 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         }
         }
 
-        memcpy(v,damage_fd_vsav,sizeof(double)*mt**nk);
-        SFREE(damage_fd_vsav);SFREE(damage_fd_fp);SFREE(damage_fd_fm);
-        SFREE(damage_fd_f0);
+        memcpy(v,damage_fd_vtrue,sizeof(double)*mt**nk);
+        SFREE(damage_fd_vsav);SFREE(damage_fd_vtrue);
+        SFREE(damage_fd_fp);SFREE(damage_fd_fm);SFREE(damage_fd_f0);
         if(damage_fd_bulk.n>0){
           printf("[OPCHECK] --- bulk columns ---\n");
           monitor_opcheck_total(&damage_fd_bulk,iinc,iit,damage_fd_el+1,

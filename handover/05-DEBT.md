@@ -182,6 +182,43 @@ a substitute for re-running the gate off a clean build, and an incremental
 build's sha means nothing.** The `-MMD` fix removes the mechanism; the audit
 is what closes the claims made before it.
 
+## 2c. The damage tangent is missing the term that makes it consistent
+
+Measured 2026-09-11, `research/03-OPERATOR.md`. `mafilldamas.f` states the
+consistent tangent in its own header:
+
+    C = g(D)*C_ep - sigma_eff (x) dD/d(eps)
+
+The rank-1 correction is `dσ/dD · dD/dε`. Three facts, in order of how much
+they cost:
+
+1. **`mafilldamas` runs only under `CCX_DAMAGE_TANGENT=UNSYM`.** The stock
+   symmetric path and `FD_SYM` have no such term at all.
+2. **Even under `UNSYM` it reaches about half the points that need it.** The
+   tree prints this itself and has been printing it all along:
+   `[DAMAGE TANGENT HOLE] 11 element(s) with ADVANCING damage carry no
+   rank-1 term […] 10 assembled`.
+3. **So the assembled operator is not the differential of the residual
+   anywhere in the damaging phase**, in every tangent mode: 151, 157 and 161
+   wrong coefficients of 20604 for stock, `UNSYM` and `FD_SYM` respectively,
+   on a residual verified locally smooth.
+
+What this costs is in `02-DIAGNOSTICS.md` §1: not the converged answer, but
+quadratic convergence and the guarantee that the Newton direction descends —
+which makes every globalization mechanism look worse than it is and
+contaminates the ladder census in the process zone. Six globalization
+mechanisms accumulated in exactly that regime.
+
+Not fixed here: `PROMPT.md` says not to go hunting in the damage module, and
+this is squarely in it. What is needed next is narrow — the counters already
+separate `adv`, `gap`, `hi` and `skip`, and reading them against the elements
+the operator probe reports would say which of those populations is a defect
+and which is legitimate (an unloading point correctly has no rank-1 term).
+`CCX_STRUCT_FD_*` would confirm a fix in one 25-second run.
+
+`CCX_DAMAGE_TANGENT_CENSUS`, the switch that prints the per-iteration
+version, was in the generated retirement queue.
+
 ## 3. Six overlapping globalization mechanisms
 
 The adaptive damage line-search ladder, transactional backtracking, Rescue

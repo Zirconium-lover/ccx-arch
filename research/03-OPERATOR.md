@@ -255,6 +255,82 @@ readings taken there, and any conclusion about which mechanism helps drawn
 from them, are subject to re-check. That warning is now in `02-DIAGNOSTICS.md`
 itself.
 
+## 5b. The objection that had to be ruled out, and the term that was missing
+
+### First: the probe was comparing two different states, and it is not that
+
+`nonlingeo` assembles the matrix from `xstiff` at the top of a Newton
+iteration, where the iterate is `vold`. The solve produces `b`, the main
+`results()` evaluates the residual at `v = vold + b`, and the probe sits
+after that. So the probe was differentiating around `v` while the matrix came
+from `vold`: **an offset of one Newton step**, which would look exactly like a
+wrong tangent — smooth, `h`-independent, and larger where the state moves
+faster. Every reading above is consistent with it, including the clean
+elastic control (where `K` is constant, so the offset cannot show).
+
+`vold` is still untouched at the probe (`nonlingeo.c` advances it 2600 lines
+further on), so the test is direct. `CCX_STRUCT_FD_BASE=VOLD` differentiates
+around the state the matrix actually came from:
+
+| base | `|ctr − asm|` at node 353/1 | WRONG of 20604 |
+|---|---|---|
+| `V` — the post-solve iterate | 9.573e-02 | 157 |
+| `VOLD` — the assembly state | **9.626e-02** | **153** |
+
+**The objection is refuted.** And the numbers moved slightly rather than not
+at all, which is the control that matters: had `results()` been rebuilding
+`v` from `vold + b` and ignoring the probe's base, the two rows would be
+bit-identical. They are not, so the switch really moved the evaluation point,
+and the discrepancy did not follow it.
+
+A weaker check pointed the same way first: over increment 50 the correction
+falls by a factor of 39 between iterations 1 and 2, while the discrepancy
+falls by 1.25 (183 → 157 coefficients).
+
+### Then: it is not the choice of tangent mode either
+
+All three settings of `CCX_DAMAGE_TANGENT`, probed at the same increment:
+
+| mode | probed element | WRONG of 20604 |
+|---|---|---|
+| unset — stock symmetric | 1238, `dam=1.829` | 151 |
+| `UNSYM` (2) | 1238, `dam=1.829` | 157 |
+| `FD_SYM` (1) | 1233, `dam=1.995` | 161 |
+
+### And the term is the one the signature named
+
+`mafilldamas.f` states the consistent tangent in its own header:
+
+> `C = g(D)*C_ep - sigma_eff (x) dD/d(eps)`
+> The first term is already in `au`: `mafillsm.f` built it […] This routine
+> adds only the rank-1 correction.
+
+That rank-1 correction **is** `dσ/dD · dD/dε`, and `mafilldamas` runs only
+under `CCX_DAMAGE_TANGENT=UNSYM`. So the stock and `FD_SYM` paths have no
+such term at all — which is why they are wrong.
+
+`UNSYM` is wrong for a different reason, and the tree has been printing it:
+
+```
+[DAMAGE TANGENT HOLE] 11 element(s) with ADVANCING damage carry no rank-1
+term (new maximum); 11 past initiation without one, 10 assembled
+```
+
+**Eleven elements with advancing damage carry no rank-1 term against ten that
+do** — in the mode whose entire purpose is to supply it. Roughly half the
+actively damaging points are missing the term even when it is switched on.
+
+That closes the loop on the signature. The discrepancy tracks the *rate* of
+damage change and not its magnitude because the missing term is proportional
+to `dD/dε`: where damage is not advancing the term is legitimately zero and
+the tangent is right, which is exactly why the elastic control, the closed
+cohesive facet and the barely-moving element at increment 65 all come back
+clean.
+
+The report that says so is `CCX_DAMAGE_TANGENT_CENSUS`, and it was in the
+generated retirement queue — the third capability found there in two days, and
+the second one that answers a question the handover records as open.
+
 ## 6. What this means
 
 `src/pardiso.c` records, from the other end and without knowing it was the
@@ -279,10 +355,14 @@ Two consequences for the work queue:
 
 ## 7. What is still open
 
-- **Which term is missing.** The measurement localises it to the bulk
-  progressive-damage tangent while damage evolves; it does not name the term.
-  `resultsmech.f` / `mafilldamas.f` is where to look, and the probe is now
-  the instrument that would confirm a fix in one 25-second run.
+- ~~**Which term is missing.**~~ Named: the rank-1 correction
+  `−σ_eff ⊗ dD/dε` in `mafilldamas.f`, absent entirely from the stock and
+  `FD_SYM` paths and reaching only about half the advancing points under
+  `UNSYM`. What is still open is **why** those points are skipped — the
+  counters distinguish `adv`, `gap`, `hi` and `skip`, and reading them
+  against the elements the probe reports would say which population is a
+  defect and which is legitimate. The probe would confirm a fix in one
+  25-second run.
 - **Whether it is a defect or a design choice.** A secant tangent is a
   legitimate choice; an *undocumented* one that nobody could measure is not.
   This is recorded in `05-DEBT.md` rather than fixed here, because

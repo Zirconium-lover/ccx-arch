@@ -6,13 +6,13 @@ Two tables, and the difference between them is the point.
 
 | | |
 |---|---|
-| names the binary reads | **142** |
-| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **33** |
-| undeclared, documented only by whatever the source says of them | 109 |
-| **explained nowhere at all** | **54** |
+| names the binary reads | **143** |
+| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **35** |
+| undeclared, documented only by whatever the source says of them | 108 |
+| **explained nowhere at all** | **53** |
 | exercised by `test/regress/run.py` | 17 |
-| **never set by any test in this tree** | **125** |
-| **no declaration, no test and no prose - the retirement queue** | **54** |
+| **never set by any test in this tree** | **126** |
+| **no declaration, no test and no prose - the retirement queue** | **53** |
 
 Every run prints the ones that are set (`[SWITCHES]` at the top of any
 `run.log`), validates the declared ones against their type and range,
@@ -42,6 +42,7 @@ are read from the declaration, not from the line that reads it.
 | `CCX_DAMAGE_STIFF_MIN` | real | 0 (off) | [0, 0.1] | - | report nodes whose assembled diagonal has fallen below this fraction of their intact value; silently clamped to [0,0.1] like CCX_DAMAGE_AUTOSPC |
 | `CCX_DAMAGE_STIFF_PROBE` | bool | unset (off) | - | - | print the stiffness census - how many nodes have lost what fraction of their OWN intact assembled diagonal (02-DIAGNOSTICS.md section 3).  Armed automatically whenever CCX_DAMAGE_AUTOSPC is |
 | `CCX_DAMAGE_TANGENT` | enum | stock symmetric | FD_SYM\|fd_sym\|1\|UNSYM\|unsym\|2 | yes | which tangent to assemble: FD_SYM (1) a finite-difference symmetric tangent, UNSYM (2) the asymmetric path with the constitutive tangent left untouched.  NOTHING IN THIS TREE VERIFIES THE TANGENT AGAINST THE RESIDUAL (07-RESEARCH-AGENDA.md rank 3) |
+| `CCX_DAMAGE_TANGENT_CENSUS` | bool | unset (off) | - | - | per-iteration census of the damage tangent: how many elements got the rank-1 term -sigma_eff (x) dD/d(eps), how many with ADVANCING damage did not, and how many were skipped.  This is the report that names WHY the assembled tangent is not the differential of the residual (research/03-OPERATOR.md); it was in the retirement queue |
 | `CCX_DAMAGE_TOPOLOGY` | enum | immediate | DEFERRED\|deferred\|1 | yes | DEFERRED batches topology changes into one transaction committed at the end of the increment instead of applying each deletion as it is found |
 | `CCX_DAMAGE_TR_DOGLEG` | bool | unset (off) | - | yes | arm the dogleg trust region as rescue level 3.  Set to anything, INCLUDING 0.  Refuses to arm without CCX_DAMAGE_REEQ_RESCUE2: it is a level on top of Rescue 2, not a replacement |
 | `CCX_DAMAGE_VISCOSITY` | real | 0 (off) | - | yes | viscous regularisation eta for the damage evolution; negative values are clamped to zero |
@@ -55,6 +56,7 @@ are read from the declaration, not from the line that reads it.
 | `CCX_PARDISO_REUSE_SYMBOLIC` | enum | off | 1\|ON\|on\|YES\|yes | yes | keep PARDISO's symbolic factorisation across numerical factorisations, keyed on a hash of the sparsity pattern.  MEASURED: it retains the analysis for 603 of 606 factorisations on fast-wrapped and buys nothing outside run-to-run noise (handover/04-REFUTED.md) |
 | `CCX_PATHFOLLOW` | real | unset (off) | - | yes | dissipation path following: tau per increment.  Must be strictly positive; the code refuses to arm otherwise |
 | `CCX_PATHFOLLOW_DTHETA` | real | 1.e-3 | - | yes | the load-factor increment at which path following engages; a non-positive value falls back to the default |
+| `CCX_STRUCT_FD_BASE` | enum | V | V\|VOLD\|vold | - | which state the operator check differentiates around.  V is the iterate the residual was last evaluated at, which is one Newton step AFTER the state the matrix was assembled from; VOLD is that state itself.  The difference between the two settings is the size of the offset-of-one-iterate objection to any discrepancy the check reports |
 | `CCX_STRUCT_FD_H` | real | 1.e-7 | - | - | the perturbation of the central difference.  Measured: the answer is flat over 1e-11 to 1e-8 and has moved by 1e-3, so the default sits inside the converged plateau |
 | `CCX_STRUCT_FD_INC` | int | 0 (off) | - | - | arm the operator check at this increment: compare the ASSEMBLED tangent, column by column, against a central difference of the internal force.  The run stops afterwards - the probe perturbs the displacement repeatedly, so the run is diagnostic only |
 | `CCX_STRUCT_FD_ITER` | int | 0 | - | - | the Newton iteration at which the operator check runs |
@@ -140,7 +142,6 @@ code says nothing there at all.
 | `CCX_DAMAGE_RESCUE_WINDOW` | `nonlingeo.c` | **no** | - |  |
 | `CCX_DAMAGE_RESIDUAL_RAY` | `nonlingeo.c` | **no** | - |  |
 | `CCX_DAMAGE_STABILISE` | `nonlingeo.c` | **no** | - | [DAMAGE STABILISE] detached pieces held with alpha= |
-| `CCX_DAMAGE_TANGENT_CENSUS` | `nonlingeo.c` | **no** | - |  |
 | `CCX_DAMAGE_TANGENT_FULL` | `nonlingeo.c`, `resultsmech.f` | **no** | - | [DAMAGE TANGENT FULL] the consistent-tangent cut-off is taken on the SAME damage variable the stress uses instead of the stock D<0.999. This CHANGES THE OPERATOR and |
 | `CCX_DAMAGE_TMIN` | `nonlingeo.c` | **no** | - | [DAMAGE TMIN] minimum increment overridden: <value> -> <value> (physical units). The statics.f 1e-6*tper floor is bypassed; the stock cutback machinery is otherwise untouched. |
 | `CCX_DAMAGE_TR_D0` | `nonlingeo.c` | **no** | - |  |
@@ -189,7 +190,7 @@ this tree.  It is a presence check, not a quality one.
 
 ## The retirement queue
 
-54 option(s) have no declaration, no test that sets them and no
+53 option(s) have no declaration, no test that sets them and no
 prose anywhere but the line that reads them.  A switch in this state
 has no defenders: retiring it means making its behaviour the default
 or deleting it, and either is progress where leaving it is not.
@@ -230,7 +231,6 @@ or deleting it, and either is progress where leaving it is not.
 - `CCX_DAMAGE_REEQ_RESCUE3` (`nonlingeo.c`)
 - `CCX_DAMAGE_RESCUE_WINDOW` (`nonlingeo.c`)
 - `CCX_DAMAGE_RESIDUAL_RAY` (`nonlingeo.c`)
-- `CCX_DAMAGE_TANGENT_CENSUS` (`nonlingeo.c`)
 - `CCX_DAMAGE_TR_D0` (`nonlingeo.c`)
 - `CCX_DAMAGE_TR_LINCHECK_IT` (`nonlingeo.c`)
 - `CCX_DAMAGE_TR_LINCHECK_NIT` (`nonlingeo.c`)
