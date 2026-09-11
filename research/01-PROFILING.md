@@ -406,6 +406,34 @@ solve settles the question in one line; if it is refinement, then the cost of
 the floor is measurable and `damggmin` becomes a knob with a price on it
 rather than a comment.  **Stated before the measurement.**
 
+#### Confirmed
+
+`iparm(7)` is now read and reported.  Both arms:
+
+| deck | solves | refinement steps | mean | max |
+|---|---|---|---|---|
+| `fast-plain` (control) | 1283 | **0** | 0.000 | 0 |
+| `s3rad`, solves 1-1300 | 1300 | **0** | 0.000 | 0 |
+| `s3rad`, solves 1300-1400 | 100 | 174 | **1.74** | 2 |
+| `s3rad`, solves 1400-1500 | 100 | 200 | **2.00** | 2 |
+
+Zero for thirteen hundred consecutive solves, and then two steps a solve -
+PARDISO's maximum - from there on.  A refinement step is another forward and
+back substitution, so two of them turn one triangular solve into three.  The
+measured step was **28 ms to 87 ms, a factor of 3.1**.
+
+The control arm was stated first and came back zero, the prediction named the
+size and the arrival, and both landed.  The triangular solve did not get
+slower; it started being performed three times.
+
+What it buys: `damggmin`, the residual-stiffness floor, has a price now.  Its
+own comment in `resultsmech.f` says a notch process zone holds thousands of
+floored elements at once and "the operator becomes badly scaled: that is the
+regime where the DHC runs stall".  That is no longer prose - it is 2 extra
+triangular solves on every linear solve for the last two thirds of the run,
+and on `s3rad` the triangular solve is 9.3% of 69 minutes, so the floor is
+costing about **four minutes of every run** in refinement alone.
+
 ## What is still open
 
 - **The `s3rad` breakdown at scale.** Two attempts were killed part way
