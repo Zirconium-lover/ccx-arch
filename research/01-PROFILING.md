@@ -296,20 +296,35 @@ MKL_NUM_THREADS = 4`, nothing else on the machine, interim tables every 120 s.
 
 Self time as a share of wall clock, one row per interim table:
 
-| at | phase 22 | assembly | **CSR fill** | residual | solve | phase 12 | analyses / factorisations |
+| at | phase 22 | assembly | **CSR fill** | solve | residual | phase 12 | analyses / factorisations |
 |---|---|---|---|---|---|---|---|
-| 120 s | 49.26% | 17.68% | **9.75%** | 8.38% | 3.38% | 0.70% | 1 / 152 |
-| 240 s | 49.21% | 17.64% | **9.66%** | 7.67% | 3.46% | 0.60% | 2 / 307 |
-| 361 s | 48.25% | 17.53% | **9.47%** | 7.97% | 3.45% | 1.07% | 6 / 458 |
-| 481 s | 48.06% | 17.41% | **9.36%** | 7.81% | 3.49% | 1.31% | 10 / 606 |
+| 120 s | 49.26% | 17.68% | **9.75%** | 3.38% | 8.38% | 0.70% | 1 / 152 |
+| 721 s | 47.26% | 17.55% | **9.33%** | 3.54% | 7.59% | 1.93% | 23 / 913 |
+| 1323 s | 45.10% | 17.38% | **9.26%** | 5.07% | 7.11% | 3.37% | 76 / 1659 |
+| 1924 s | 45.03% | 17.06% | **9.18%** | 6.82% | 6.76% | 3.12% | 102 / 2397 |
+| 2525 s | 45.19% | 17.05% | **9.22%** | 7.84% | 6.45% | 2.97% | 128 / 3165 |
+| 3006 s | 45.34% | 16.98% | **9.21%** | 8.36% | 6.45% | 2.91% | 149 / 3767 |
 
-Instrumented total 87.4%; the remaining 12.6% is everything not named by an
+At 3006 s the run is at increment 477, `theta=0.2261`, with **3361 elements
+deleted** of the roughly 3790 the deck ends with.
+
+Instrumented total 87-88%; the remaining 12% is everything not named by an
 event - deck I/O, the damage bookkeeping, the `.frd` and `.dat` writing.
 
-**The split is stable to a few tenths of a percent over four tables.**  That
-matters more than any single row: it says the shape is a property of the deck
-rather than of a transient, so a decision taken on it now will not be
-overturned by the next hour of the run.
+**Three of the six shares are flat to a tenth of a percent across fifty
+minutes**: assembly 17.7 -> 17.0, CSR fill 9.75 -> 9.21, structure hash 0.12
+throughout.  That is what makes them decidable now rather than after the run.
+
+**Two move, and they move against each other.**  Numeric factorisation falls
+49.3 -> 45.3 while the triangular solve rises 3.4 -> 8.4 - and per call the
+factorisation is FLAT the whole time.  That is one event, not two, and it has
+its own section below.
+
+**One rises on its own**: symbolic analysis, 0.70% -> 2.91%, from 1 re-analysis
+in 152 factorisations to 149 in 3767.  The sparsity pattern is being rebuilt
+four times as often as at the start, which is erosion doing exactly what was
+predicted of it - and at 4% of factorisations it is still cheaper than not
+reusing at all.
 
 Three things to take from it.
 
