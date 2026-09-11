@@ -50,8 +50,11 @@
 #define LOGVIEW_ROOT     LOGVIEW_MAXEVENT   /* the caller of the outermost */
 
 static ITG    logview_armed=-1;     /* -1 not yet decided, 0 off, 1 on     */
-static ITG    logview_reported=0;   /* the report is printed exactly once   */
+static ITG    logview_reported=0;   /* the FINAL report is printed once     */
 static double logview_t0=0.;        /* when the instrument was armed        */
+static double logview_every=600.;   /* seconds between interim reports      */
+static double logview_last=0.;      /* when the last interim report went out*/
+static ITG    logview_ninterim=0;
 static ITG    logview_nevent=0;
 static ITG    logview_broken=0;     /* an unbalanced end or a full stack   */
 static const char *logview_name[LOGVIEW_MAXEVENT];
@@ -74,13 +77,17 @@ static double logview_now(void){
 }
 
 static void logview_atexit(void);
+static void logview_table(double totalseconds,ITG interim);
 
 ITG logview_enabled(void){
   if(logview_armed<0){
     const char *e=ccxopt_getenv("CCX_LOG_VIEW");
     logview_armed=((e!=NULL)&&(e[0]!='\0')&&(strcmp(e,"0")!=0))?1:0;
     if(logview_armed){
+      const char *w=getenv("CCX_LOG_VIEW_EVERY");
+      if(w!=NULL) logview_every=atof(w);
       logview_t0=logview_now();
+      logview_last=logview_t0;
       /* Most of the runs worth profiling do not reach the end of main: a
          deck that walls leaves through the *ERROR path, and the wrapped gate
          case is exactly such a run.  A profile you can only collect from a
@@ -136,6 +143,19 @@ void logview_end(ITG id){
   logview_pcalls[parent][id]++;
   logview_pincl[parent][id]+=dt;
   if(logview_depth>0) logview_child[logview_depth-1]+=dt;
+
+  /* An interim report, at the top level only.
+     Two 2.3-hour runs of the target deck were killed part way through and
+     produced NO profile at all, because the table was printed from atexit.
+     A profiler that reports only at the end is useless on exactly the runs
+     it exists for: the long ones, which are also the ones most likely to be
+     interrupted.  The cost is one table per CCX_LOG_VIEW_EVERY seconds. */
+  if((logview_depth==0)&&(logview_every>0.)&&
+     (t-logview_last>=logview_every)){
+    logview_last=t;
+    logview_ninterim++;
+    logview_table(t-logview_t0,1);
+  }
 }
 
 /* Self test.  What it has to establish is that the two numbers the report
@@ -272,10 +292,17 @@ static void logview_atexit(void){
 }
 
 void logview_report(double totalseconds){
-  ITG i,j,order[LOGVIEW_MAXEVENT],n,a,b,tmp;
   if(!logview_enabled()) return;
   if(logview_reported) return;
   logview_reported=1;
+  if(logview_ninterim>0)
+    printf("[LOGVIEW] final report; %" ITGFORMAT " interim report(s) preceded "
+           "it in this log\n",logview_ninterim);
+  logview_table(totalseconds,0);
+}
+
+static void logview_table(double totalseconds,ITG interim){
+  ITG i,j,order[LOGVIEW_MAXEVENT],n,a,b,tmp;
   if(logview_nevent<=0){
     printf("[LOGVIEW] armed, but nothing was instrumented\n");fflush(stdout);return;}
   if(logview_selftest()!=0){
@@ -302,8 +329,9 @@ void logview_report(double totalseconds){
       if(logview_self[b]>logview_self[a]){tmp=order[i];order[i]=order[j];order[j]=tmp;}
     }
   }
-  printf("\n[LOGVIEW] %.3f s of run, %" ITGFORMAT " instrumented event(s).  "
-         "self = the event with its children removed.\n",totalseconds,n);
+  printf("\n[LOGVIEW]%s %.3f s of run, %" ITGFORMAT " instrumented event(s).  "
+         "self = the event with its children removed.\n",
+         interim?" INTERIM":"",totalseconds,n);
   printf("[LOGVIEW] %-28s %10s %12s %12s %7s %12s\n",
          "event","calls","incl (s)","self (s)","%run","us/call");
   for(i=0;i<n;i++){
@@ -324,7 +352,8 @@ void logview_report(double totalseconds){
     }
   }
   /* one machine-readable line, so two arms can be diffed rather than read */
-  printf("[LOGVIEW_JSON] {\"total\":%.6f,\"events\":[",totalseconds);
+  printf("[LOGVIEW_JSON] {\"interim\":%d,\"total\":%.6f,\"events\":[",
+         interim?1:0,totalseconds);
   for(i=0,j=0;i<n;i++){
     if(logview_calls[i]==0) continue;
     printf("%s{\"name\":\"%s\",\"calls\":%" ITGFORMAT

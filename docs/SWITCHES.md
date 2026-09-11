@@ -6,12 +6,12 @@ Two tables, and the difference between them is the point.
 
 | | |
 |---|---|
-| names the binary reads | **141** |
-| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **32** |
+| names the binary reads | **142** |
+| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **33** |
 | undeclared, documented only by whatever the source says of them | 109 |
 | **explained nowhere at all** | **54** |
 | exercised by `test/regress/run.py` | 17 |
-| **never set by any test in this tree** | **124** |
+| **never set by any test in this tree** | **125** |
 | **no declaration, no test and no prose - the retirement queue** | **54** |
 
 Every run prints the ones that are set (`[SWITCHES]` at the top of any
@@ -51,6 +51,7 @@ are read from the declaration, not from the line that reads it.
 | `CCX_FRACTURE_LINK` | enum | NODE | NODE\|node\|FACE\|face | - | what counts as a connection when the termination test walks the live bulk: sharing a node, or sharing a whole face |
 | `CCX_FRACTURE_TERMINATION` | string | unset (never terminates) | - | yes | SETA:SETB - stop the run when no load path remains between these two node sets.  This is the only thing standing between a run and the phantom regime of 05-DEBT.md item 1 |
 | `CCX_LOG_VIEW` | bool | unset (off) | - | - | print where the run spent its time: named events with a call count, an inclusive and a self time, and who called whom.  Measurement only; the run is bit-identical with it on |
+| `CCX_LOG_VIEW_EVERY` | real | 600 (ten minutes) | - | - | seconds between INTERIM profile reports; 0 prints only at exit.  Its defender: two 2.3-hour runs of the target deck were killed part way through and produced no profile at all, because the table was printed from atexit.  A profiler that reports only at the end is useless on exactly the runs it exists for |
 | `CCX_PARDISO_REUSE_SYMBOLIC` | enum | off | 1\|ON\|on\|YES\|yes | yes | keep PARDISO's symbolic factorisation across numerical factorisations, keyed on a hash of the sparsity pattern.  MEASURED: it retains the analysis for 603 of 606 factorisations on fast-wrapped and buys nothing outside run-to-run noise (handover/04-REFUTED.md) |
 | `CCX_PATHFOLLOW` | real | unset (off) | - | yes | dissipation path following: tau per increment.  Must be strictly positive; the code refuses to arm otherwise |
 | `CCX_PATHFOLLOW_DTHETA` | real | 1.e-3 | - | yes | the load-factor increment at which path following engages; a non-positive value falls back to the default |

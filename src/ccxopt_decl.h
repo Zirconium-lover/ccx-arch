@@ -213,6 +213,13 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "zero",NULL},
 
 /* ---- measurement -------------------------------------------------- */
+{"CCX_LOG_VIEW_EVERY",CCXOPT_REAL,"600 (ten minutes)",CCXOPT_UNBOUNDED,NULL,
+ "seconds between INTERIM profile reports; 0 prints only at exit.  Its "
+ "defender: two 2.3-hour runs of the target deck were killed part way "
+ "through and produced no profile at all, because the table was printed "
+ "from atexit.  A profiler that reports only at the end is useless on "
+ "exactly the runs it exists for",NULL},
+
 {"CCX_LOG_VIEW",CCXOPT_BOOL,"unset (off)",CCXOPT_UNBOUNDED,NULL,
  "print where the run spent its time: named events with a call count, an "
  "inclusive and a self time, and who called whom.  Measurement only; the run "
