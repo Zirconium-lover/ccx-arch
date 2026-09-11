@@ -79,6 +79,54 @@ static ITG pardiso_symbolic_reuse_requested(void)
 static ITG pardiso_cgs_mode=-1;
 static double *pardiso_cgs_rhs=NULL;
 static ITG pardiso_cgs_nrhs=1,pardiso_cgs_done=0;
+
+/* Iterative refinement, counted.
+
+   iparm(7) - iparm[6] here - is the number of refinement steps PARDISO
+   ACTUALLY performed for a solve, as opposed to iparm(8) which only bounds
+   them.  Nothing in this tree read it, and the complete s3rad profile
+   (research/01-PROFILING.md) turned that into a question with no answer: the
+   triangular solve steps from 28 ms a call to 87 ms across two 120-second
+   windows while the numeric factorisation that produced those factors stays
+   flat at 377 ms, the system size moves 0.3%, solves per factorisation stay
+   at exactly 1.00, and the CGS path is not armed.  Refinement is the only
+   candidate left that makes a back substitution three times more expensive
+   without touching the factorisation.
+
+   The falsifiable form: if this is refinement, the fast decks - which have
+   no notch process zone holding thousands of elements at the residual
+   stiffness floor - report a mean near zero, and s3rad reports a mean near
+   two with the rise landing at increments 195-222.  If both report zero, the
+   hypothesis is dead and the cost is somewhere else. */
+
+static double pardiso_ref_solves=0.,pardiso_ref_steps=0.;
+static ITG pardiso_ref_max=0,pardiso_ref_atexit=0;
+static ITG pardiso_ref_every=200;
+
+static void pardiso_refine_report(void){
+  if(pardiso_ref_solves<=0.) return;
+  printf("[PARDISO REFINE] solves=%.0f steps=%.0f mean=%.3f max=%" ITGFORMAT
+         "\n",pardiso_ref_solves,pardiso_ref_steps,
+         pardiso_ref_steps/pardiso_ref_solves,pardiso_ref_max);
+  fflush(stdout);
+}
+
+static void pardiso_refine_note(ITG steps){
+  if(!pardiso_ref_atexit){
+    const char *e=ccxopt_getenv("CCX_PARDISO_REFINE_EVERY");
+    if(e!=NULL){
+      ITG v=(ITG)atoi(e);
+      if(v>0) pardiso_ref_every=v;
+    }
+    pardiso_ref_atexit=1;
+    atexit(pardiso_refine_report);
+  }
+  pardiso_ref_solves+=1.;
+  pardiso_ref_steps+=(double)steps;
+  if(steps>pardiso_ref_max) pardiso_ref_max=steps;
+  if((pardiso_ref_every>0)&&
+     (((ITG)pardiso_ref_solves)%pardiso_ref_every==0)) pardiso_refine_report();
+}
 static ITG pardiso_cgs_ok=0,pardiso_cgs_fail=0,pardiso_cgs_iter=0;
 
 static ITG pardiso_cgs_level(void)
@@ -598,6 +646,8 @@ void pardiso_solve(double *b, ITG *neq,ITG *symmetryflag,ITG *inputformat,
   FORTRAN(pardiso,(pt,&maxfct,&mnum,&mtype,&phase,neq,aupardiso,
 		   pointers,icolpardiso,perm,nrhs,iparm,&msglvl,
                    b,x,&error));
+
+  pardiso_refine_note(iparm[6]);
 
   for(i=0;i<*nrhs**neq;i++){b[i]=x[i];}
   SFREE(x);

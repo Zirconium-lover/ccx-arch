@@ -84,7 +84,7 @@ ITG logview_enabled(void){
     const char *e=ccxopt_getenv("CCX_LOG_VIEW");
     logview_armed=((e!=NULL)&&(e[0]!='\0')&&(strcmp(e,"0")!=0))?1:0;
     if(logview_armed){
-      const char *w=getenv("CCX_LOG_VIEW_EVERY");
+      const char *w=ccxopt_getenv("CCX_LOG_VIEW_EVERY");
       if(w!=NULL) logview_every=atof(w);
       logview_t0=logview_now();
       logview_last=logview_t0;

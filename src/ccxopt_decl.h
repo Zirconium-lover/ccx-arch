@@ -250,6 +250,14 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "zero",NULL},
 
 /* ---- measurement -------------------------------------------------- */
+{"CCX_PARDISO_REFINE_EVERY",CCXOPT_INT,"200 (solves between reports)",
+ CCXOPT_UNBOUNDED,NULL,
+ "how often [PARDISO REFINE] prints the running count of iterative "
+ "refinement steps PARDISO actually performed - iparm(7), which nothing read "
+ "until 2026-09-11. A cumulative line every N solves so that consecutive "
+ "lines can be differenced the way the LOGVIEW interim tables are. A "
+ "non-positive value reports only at exit",NULL},
+
 {"CCX_LOG_VIEW_EVERY",CCXOPT_REAL,"600 (ten minutes)",CCXOPT_UNBOUNDED,NULL,
  "seconds between INTERIM profile reports; 0 prints only at exit.  Its "
  "defender: two 2.3-hour runs of the target deck were killed part way "
