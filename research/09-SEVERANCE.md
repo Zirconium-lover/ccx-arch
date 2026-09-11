@@ -156,3 +156,90 @@ surviving bulk cell at increment 598) and the last
 facet is dead when value 4 - `xstate` index 3, the same index
 `damstate_facet_dead` reads - is at or above 0.5 at all three integration
 points.
+
+---
+
+# What the ligament actually is
+
+The minimum cut is not a band, a thread or a process zone.  It is **one
+triangular element face**.
+
+    the cut          1 face, area 0.01092, weighted 0.003054
+    joining          bulk element 29869 (D = 0.000000)
+                  to bulk element 39927 (D = 0.720346)
+    shared nodes     251, 3595, 7180
+    centroids        (2.092, 3.575, 1.491) and (2.011, 3.575, 1.530)
+
+Verified the blunt way rather than trusted from the max-flow: remove that
+single adjacency from the sweep and leave everything else in place, and
+**grip B becomes unreachable**.  Nothing else connects the two halves.
+
+Three things about it, and each one matters.
+
+**It is at a free corner.**  The specimen's cross-section spans y from 0.02
+to 3.58 and z from 0.02 to 1.58.  The two elements sit at y = 3.575 and
+z ≈ 1.51 - the outermost edge in both.  That is the least stressed place in
+the section, which is exactly why the damage variable never got there: one
+of the two elements is at **D = 0.000**, entirely undamaged, and the other at
+0.720, well below the 0.999 that triggers terminal deletion and nowhere near
+the residual-stiffness floor.
+
+**The damage model is not wrong about it.**  A free corner carries little
+load while the section is intact, so it damages last.  The crack swept the
+whole section and left the corner behind.  This is not a defect in the
+constitutive law; it is what a local damage law does at a free edge.
+
+**But a single shared face between two tetrahedra is a hinge.**  It
+transmits force through three nodes and has essentially no bending
+stiffness: the joint has near-zero-energy rotational modes.  `damconnect.f`
+already makes this argument one level down, for a *vertex* contact, and
+records what it cost - E-75, "two pieces of 12500 and 13300 elements ...
+joined through ONE tetrahedron touching each of them at a single vertex ...
+the node-level sweep reads it as a load path, so `[FRACTURE COMPLETE]` never
+fired".  The `FACE` link rule was written for that case and it does not help
+here, because here the connection genuinely *is* a whole face.  The rule is
+correct and the answer is still useless.
+
+## Which settles what the wall is
+
+The run ends with `reason=too-slow-cutback-below-tmin` and
+`*ERROR: increment size smaller than minimum`, which reads as Newton giving
+up.  It is not.  **By increment 599 the model is a mechanism**: two bodies
+joined at one triangle, under prescribed displacement, with the hinge free to
+rotate.  A mechanism has a singular or near-singular tangent; the Newton
+direction is unbounded and no step length rescues it.  Cutting back the
+increment cannot help, because the problem is not that the step is too large.
+
+That also disposes of a hope raised by the survey.  **Dissipation path
+following cannot remove this wall** - and not because it is badly
+implemented.  A path follower traces an equilibrium branch through a limit
+point or a snap-back by choosing a better control parameter.  Here there is
+no branch left to trace: the structure has lost the degrees of freedom that
+made it a structure.  Controlling the load parameter differently does not
+give a hinge a stiffness.
+
+## What would actually produce two pieces
+
+The specimen is severed everywhere except one corner face, and the corner
+face will never fail on its own, because a local damage law at a free edge
+under a load path that no longer passes through it has nothing to respond to.
+So the decision has to be made by the *model statement*, not by the
+constitutive law:
+
+1. **Judge the load path by area, not by existence.**  `CCX_FRACTURE_LINK`
+   already chose between two boolean conduction rules - NODE and FACE - after
+   E-75 showed a vertex was not a load path.  The same argument, taken one
+   step further, says a *single face* is not a load path either, and the step
+   after that says the question was never boolean.  A minimum cut is the
+   quantity; a threshold on it, stated in the deck as a fraction of the
+   nominal section, is the criterion.  On this run the cut falls to 0.05% of
+   a section, so any sane threshold fires long before increment 599.
+
+2. **Then the specimen separates on its own.**  Once the last hinge is
+   recognised, deleting it - or simply stopping - ends the run with the two
+   pieces the experiment produces, and `[FRACTURE COMPLETE]` becomes a
+   statement about the specimen rather than a lottery on whether the final
+   element happened to cross a deletion threshold.
+
+Both are model statements a deck author can make and defend.  Neither is a
+solver change.
