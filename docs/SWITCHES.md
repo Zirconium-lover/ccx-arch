@@ -6,13 +6,13 @@ Two tables, and the difference between them is the point.
 
 | | |
 |---|---|
-| names the binary reads | **147** |
-| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **39** |
+| names the binary reads | **149** |
+| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **41** |
 | undeclared, documented only by whatever the source says of them | 108 |
-| **explained nowhere at all** | **52** |
+| **explained nowhere at all** | **51** |
 | exercised by `test/regress/run.py` | 17 |
-| **never set by any test in this tree** | **130** |
-| **no declaration, no test and no prose - the retirement queue** | **52** |
+| **never set by any test in this tree** | **132** |
+| **no declaration, no test and no prose - the retirement queue** | **51** |
 
 Every run prints the ones that are set (`[SWITCHES]` at the top of any
 `run.log`), validates the declared ones against their type and range,
@@ -50,6 +50,8 @@ are read from the declaration, not from the line that reads it.
 | `CCX_DAMAGE_VISCOSITY` | real | 0 (off) | - | yes | viscous regularisation eta for the damage evolution; negative values are clamped to zero |
 | `CCX_DISSIPATION_CONTROL` | enum | unset (off) | 1\|2 | - | dissipation control mode; 2 assembles the f_hat = dR/dlambda vector.  Inert unless CCX_DISSIPATION_TARGET is positive |
 | `CCX_DISSIPATION_TARGET` | real | unset (off) | - | - | dissipation target per increment; a positive value also turns the dissipation report on |
+| `CCX_FRACTURE_CUT` | real | unset (off) | [0, 1] | - | stop when the load path between the CCX_FRACTURE_TERMINATION sets has narrowed to this FRACTION of the width it had at the first committed deletion batch.  The width is the minimum cut - the smallest total (shared face area x residual stiffness) that would have to break to separate them - so this is a quantity where the other four termination switches ask a yes/no.  Measured on s3rad: every topological rule says CONNECTED at the end of a run whose two grips are joined by ONE triangular face, 0.05 percent of a section, carrying 2.1 percent of peak load (research/09-SEVERANCE.md).  Off by default and bit-identical when off; the measure has a self test and refuses to arm if it fails |
+| `CCX_FRACTURE_CUT_EXACT` | bool | unset (off) | - | - | with CCX_FRACTURE_CUT armed, disable the early exit so every committed batch reports the TRUE minimum cut instead of a lower bound.  Costs a full max-flow per batch - about 1.6 percent of an s3rad run - and is how the cut trajectory is measured before a stopping fraction is chosen. Without it the reported number is printed as cut>= and ratio>=, because that is what it is |
 | `CCX_FRACTURE_DEADFACET` | bool | unset (off) | - | - | exclude a cohesive facet whose every integration point has failed from the load path used by the termination test.  Any value except the string 0 means on |
 | `CCX_FRACTURE_LINK` | enum | NODE | NODE\|node\|FACE\|face | - | what counts as a connection when the termination test walks the live bulk: sharing a node, or sharing a whole face |
 | `CCX_FRACTURE_TERMINATION` | string | unset (never terminates) | - | yes | SETA:SETB - stop the run when no load path remains between these two node sets.  This is the only thing standing between a run and the phantom regime of 05-DEBT.md item 1 |
@@ -119,7 +121,7 @@ code says nothing there at all.
 | `CCX_DAMAGE_FD_SKIP` | `resultsmech.f` | **no** | - |  |
 | `CCX_DAMAGE_FLOAT_FACE` | `damfloat.f` | **no** | - |  |
 | `CCX_DAMAGE_FREE_PROBE` | `nonlingeo.c` | **no** | - |  |
-| `CCX_DAMAGE_GMIN` | `mafilldamas.f`, `resultsmech.f` | **no** | - |  |
+| `CCX_DAMAGE_GMIN` | `mafilldamas.f`, `resultsmech.f` | yes | - |  |
 | `CCX_DAMAGE_GMIN_TANGENT` | `resultsmech.f` | **no** | - |  |
 | `CCX_DAMAGE_LS_LEGACY` | `nonlingeo.c` | yes | - | [DAMAGE LINESEARCH] LEGACY ladder: floor <value>, <value> trials, |
 | `CCX_DAMAGE_LS_MIN` | `nonlingeo.c` | **no** | - | (from the comment above it) The damage line search is clamped to a compiled-in floor and trial cap. On m12_field_soft50 both bind SIMULTANEOUSLY on every iteration of the failing increment - lambda pinned at exactly 0.100 with trials=3, seven iterations running, residual oscillating in 1.70e-3..2.30e-3 with no contraction and a stable active set (E-81). A search that asks for a shorter step on every iteration and is refused on every iteration is a search whose floor is the binding constraint, not a search that has converged. The structural FD probe says the tangent there is NOT the problem: 2.52e-3 median at the wall against a 1.33e-4 elastic noise floor on the same deck and SP1's healthy 1.92e-3 (E-91). So make the two clamps measurable instead of assumed. Defaults are the compiled-in values, so an unset environment is bit-identical. |
@@ -194,7 +196,7 @@ this tree.  It is a presence check, not a quality one.
 
 ## The retirement queue
 
-52 option(s) have no declaration, no test that sets them and no
+51 option(s) have no declaration, no test that sets them and no
 prose anywhere but the line that reads them.  A switch in this state
 has no defenders: retiring it means making its behaviour the default
 or deleting it, and either is progress where leaving it is not.
@@ -221,7 +223,6 @@ or deleting it, and either is progress where leaving it is not.
 - `CCX_DAMAGE_FD_SKIP` (`resultsmech.f`)
 - `CCX_DAMAGE_FLOAT_FACE` (`damfloat.f`)
 - `CCX_DAMAGE_FREE_PROBE` (`nonlingeo.c`)
-- `CCX_DAMAGE_GMIN` (`mafilldamas.f`, `resultsmech.f`)
 - `CCX_DAMAGE_GMIN_TANGENT` (`resultsmech.f`)
 - `CCX_DAMAGE_NONLOCAL_ELL_MAT` (`damnonlocal.f`)
 - `CCX_DAMAGE_NONLOCAL_LOCALIZING` (`damnonlocal.f`)

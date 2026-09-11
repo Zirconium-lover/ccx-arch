@@ -75,6 +75,27 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "sets.  This is the only thing standing between a run and the phantom "
  "regime of 05-DEBT.md item 1",NULL},
 
+{"CCX_FRACTURE_CUT",CCXOPT_REAL,"unset (off)",0.,1.,NULL,
+ "stop when the load path between the CCX_FRACTURE_TERMINATION sets has "
+ "narrowed to this FRACTION of the width it had at the first committed "
+ "deletion batch.  The width is the minimum cut - the smallest total "
+ "(shared face area x residual stiffness) that would have to break to "
+ "separate them - so this is a quantity where the other four termination "
+ "switches ask a yes/no.  Measured on s3rad: every topological rule says "
+ "CONNECTED at the end of a run whose two grips are joined by ONE "
+ "triangular face, 0.05 percent of a section, carrying 2.1 percent of "
+ "peak load (research/09-SEVERANCE.md).  Off by default and bit-identical "
+ "when off; the measure has a self test and refuses to arm if it fails",
+ NULL},
+
+{"CCX_FRACTURE_CUT_EXACT",CCXOPT_BOOL,"unset (off)",CCXOPT_UNBOUNDED,NULL,
+ "with CCX_FRACTURE_CUT armed, disable the early exit so every committed "
+ "batch reports the TRUE minimum cut instead of a lower bound.  Costs a "
+ "full max-flow per batch - about 1.6 percent of an s3rad run - and is how "
+ "the cut trajectory is measured before a stopping fraction is chosen. "
+ "Without it the reported number is printed as cut>= and ratio>=, because "
+ "that is what it is",NULL},
+
 {"CCX_FRACTURE_DEADFACET",CCXOPT_BOOL,"unset (off)",CCXOPT_UNBOUNDED,NULL,
  "exclude a cohesive facet whose every integration point has failed from the "
  "load path used by the termination test.  Any value except the string 0 "

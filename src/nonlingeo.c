@@ -1903,6 +1903,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_de1_gt09=0,damage_de1_nfull=0,damage_de1_nchanged=0,
     damage_de12_enabled=0,damage_de12_matcount=0,damage_dm20_matcount=0,
     damage_tangent_mode=0,damage_rank1_bad=0,damage_reeq_scale_mode=0,
+    damage_cut_on=0,damage_cut_bad=0,damage_cut_narrow=0,
+    damage_cut_exact=0,
     damage_linesearch_mode=0,damage_linesearch_active=0,
     damage_linesearch_applied=0,damage_linesearch_nsoft=0,
     damage_linesearch_trial=0,damage_linesearch_contracted=0,
@@ -1954,6 +1956,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_slow_allow=0,damage_slow_estres=0,damage_slow_estcorr=0,
     damage_slow_esttotal=0,damage_slow_maxiters=0;
 
+  double damage_cut_frac=0.,damage_cut_ref=-1.,damage_cut_now=0.;
   double *stn=NULL,*v=NULL,*een=NULL,cam[5],*epn=NULL,*cg=NULL,
     *cdn=NULL,*pslavsurfold=NULL,*fextload=NULL,
     *f=NULL,*fn=NULL,qa[4]={0.,0.,-1.,0.},qam[2]={0.,0.},dtheta,theta,
@@ -3583,6 +3586,61 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         printf("*ERROR: a rescue flag is set but rescue did NOT arm.  "
                "Stopping.%s","\n");
         fflush(stdout);FORTRAN(stop,());
+      }
+
+      /* CCX_FRACTURE_CUT: judge the load path by AREA rather than by
+         existence.  damconnect.f answers whether a chain of surviving
+         elements still links the grips and says in its own comment why it
+         can never answer more: "a nonzero stiffness is a load path, and
+         calling it broken would be a modelling decision rather than a
+         topological fact".  The modelling decision is exactly what is
+         missing, and this is where the deck gets to make it - as a
+         FRACTION of the load path the specimen started with, which is
+         dimensionless and needs no knowledge of the section area.
+
+         Measured on s3rad (research/09-SEVERANCE.md): the run ends with
+         every topological rule saying CONNECTED and the two grips joined
+         by ONE triangular face - 0.05% of a section - carrying 2.1% of
+         peak load, after spending 18.4% of its wall clock on a specimen
+         that was already finished. */
+
+      damage_cut_frac=0.;
+      damage_cut_ref=-1.;
+      damage_cut_on=0;
+      damage_cut_narrow=0;
+      damage_cut_exact=0;
+      {
+        const char *cutenv=ccxopt_getenv("CCX_FRACTURE_CUT");
+        if(cutenv!=NULL){
+          damage_cut_frac=atof(cutenv);
+          if((damage_cut_frac<=0.)||(damage_cut_frac>=1.)){
+            printf("[LOADCUT] *ERROR: CCX_FRACTURE_CUT must be a fraction "
+                   "strictly between 0 and 1; got %s.  Not armed.\n",cutenv);
+            damage_cut_frac=0.;
+          }else if(loadcut_selftest()!=0){
+            printf("[LOADCUT] *ERROR: the self test failed; refusing to "
+                   "arm rather than stop a run on a measurement that may "
+                   "be wrong.\n");
+            damage_cut_frac=0.;
+          }else{
+            damage_cut_on=1;
+            if(ccxopt_getenv("CCX_FRACTURE_CUT_EXACT")!=NULL){
+              damage_cut_exact=1;
+              printf("[LOADCUT] the early exit is DISABLED: every batch "
+                     "reports the true cut rather than a lower bound.  "
+                     "Costs a full max-flow per committed batch and is "
+                     "how the trajectory is measured before a threshold "
+                     "is chosen.\n");
+            }
+            printf("[LOADCUT] armed: the run stops when the minimum cut "
+                   "between the termination sets falls below %.4g of its "
+                   "value at the first committed batch.\n",damage_cut_frac);
+            printf("[LOADCUT] the cut is the smallest total (face area x "
+                   "residual stiffness) that would have to break to "
+                   "separate them - a width, not a yes/no.\n");
+            fflush(stdout);
+          }
+        }
       }
 
       damage_fracture_env=ccxopt_getenv("CCX_FRACTURE_TERMINATION");
@@ -13947,6 +14005,73 @@ damage_active_set_closed:
                                   damage_fracture_a,damage_fracture_b,
                                   &damage_conn,&damage_conn_reach,
                                   &damage_fracture_link,damage_ifacdead));
+
+          /* the same question asked as a width.  It runs beside the
+             boolean rather than instead of it, so the boolean's answer -
+             and every baseline that depends on it - is untouched. */
+
+          if((damage_cut_on==1)&&(damage_cut_bad==0)){
+            ITG *lc_a=NULL,*lc_b=NULL,lc_na=0,lc_nb=0,lc_nf=0,lc_nel=0,
+                lc_bel=0,lc_ex=1;
+            double lc_target=-1.;
+            if((loadcut_sets(set,*nset,istartset,iendset,ialset,
+                             damage_fracture_seta,&lc_a,&lc_na)==1)&&
+               (loadcut_sets(set,*nset,istartset,iendset,ialset,
+                             damage_fracture_setb,&lc_b,&lc_nb)==1)){
+              if((damage_cut_ref>0.)&&(damage_cut_exact==0))
+                lc_target=damage_cut_frac*damage_cut_ref;
+              damage_cut_now=loadcut_width(co,ipkon,kon,lakon,*ne,*nk,
+                                           lc_a,lc_na,lc_b,lc_nb,dam,mi,
+                                           1.e-4,damage_ifacdead,lc_target,
+                                           &lc_nf,&lc_nel,&lc_bel,&lc_ex);
+              if(damage_cut_now<0.){
+                damage_cut_bad=1;
+              }else{
+                if(damage_cut_ref<0.){
+                  damage_cut_ref=damage_cut_now;
+                  printf("[LOADCUT] reference cut at the first committed "
+                         "batch: %.6e over %" ITGFORMAT " element(s) and %"
+                         ITGFORMAT " shared face(s)\n",
+                         damage_cut_ref,lc_nel,lc_nf);
+                }
+                /* an early exit returns a LOWER BOUND, not the cut, and
+                   the report has to say which */
+                printf("[LOADCUT] inc=%" ITGFORMAT " cut%s%.6e ratio%s%.6e "
+                       "conn=%" ITGFORMAT "\n",iinc,
+                       lc_ex?"=":">=",
+                       lc_ex?damage_cut_now:lc_target,
+                       lc_ex?"=":">=",
+                       (damage_cut_ref>0.)?
+                         (lc_ex?damage_cut_now/damage_cut_ref:damage_cut_frac)
+                         :1.,
+                       damage_conn);
+                if((damage_cut_ref>0.)&&(damage_cut_narrow==0)&&
+                   ((lc_bel==1)||((damage_cut_exact==1)&&
+                     (damage_cut_now<damage_cut_frac*damage_cut_ref)))){
+                  damage_cut_narrow=1;
+                  damage_fracture_complete=1;
+                  printf("\n[FRACTURE COMPLETE] inc=%" ITGFORMAT
+                         " step_time=%.12e\n"
+                         "                    the load path between %s and "
+                         "%s has narrowed to %.4g of its\n"
+                         "                    original width, below the "
+                         "%.4g the deck asked for.  The topological\n"
+                         "                    sweep still calls them %s.\n\n",
+                         iinc,theta**tper,damage_fracture_seta,
+                         damage_fracture_setb,
+                         damage_cut_now/damage_cut_ref,damage_cut_frac,
+                         damage_conn?"CONNECTED":"disconnected");
+                }
+                fflush(stdout);
+              }
+            }else{
+              damage_cut_bad=1;
+              printf("[LOADCUT] *WARNING: could not resolve the "
+                     "termination node sets; the width is not reported.\n");
+            }
+            free(lc_a); free(lc_b);   /* plain malloc in loadcut.c */
+          }
+
           if(damage_conn==0){
             damage_fracture_complete=1;
             printf("\n[FRACTURE COMPLETE] inc=%" ITGFORMAT

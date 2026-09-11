@@ -4195,6 +4195,14 @@ void FORTRAN(damsnapcheck,(double *co,ITG *kon,ITG *ipkon,char *lakon,
    elements, assembled on top of the symmetric pass that mafillsmas.f
    has already mirrored into the upper half of au */
 
+double loadcut_width(double *co,ITG *ipkon,ITG *kon,char *lakon,ITG ne,
+                     ITG nk,const ITG *nodesa,ITG na,
+                     const ITG *nodesb,ITG nb,
+                     const double *dam,const ITG *mi,double gmin,
+                     const ITG *ifacdead,double target,
+                     ITG *nfaces,ITG *nelem,ITG *ibelow,ITG *iexact);
+ITG loadcut_selftest(void);
+
 void FORTRAN(damrank1test,(ITG *nbad));
 
 void FORTRAN(mafilldamas,(double *co,ITG *kon,ITG *ipkon,char *lakon,

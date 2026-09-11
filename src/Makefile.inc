@@ -1116,6 +1116,7 @@ lsladder.c \
 damstate.c \
 ccxopt.c \
 census.c \
+loadcut.c \
 opcheck.c \
 monitor.c \
 logview.c \
