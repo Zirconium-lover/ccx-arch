@@ -232,6 +232,14 @@ def main():
     print("preflight  comparison layer: %s"%
           (cd.stdout.strip().splitlines() or ['no output'])[-1])
     if cd.returncode!=0: preflight_bad+=1
+
+    # The path-follower diagnostic judges a mechanism nobody could judge
+    # before; a diagnostic that has itself gone wrong is worse than none,
+    # so its own self test runs here with the others.
+    pf=sh('python3 %s/tools/pathfollow.py --selftest'%ROOT,base_env([]))
+    print("preflight  path-follower diagnostic: %s"%
+          (pf.stdout.strip().splitlines()[-1] if pf.stdout.strip() else "no output"))
+    if pf.returncode!=0: preflight_bad+=1
     spec=json.load(open(HERE/'cases.json'))
     cases=[c for c in spec['cases'] if not a.k or a.k in c['name']]
     outroot=pathlib.Path(a.o or (HERE/'_runs'/time.strftime('%Y%m%d-%H%M%S'))).resolve()

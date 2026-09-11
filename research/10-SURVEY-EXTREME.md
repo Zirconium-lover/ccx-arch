@@ -191,7 +191,7 @@ So the ranked recommendation, cheapest first:
 | rank | what | why it is first | cost |
 |---|---|---|---|
 | 1 | reaction-drop termination | 18.4% of `s3rad` wall clock, and it deletes the failure mode rather than surviving it | one scalar, one comparison |
-| 2 | arm `CCX_PATHFOLLOW` on `s3rad` and measure | the established answer to this exact failure is already compiled in and switched off | one run |
+| 2 | ~~arm `CCX_PATHFOLLOW` on `s3rad`~~ **WITHDRAWN** | measured: at `tau=1e-3` it ends `rc=0 theta=1.0` having deleted **zero** elements, with the load factor stalled at `lambda=0.013`. It reports success and fractures nothing, because the completion test reads `theta` while the follower drives `lambda`. `research/11-PATHFOLLOW.md` | done, and the answer is no |
 | 3 | min-cut instead of connectivity in the termination report | turns "is this a specimen" from a boolean decided by one element into an area | one max-flow at commit time |
 | 4 | an energy budget for the globalization, Abaqus `ALLSDTOL` style | would let every mechanism state its price, which is what §5 is really asking for | a real piece of work |
 | 5 | mesh-density study for localisation | decides whether the walls are physics or discretisation | two runs |
