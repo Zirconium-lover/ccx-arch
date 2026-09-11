@@ -40,6 +40,43 @@ A transition count that stays flat at, say, 19 down to `eps=6.1e-5` is not
 "nearly converged", it is "there is no step, however small, that does not
 change the model". Newton cannot converge on a kink it cannot step off.
 
+> ### ⚠ Readings of this section taken in the process zone are subject to re-check
+>
+> Measured 2026-09-11 (`research/03-OPERATOR.md`): **the assembled tangent is
+> not the differential of the residual anywhere in the damaging phase of a
+> run** — 24 to 345 coefficients per probed column out of 20604, in both
+> tangent modes, on a residual that is locally smooth.
+>
+> Be precise about what that does and does not do.
+>
+> **It does not change the converged answer.** Convergence is judged on the
+> RESIDUAL, and the residual is computed by `results()`, which the tangent
+> does not touch. An increment that converges converges to the right state
+> whatever the operator was.
+>
+> **What it destroys is the two things Newton's direction is supposed to
+> guarantee:** quadratic convergence near the solution, and that the
+> direction is a descent direction at all. The first shows up already — this
+> tree contracts by a median 0.52–0.60 per iteration with 8–16% of steps
+> quadratic (`pardiso.c`). The second is the one that matters for this
+> section: **a direction that is not guaranteed to descend makes every
+> globalization mechanism look worse than it is, and contaminates the ladder
+> census.** A ratio that will not fall as `eps → 0` can be a kink, or it can
+> be a search direction that does not point downhill because the operator
+> that produced it was wrong.
+>
+> So the third row of the table above — *erratic ratio ⇒ suspect the
+> operator* — is not a rare diagnosis to reach for last. On this code it is
+> the **standing condition** of the process zone, and the first two rows
+> cannot be read cleanly there until it is fixed.
+>
+> Practically: any §1 reading taken at a wall in the process zone, and any
+> conclusion drawn from it about which globalization mechanism helps, should
+> be re-taken once the tangent is consistent. `04-REFUTED.md` entries that
+> rest on ladder behaviour in that regime are the ones to re-check first.
+> Readings outside the process zone — the elastic bulk, and the cohesive
+> facets, both verified exact — are unaffected.
+
 **The sub-counts name WHICH kink**: `UC6 loading/unloading`, `UC6
 initiation`, `UC6 viscous`, `UC6 failure`, `UC6 tension/compression`, `bulk
 plastic`, `bulk initiation`, `bulk damage growth`. In the case that was

@@ -142,6 +142,46 @@ because the extracted code is not in the binary. Fixed with `-MMD -MP` and an
 `-include` of the generated `.d` files; a clean rebuild after the fix
 produced 195 of them.
 
+### The retroactive audit, because that sentence demands one — 2026-09-11
+
+Every bit-identity claim made in this session before the fix was made with an
+incrementally built binary. Each was re-checked against **one** reference: the
+gate artefacts of the pre-everything baseline, built clean in a fresh
+directory (`d874dcc…`).
+
+| claim | how it was built then | artefacts vs the clean baseline |
+|---|---|---|
+| logview | incremental | identical |
+| comparison layer | incremental | identical |
+| ccxopt / Options | clean at the time | identical |
+| census + monitor | incremental | identical |
+| opcheck | clean at the `-MMD` fix | identical |
+| **logview, re-built CLEAN now** | clean | **identical** |
+| **census, re-built CLEAN now** | clean | **identical** |
+| HEAD | clean | identical except `fast-wrapped-nospc/m.cvg`, which is the intended effect of §2a's fix |
+
+**Every claim holds.** The clean rebuild of the census commit reproduces, byte
+for byte, what the incremental binary produced at the time; the clean rebuild
+of the logview commit reproduces the pre-logview baseline.
+
+Two facts found while doing it, both worth keeping:
+
+- **This build is reproducible.** The same sources built in place and in a
+  separate worktree give a byte-identical executable. That makes `sha256` of
+  the binary a usable identity for a source state.
+- **But it did not match at one point in history.** A clean build of the
+  logview commit gives `d3df6015…`, while the binary used to make that
+  commit's claim was `1ca894e4…`. The build directory is long gone, so the
+  cause is not recoverable, and it is not a small difference to wave at:
+  *something* in that binary was not what its sources describe. The claim
+  survives only because the behaviour was re-verified, not because the
+  bytes agreed.
+
+The lesson for the next session is the narrow one: **binary identity is not
+a substitute for re-running the gate off a clean build, and an incremental
+build's sha means nothing.** The `-MMD` fix removes the mechanism; the audit
+is what closes the claims made before it.
+
 ## 3. Six overlapping globalization mechanisms
 
 The adaptive damage line-search ladder, transactional backtracking, Rescue

@@ -224,6 +224,37 @@ the differential of the residual for the whole damaging phase of the run**,
 and the size of the disagreement tracks how fast the probed element's damage
 is changing rather than how much damage it has.
 
+## 5a. What an inconsistent tangent does, and what it does not
+
+Worth stating precisely, because it is about to be blamed for walls.
+
+**It does not change the converged answer.** Convergence is judged on the
+**residual**, which `results()` computes and the tangent never touches. An
+increment that converges, converges to the right state whatever operator got
+it there. Nothing in `m.sta`, `m.damage` or the fracture path is wrong
+because of this.
+
+**It destroys the two guarantees Newton's direction carries.** Quadratic
+convergence near the solution — already visibly absent, at a median
+contraction of 0.52–0.60 with 8–16% of steps quadratic. And, more
+importantly here, the guarantee that the direction is a **descent** direction
+at all: that holds when the operator is the differential (and positive
+definite), and is simply not available otherwise.
+
+**The consequence is that it makes globalization look worse than it is.** A
+line search asked to find a decrease along a direction that does not descend
+will fail, ladder rung after ladder rung, and the failure is indistinguishable
+by eye from the kink signature. Six globalization mechanisms accumulated
+around exactly this regime.
+
+And it **contaminates the instrument**. `02-DIAGNOSTICS.md` §1 reads a ladder
+census in the process zone and splits kink from step-size problem by the
+behaviour of the ratio as `eps → 0`. That split assumes the direction is
+sound. It is not, in the process zone, for the whole damaging phase — so §1
+readings taken there, and any conclusion about which mechanism helps drawn
+from them, are subject to re-check. That warning is now in `02-DIAGNOSTICS.md`
+itself.
+
 ## 6. What this means
 
 `src/pardiso.c` records, from the other end and without knowing it was the
