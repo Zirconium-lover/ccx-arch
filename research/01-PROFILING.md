@@ -219,6 +219,49 @@ Split it in two, because the original wording conflates them.
   phase grows like `N^1.5` while the analysis does not, so the 35% share
   shrinks at `s3rad` size. The running profile will give the real share.
 
+### What the reuse mechanism charges, and where the 6% actually goes
+
+`pardiso_factor`'s **self** time — everything it does outside the solver call
+— is 6.1–6.3% of the `s3rad` run, about 80 ms on every factorisation. Two
+things live there: the structure hash that decides whether the analysis can
+be skipped, and the fill of MKL's CSR arrays from CalculiX's own `(ad, au,
+icol, irow)` storage. The first is the price of the reuse mechanism; the
+second is a storage-format mismatch.
+
+Instrumented separately, 300 s into a target-deck run:
+
+| | calls | total (s) | % run | ms/call |
+|---|---|---|---|---|
+| `pardiso factor` self | 235 | 18.47 | **6.15%** | 78.6 |
+| of which **structure hash** | 235 | 0.22 | **0.07%** | **0.94** |
+| of which **CSR fill** (by difference) | 235 | 18.25 | **6.08%** | **77.7** |
+
+**The hash is free and the suspicion about it was wrong.** It costs 0.94 ms
+to decide whether to skip a 202 ms analysis, and it is what makes phase 22
+possible at all. A topology-change counter in its place would recover 0.07%
+of the run: nothing.
+
+**The 6% is the format conversion.** `aupardiso[k]=au[l]` — a
+permutation-copy of the whole matrix into CSR — runs on every factorisation
+because the values change every time, even when the pattern does not. That is
+not a solver cost and not a physics cost; it is the price of assembling into
+one storage convention and factorising in another, and on the target deck it
+is of the order of **eight minutes of the 2.3 hours**.
+
+It is a *representation* decision, which `08-OBJECT-MODEL.md` §3 puts with
+the **Operator** object. Two ways to take it, neither attempted here:
+assemble directly into CSR, or precompute the permutation once per pattern
+(it is already known to be stable for ~70 factorisations at a time) and make
+the fill a straight gather. The second is much the smaller change and the
+cache already exists to hang it on.
+
+For scale, against the candidate it displaces: the remaining headroom in
+"hold the pattern fixed under erosion" is **0.8–1% of runtime** (4.6% of
+factorisations re-analysing, at 202 ms against a 774 ms factorisation). The
+conversion is six to eight times bigger and nobody had noticed it, because
+until the factorisation event was split by phase it was hidden inside a
+single 838 ms/call row.
+
 ### At `s3rad` scale
 
 From the interim tables of the target-deck run (2 threads,
