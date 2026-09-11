@@ -88,6 +88,25 @@
       ]
     },
     {
+      "name": "fast-plain-noglob",
+      "what": "the same deck with ALL FOUR armed globalization mechanisms off - the adaptive line-search ladder, Rescue 2, the dogleg trust region and the physical re-equilibration scale. MEASURED 2026-09-11: identical fracture, the same 90 elements in the same order, for 1295 Newton iterations against 1283. Taken one at a time on this deck, Rescue 2 and the dogleg change NOTHING AT ALL (542 attempts and 1283 iterations, the shipped numbers to the digit - they never fire), dropping the ladder alone is 1.9 percent BETTER, and dropping the physical scale alone is 2.8 percent worse. This case exists so that the claim 'the globalization apparatus is inert on this deck' is a gate result rather than a memory. 09-STEERING asks for the case that goes red without each mechanism; on this deck there is none.",
+      "kind": "fast",
+      "variant": "plain",
+      "env": [
+        "CCX_DAMAGE_LINESEARCH=",
+        "CCX_DAMAGE_REEQ_RESCUE2=",
+        "CCX_DAMAGE_TR_DOGLEG=",
+        "CCX_DAMAGE_REEQ_SCALE="
+      ],
+      "expect": {
+        "rc": 0,
+        "last_inc": 505,
+        "theta": "0.100000E+01",
+        "deletions": 90
+      },
+      "same_deletion_set_as": "fast-plain"
+    },
+    {
       "name": "fast-wrapped",
       "what": "the eroding phase wrapped in facets: reaches a node with no bulk support, and walls on the crack-face kink",
       "kind": "fast",
@@ -140,6 +159,24 @@
           "m.sta",
           "m.damage"
         ]
+      }
+    },
+    {
+      "name": "fast-wrapped-noglob",
+      "what": "the walling deck with the same four mechanisms off. MEASURED 2026-09-11: it still walls - and it walls 0.5 percent LATER in load factor, 0.159572 against 0.158766, with 568 Newton iterations against 606 and one FEWER element deleted (63 against 64). The apparatus built one mechanism per wall does not move this wall in the direction it was built for. Pinned at the wall, which is the physically meaningful event here, not at whichever increment the solver gave up on.",
+      "kind": "fast",
+      "variant": "wrapped",
+      "env": [
+        "CCX_DAMAGE_LINESEARCH=",
+        "CCX_DAMAGE_REEQ_RESCUE2=",
+        "CCX_DAMAGE_TR_DOGLEG=",
+        "CCX_DAMAGE_REEQ_SCALE="
+      ],
+      "expect": {
+        "rc": 201,
+        "last_inc": 101,
+        "theta": "0.159572E+00",
+        "deletions": 63
       }
     },
     {

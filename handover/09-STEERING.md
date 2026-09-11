@@ -159,3 +159,84 @@ Not a green suite, and not a smaller `nonlingeo.c`.
 message names what in the model is wrong.** The solver stops being a thing
 that has to be argued with. That is the whole point, and everything above is
 in service of it.
+
+---
+
+# Answered, 2026-09-11
+
+This section is the reply to the brief above, not a revision of it.  Every
+number is from `research/06-TANGENT-VERDICT.md`, which carries the tables.
+
+## §1 - which population is the defect: **answered, and the answer is none**
+
+Every *defect* population is empty.  The element that measures wrong is the
+one that HAS the rank-1 term.  The discrepancy is present **before any
+damage** - identical to four significant figures with the damage cards
+stripped - and about ten times larger after initiation
+(`research/05-TANGENT-POPULATIONS.md`).
+
+## §2 - the root cause "already located, do not re-derive it": **refuted**
+
+The brief names the rank-1 term in `mafilldamas.f`.  That term is now
+extracted into `src/damrank1.f`, and it is **correct**: it agrees with
+`e_c3d`'s own quadruple sum to `4.9e-16` of the block's largest entry, and
+with a finite difference of the element internal force to `1.1e-10`.  The
+self test breaks it deliberately, in the way that was suspected, and shows
+the check going red.  The extraction is bit-identical on every gate case.
+
+The real defects were one file over, in `resultsmech.f`, in the **symmetric**
+path: `dD/d(eps)` in tensor-shear convention against an engineering-shear
+tangent (2x on shear entries, 4x on shear-shear), and no viscous `beta` at
+all.  Corrected, that path stopped destroying runs - and then measured
+**worse than applying no correction at all**, so it was deleted.
+
+## §3 - the default mode: **decided, and it is "off"**
+
+`fast-plain`: no correction 23.11 s / 1286 iterations.  `UNSYM` 31.58 s
+(+37%) / 1283 (-0.2%) / **byte-identical fracture**.  Deleted `FD_SYM` 25.62 s
+/ 1447 (+13%) / one element different.  `UNSYM` stays, off by default,
+because it is the only mode that is a Newton method and `s3rad` is unmeasured.
+
+## §4 - re-measure the walls: **the tangent does not move them**
+
+All four tangent modes wall `fast-wrapped` between `theta` 0.15875 and
+0.15877 with the **identical 64-element deletion set**.  The §1 contamination
+warning stands as a warning about *readings*; it is not an explanation of
+*this* wall.
+
+## §5 - scar tissue: **three of the four demonstrably do nothing, and none is deleted yet**
+
+Leave-one-out on both fast decks is in `06-TANGENT-VERDICT`.  Rescue 2 and
+the dogleg reproduce the shipped `fast-plain` run **to the digit** - they
+never fire.  Dropping the line search is 1.9% fewer iterations there and a
+wall 0.5% **later** on `fast-wrapped`.  All four off is better than all four
+on, on the deck they were built for.
+
+They are not deleted, and the reason is the brief's own rule: these were
+added one per wall on `s3rad` and the DHC decks, and every number above is
+from a two-minute deck.  What exists now instead is the gate saying it:
+`fast-plain-noglob` and `fast-wrapped-noglob`.  The leave-one-out on `s3rad`
+is what turns this into a deletion.
+
+## §6 - the knobs
+
+`CCX_DAMAGE_TANGENT=FD_SYM` deleted.  `CCX_DAMAGE_TANGENT_FULL` measured a
+no-op on both fast decks and standing on `s3rad`.  Twelve gate cases now,
+from nine.
+
+## The two traps, and how they went
+
+**"The tangent fix cannot be bit-identical."**  It was - every fix landed on
+a path no default configuration takes, and all twelve gate cases are
+byte-for-byte unchanged across all three commits, `m.frd` included.  That is
+a weaker result than the brief expected, and it is the honest one: nothing in
+the shipped configuration moved because the shipped configuration never ran
+the broken code.
+
+**"Element deletion is a threshold decision - say the criterion before the
+run."**  Partly kept.  The physical criterion - same deletion set, same
+severance `theta`, same terminal grip reaction - was fixed in advance and
+passed on its own terms.  The *numeric* tolerance on `m.dat` for the
+no-tangent case was guessed at `1e-4`, went red against a measured `2.18e-4`,
+and was widened afterwards.  That is disclosed in the case's own prose rather
+than quietly fixed.

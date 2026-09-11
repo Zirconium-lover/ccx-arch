@@ -122,3 +122,66 @@ against 90, is where a terminal band would show up if anywhere.
   significant figures with the damage cards stripped, and roughly ten times
   larger after initiation.  The first part of that is `incplas`, not this
   module.
+
+## Appendix: and then the mechanisms built on top of it
+
+`09-STEERING` §5 asks, for each of the six globalization mechanisms, to name
+the failure it addresses and the gate case that goes red without it.  Four of
+them are armed by `test/s3rad/run_s3rad.sh`, which both fast decks inherit:
+the adaptive line-search ladder, Rescue 2, the dogleg trust region, and the
+physical re-equilibration scale.  (Path following and crack control are not
+armed on these decks.)  Leave-one-out, same binary, two threads:
+
+`fast-plain`, which completes:
+
+| arm | rc | inc | attempts | iters | deletions |
+|---|---|---|---|---|---|
+| shipped | 0 | 507 | 542 | 1283 | 90 |
+| no line search | 0 | 505 | 538 | **1259** | 90, identical set |
+| no Rescue 2 (and so no dogleg) | 0 | 507 | 542 | **1283** | 90, identical set |
+| no dogleg | 0 | 507 | 542 | **1283** | 90, identical set |
+| no physical scale | 0 | 507 | 542 | 1319 | 90, identical set |
+| none of the four | 0 | 505 | 538 | 1295 | 90, identical set |
+
+`fast-wrapped`, which walls:
+
+| arm | rc | theta at the wall | attempts | iters | deletions |
+|---|---|---|---|---|---|
+| shipped | 201 | 0.158766 | 151 | 606 | 64 |
+| no line search | 201 | 0.159574 | 150 | 577 | 64, identical set |
+| no Rescue 2 (and so no dogleg) | 201 | 0.158754 | 137 | 519 | 63 |
+| no dogleg | 201 | 0.158758 | 144 | 557 | 64, identical set |
+| no physical scale | 201 | 0.158762 | 150 | 639 | 64, identical set |
+| none of the four | 201 | **0.159572** | 144 | 568 | 63 |
+
+Read it plainly.
+
+**Rescue 2 and the dogleg never fire on `fast-plain`.**  Turning either off
+reproduces the shipped run to the digit - 542 attempts, 1283 iterations, the
+same 90 elements.  That is not "they help a little"; it is that they do not
+run.
+
+**The line search is a net cost on both decks.**  Dropping it is 1.9% fewer
+iterations on the deck that completes and, on the deck that walls, a wall
+0.5% **later** in load factor.
+
+**Turning all four off is better than the shipped configuration on the deck
+they were built for.**  `fast-wrapped` walls at `theta=0.159572` with nothing
+armed against `0.158766` with everything armed.
+
+What this does **not** license is deleting them.  These mechanisms were added
+one per wall on `s3rad` and the DHC decks, and every number above is from a
+two-minute deck.  The honest statement is the one the gate can now make:
+**on the eleven-case gate and on both fast decks, not one of the four can be
+shown to do anything, and three of them can be shown to do nothing.**
+`fast-plain-noglob` and `fast-wrapped-noglob` pin that, so it stays a result
+and not a memory.  The leave-one-out on `s3rad` is what would turn it into a
+deletion.
+
+And note what has changed about the premise.  `09-STEERING` puts the tangent
+first because "an unknown fraction of those six mechanisms is scar tissue
+around a defect nobody knew was there", the defect being the rank-1 term in
+`mafilldamas.f`.  That term is measured correct, and all four tangent modes
+wall `fast-wrapped` at the same place with the same elements gone.  The
+mechanisms may well be scar tissue - the table above is what that would look
+like - but if so it is not scar tissue around **this** wound.
