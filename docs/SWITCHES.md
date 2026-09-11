@@ -6,12 +6,12 @@ Two tables, and the difference between them is the point.
 
 | | |
 |---|---|
-| names the binary reads | **144** |
-| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **36** |
+| names the binary reads | **146** |
+| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **38** |
 | undeclared, documented only by whatever the source says of them | 108 |
 | **explained nowhere at all** | **53** |
 | exercised by `test/regress/run.py` | 17 |
-| **never set by any test in this tree** | **127** |
+| **never set by any test in this tree** | **129** |
 | **no declaration, no test and no prose - the retirement queue** | **53** |
 
 Every run prints the ones that are set (`[SWITCHES]` at the top of any
@@ -43,6 +43,8 @@ are read from the declaration, not from the line that reads it.
 | `CCX_DAMAGE_STIFF_PROBE` | bool | unset (off) | - | - | print the stiffness census - how many nodes have lost what fraction of their OWN intact assembled diagonal (02-DIAGNOSTICS.md section 3).  Armed automatically whenever CCX_DAMAGE_AUTOSPC is |
 | `CCX_DAMAGE_TANGENT` | enum | stock symmetric | FD_SYM\|fd_sym\|1\|UNSYM\|unsym\|2 | yes | which tangent to assemble: FD_SYM (1) a finite-difference symmetric tangent, UNSYM (2) the asymmetric path with the constitutive tangent left untouched.  NOTHING IN THIS TREE VERIFIES THE TANGENT AGAINST THE RESIDUAL (07-RESEARCH-AGENDA.md rank 3) |
 | `CCX_DAMAGE_TANGENT_CENSUS` | bool | unset (off) | - | - | per-iteration census of the damage tangent: how many elements got the rank-1 term -sigma_eff (x) dD/d(eps), how many with ADVANCING damage did not, and how many were skipped.  This is the report that names WHY the assembled tangent is not the differential of the residual (research/03-OPERATOR.md); it was in the retirement queue |
+| `CCX_DAMAGE_TANGENT_DUMP` | int | 0 (off) | - | - | print, for this element, the two factors of the rank-1 correction - \|dD/d(eps)\| and \|sigma_eff\| - and their product, so the size of the correction can be compared against the operator error the structural probe measures at the same point |
+| `CCX_DAMAGE_TANGENT_H` | real | 1.e-7 | [1.e-12, 1.e-3] | - | perturbation of the forward difference that builds dD/d(eps) for the rank-1 term.  A forward difference carries O(h) truncation and O(eps/h) roundoff, so the operator error against h is a curve with a minimum; the shipped value had never been placed on it |
 | `CCX_DAMAGE_TOPOLOGY` | enum | immediate | DEFERRED\|deferred\|1 | yes | DEFERRED batches topology changes into one transaction committed at the end of the increment instead of applying each deletion as it is found |
 | `CCX_DAMAGE_TR_DOGLEG` | bool | unset (off) | - | yes | arm the dogleg trust region as rescue level 3.  Set to anything, INCLUDING 0.  Refuses to arm without CCX_DAMAGE_REEQ_RESCUE2: it is a level on top of Rescue 2, not a replacement |
 | `CCX_DAMAGE_VISCOSITY` | real | 0 (off) | - | yes | viscous regularisation eta for the damage evolution; negative values are clamped to zero |

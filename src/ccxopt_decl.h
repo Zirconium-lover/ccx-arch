@@ -143,6 +143,18 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "viscous regularisation eta for the damage evolution; negative values are "
  "clamped to zero",NULL},
 
+{"CCX_DAMAGE_TANGENT_DUMP",CCXOPT_INT,"0 (off)",CCXOPT_UNBOUNDED,NULL,
+ "print, for this element, the two factors of the rank-1 correction - "
+ "|dD/d(eps)| and |sigma_eff| - and their product, so the size of the "
+ "correction can be compared against the operator error the structural "
+ "probe measures at the same point",NULL},
+
+{"CCX_DAMAGE_TANGENT_H",CCXOPT_REAL,"1.e-7",1.e-12,1.e-3,NULL,
+ "perturbation of the forward difference that builds dD/d(eps) for the "
+ "rank-1 term.  A forward difference carries O(h) truncation and O(eps/h) "
+ "roundoff, so the operator error against h is a curve with a minimum; the "
+ "shipped value had never been placed on it",NULL},
+
 /* ---- the constitutive law ----------------------------------------- */
 {"CCX_UC6_CONTACT_SMOOTH",CCXOPT_REAL,"unset (sharp law)",CCXOPT_UNBOUNDED,NULL,
  "penetration band over which the crack-face closure kink is blended.  The "

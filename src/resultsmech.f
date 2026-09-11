@@ -91,11 +91,12 @@
       character*32 damgenv
       character*32 fdskipenv
       real*8 damggmin,spmean,damcbulk,damcmu,damcden,damcnumax
-      real*8 damtanhi
+      real*8 damtanhi,damtanh,damqn,damsn
+      integer damtandump
       integer damgmintan,damcompress
       integer damginit
       save damggmin,damginit,damgmintan,damcompress,damcnumax
-      save damtanhi
+      save damtanhi,damtanh,damtandump
       data damginit /0/
       data ivmap /1,1,2,1,2,3,1,2,3,4,1,2,3,4,5,1,2,3,4,5,6/
       data jvmap /1,2,2,3,3,3,4,4,4,4,5,5,5,5,5,6,6,6,6,6,6/
@@ -151,6 +152,27 @@
         damtanhi=1.999d0
         call getenv('CCX_DAMAGE_TANGENT_FULL',damgenv)
         if(damgenv(1:1).eq.'1') damtanhi=2.d0-damggmin
+!
+!       The perturbation of the FORWARD difference that builds dD/d(eps).
+!       It was 1.d-7 and hard coded, which made an obvious question about
+!       the tangent unaskable: how much of the operator error is the
+!       finite difference itself?  A forward difference carries O(h)
+!       truncation and O(eps/h) roundoff, so the answer is a curve with a
+!       minimum, and the shipped value had never been placed on it.
+!
+        damtandump=0
+        call getenv('CCX_DAMAGE_TANGENT_DUMP',damgenv)
+        if(damgenv(1:1).ne.' ') then
+          read(damgenv,*,err=7400,end=7400) damtandump
+        endif
+ 7400   continue
+        damtanh=1.d-7
+        call getenv('CCX_DAMAGE_TANGENT_H',damgenv)
+        if(damgenv(1:1).ne.' ') then
+          read(damgenv,*,err=7300,end=7300) damtanh
+          if((damtanh.lt.1.d-12).or.(damtanh.gt.1.d-3)) damtanh=1.d-7
+        endif
+ 7300   continue
       endif
 !
       iflag=3
@@ -1122,7 +1144,7 @@ c          write(*,*) 'resultsmech4 ',i,jj,(stre(m1),m1=1,6)
                 emecp(m1)=emec(m1)
                 betap(m1)=beta(m1)
               enddo
-              damageh=1.d-7*dmax1(1.d0,dabs(emec(k)))
+              damageh=damtanh*dmax1(1.d0,dabs(emec(k)))
               emecp(k)=emecp(k)+damageh
               do m1=1,nstate_
                 xstate(m1,jj,i)=xstateini(m1,jj,i)
@@ -1172,6 +1194,39 @@ c          write(*,*) 'resultsmech4 ',i,jj,(stre(m1),m1=1,6)
               damvbeta=1.d0
               if((damvisceta.gt.0.d0).and.(dtime.gt.0.d0)) then
                 damvbeta=dtime/(damvisceta+dtime)
+              endif
+!
+!             What the rank-1 term is actually WORTH.  The structural
+!             probe measures the operator error; this measures the size
+!             of the correction meant to remove it, at the same point, so
+!             the two can be compared instead of argued about.
+!
+              if((damtandump.gt.0).and.(i.eq.damtandump)) then
+                damqn=0.d0
+                damsn=0.d0
+                do m1=1,6
+                  damqn=damqn+damageq(m1)*damageq(m1)
+                  damsn=damsn+strebase(m1)*strebase(m1)
+                enddo
+                damqn=dsqrt(damqn)
+                damsn=dsqrt(damsn)
+                write(*,'(a,i8,a,i3,a,e12.5,a,e12.5,a,e12.5,a,e12.5)')
+     &            '[DAMAGE TANGENT DUMP] elem=',i,' ip=',jj,
+     &            ' D=',damtrial0-1.d0,' |dD/deps|=',damqn,
+     &            ' |sigma_eff|=',damsn,
+     &            ' |rank1|=',damvbeta*damqn*damsn
+                write(*,'(a,6e13.5)')
+     &            '[DAMAGE TANGENT DUMP]   dD/deps =',
+     &            damageq(1),damageq(2),damageq(3),
+     &            damageq(4),damageq(5),damageq(6)
+                write(*,'(a,6e13.5)')
+     &            '[DAMAGE TANGENT DUMP]   sig_eff =',
+     &            strebase(1),strebase(2),strebase(3),
+     &            strebase(4),strebase(5),strebase(6)
+                write(*,'(a,e13.5,a,e13.5)')
+     &            '[DAMAGE TANGENT DUMP]   beta=',damvbeta,
+     &            ' dtime=',dtime
+                call flush(6)
               endif
               do m1=1,6
                 damjac(m1,jj,i)=strebase(m1)
