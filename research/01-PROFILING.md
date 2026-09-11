@@ -429,10 +429,34 @@ slower; it started being performed three times.
 What it buys: `damggmin`, the residual-stiffness floor, has a price now.  Its
 own comment in `resultsmech.f` says a notch process zone holds thousands of
 floored elements at once and "the operator becomes badly scaled: that is the
-regime where the DHC runs stall".  That is no longer prose - it is 2 extra
-triangular solves on every linear solve for the last two thirds of the run,
-and on `s3rad` the triangular solve is 9.3% of 69 minutes, so the floor is
-costing about **four minutes of every run** in refinement alone.
+regime where the DHC runs stall".  That is no longer prose.
+
+#### The whole-run number
+
+The instrumented arm (`_runs/refine`) ran to the same ending as the
+uninstrumented one - increment 599, `theta=0.2550244` - in 4142 s against
+4164 s, and its **deletion record is byte-identical to `prof2`'s**, all 3741
+of them.  That is the equivalence proof for the `iparm(7)` instrumentation at
+scale, not just on the fast decks.
+
+    [PARDISO REFINE] solves=5344 steps=8062 mean=1.509 max=2
+
+**8062 refinement steps over 5344 solves.**  A refinement step is another
+forward and back substitution plus a residual, so the triangular solve does
+`5344 + 8062 = 13406` substitutions where it would otherwise do 5344 - **2.5
+times the work**.  The solve is 382.3 s of the run, so the refinement part of
+it is about `382.3 * 8062/13406 =` **230 seconds, 5.6% of a 69-minute run**,
+spent entirely on the conditioning of an operator held together by elements
+pinned at `g = 1e-4`.
+
+The mean of 1.509 over the whole run, against a locked 2.00 after solve 1300,
+is just the zero-refinement first quarter averaging in.
+
+Whether that 5.6% is worth paying is now a question with two measurable
+sides, which it was not before: the floor's *cost* is this number, and the
+floor's *value* - how much worse the conditioning would be without it - has
+still never been measured.  `CCX_DAMAGE_GMIN` is settable, and the arm that
+would answer it is one run.
 
 ## What is still open
 
