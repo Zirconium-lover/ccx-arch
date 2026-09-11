@@ -10,7 +10,44 @@ Everything below is from `test/s3rad/_runs/prof2`, the run that reached its own
 ending: `rc=201`, increment 599, `theta=0.2550244`, 3741 elements deleted.
 `[FRACTURE COMPLETE]` fired **zero** times.
 
-## It was not two pieces
+## CORRECTION, same day
+
+The first version of this page concluded "there was no disconnection to
+miss", on the strength of the connectivity sweeps below.  That conclusion was
+**wrong**, and the error was in the measure, not in the sweeps.
+
+Connectivity is a yes/no question and the honest answer to it is yes.  The
+physical question is **area**: the smallest total face area you would have to
+break to separate the two grips.  That is a minimum cut, and on the element
+adjacency graph - each shared triangular face weighted by its own area times
+the smaller of the two elements' `g = 1 - D` - it comes out at
+
+    minimum cut = 0.0031
+
+against a nominal bar section of about 5.7.  **The specimen is held together
+by a ligament worth 0.05% of a cross-section.**
+
+Everything else on this page stands; what changes is the verdict.  To any
+engineering standard the specimen IS severed, and it carries 2.1% of peak
+load through a thread five ten-thousandths of a section wide.  The sweeps
+say "connected" and they are right; the answer is simply not the question.
+
+That also explains the observation that some models print
+`[FRACTURE COMPLETE]` and others do not, seemingly by luck.  It is luck:
+whether the last thread happens to be **deleted** or merely **damaged to
+within one part in two thousand of nothing**.  One element decides it.
+
+Three measures of the same final state, in increasing order of usefulness:
+
+| measure | value | verdict |
+|---|---|---|
+| topological connectivity, any of six rules | connected, 180 of 180 grip nodes | intact |
+| matrix area per slab at the worst station | 63% of the full section | intact |
+| **minimum cut, area x residual stiffness** | **0.0031, = 0.05% of a section** | **severed** |
+
+The first is what the code computes.  The third is what the question means.
+
+## It was not two pieces, in the sense the code asks
 
 The load-path sweep the solver runs, done offline, under every rule the code
 implements, on the final state:
@@ -32,7 +69,8 @@ still linked through surviving bulk.
 So the two refinements that exist for exactly this failure -
 `CCX_FRACTURE_LINK=FACE` and `CCX_FRACTURE_DEADFACET`, both switched off by
 `run_s3rad.sh` - would not have fired either.  The termination test did not
-miss a disconnection.  **There was no disconnection to miss.**
+miss a disconnection **of the kind it looks for**; see the correction above
+for the kind it does not.
 
 Sweeping a damage threshold instead of a deletion list says the same thing
 from the other side: with every cohesive facet removed, the bulk alone keeps
