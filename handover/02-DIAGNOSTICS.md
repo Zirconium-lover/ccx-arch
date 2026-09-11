@@ -152,6 +152,21 @@ read. A misspelt switch produces an A/B that is not wrong but
 **uninformative**, and that is the expensive kind — it costs a whole run to
 notice. Check this block before believing any comparison.
 
+**And do not rely on checking it.** This instruction has been in this document
+from the beginning and has now been violated twice in one session, both times
+by the same mechanism — `run_fast.sh` delegates to `run_s3rad.sh`, which
+`export`s twelve names unconditionally and clobbers anything a caller set in
+the environment. It cost a published refutation that was the reverse of the
+truth, and it had left one of the nine gate cases proving nothing for its
+whole life (`05-DEBT.md` §2a). Both readers are now machines:
+`test/regress/run.py` checks each case's requested switches against this
+banner, and `tools/profile.py --compare` fails when two arms of a comparison
+have identical switch sets.
+
+**`[SWITCHES LEFT]`, at the end of every log**, is the other half: options
+that were *set and never read*. On its first real use it found that the
+operator check could not be armed at all on `close.inp`.
+
 ## 10. The self tests — `DAMAGE TR`, `DAMSTATE`, `LSLADDER`
 
 Run on every job that arms the relevant mechanism, and the mechanism

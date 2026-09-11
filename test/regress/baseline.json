@@ -15,7 +15,7 @@
         "theta": "0.100000E+01"
       },
       "name": "fast-plain",
-      "seconds": 49.2,
+      "seconds": 48.1,
       "what": "the bar with a partial cohesive plane: bulk damage, deletion, cutbacks"
     },
     {
@@ -34,7 +34,7 @@
         "theta": "0.100000E+01"
       },
       "name": "fast-plain-smooth",
-      "seconds": 48.9,
+      "seconds": 48.0,
       "what": "the regulariser on a deck with real bulk damage and 90 deletions where no DAMAGED facet ever closes: it must be a byte-for-byte no-op, because the blend differs from the sharp law only when g<1 AND the facet is in compression"
     },
     {
@@ -56,7 +56,7 @@
         "worst_ratio": 0.00044641
       },
       "name": "fast-wrapped",
-      "seconds": 25.3,
+      "seconds": 26.4,
       "what": "the eroding phase wrapped in facets: reaches a node with no bulk support, and walls on the crack-face kink"
     },
     {
@@ -74,7 +74,7 @@
         "theta": "0.100000E+01"
       },
       "name": "fast-wrapped-smooth",
-      "seconds": 54.7,
+      "seconds": 55.5,
       "what": "the same deck with the crack-face kink regularised: the wall is gone and the fracture is not"
     },
     {
@@ -87,13 +87,14 @@
       "fails": [],
       "got": {
         "deletions": 64,
+        "equal_to": "fast-wrapped at rtol=0 atol=0",
         "last_inc": 99,
         "rc": 201,
         "theta": "0.158766E+00"
       },
       "name": "fast-wrapped-nospc",
-      "seconds": 25.1,
-      "what": "the same wall without the load-path mask, which must not change it"
+      "seconds": 25.8,
+      "what": "the same wall without the load-path mask, which must not change it. MEASURED 2026-09-11, once the override actually reached the binary: m.sta and m.damage are byte-identical to fast-wrapped - same wall at increment 99, same 64 deletions in the same order - and m.cvg differs at exactly one place, increment 93 attempt 2 iteration 3, CORR.DISP 0.1018 against 0.1438. That single difference IS the mask: it excludes a node from the displacement norm and changes nothing else."
     },
     {
       "expect": {
@@ -112,7 +113,7 @@
         "theta": "0.100000E+01"
       },
       "name": "mixed-analytic",
-      "seconds": 22.4,
+      "seconds": 23.8,
       "what": "inclined cohesive plane against the closed-form post-peak branch, 36 percent shear"
     },
     {
@@ -131,7 +132,7 @@
         "theta": "0.100000E+01"
       },
       "name": "mixed-analytic-smooth",
-      "seconds": 22.1,
+      "seconds": 23.8,
       "what": "the same, with the kink regulariser armed: that facet never closes, so it must be bit-identical"
     },
     {
@@ -151,7 +152,7 @@
         "theta": "0.200000E+01"
       },
       "name": "close-sharp",
-      "seconds": 0.7,
+      "seconds": 0.8,
       "what": "the UC6 normal law itself, verified point by point on a facet damaged to gmin and then closed: this is where the five-orders tangent jump is measured rather than argued"
     },
     {
@@ -173,7 +174,7 @@
         "theta": "0.200000E+01"
       },
       "name": "close-blend",
-      "seconds": 0.6,
+      "seconds": 0.7,
       "what": "the same facet under the regulariser: identical far-field slopes, so nothing physical moved, and the blend band actually exercised"
     }
   ],
@@ -181,10 +182,10 @@
   "preflight_failed": 0,
   "provenance": {
     "binary": "/home/user/ccx-arch/build-mkl/ccx_2.23_pardiso",
-    "binary_sha256": "48e7e3170c6204f2555ac00205f06a38a7aaded5fac75ad809c5d9cb010a2492",
+    "binary_sha256": "57f3fc5496344d9967a48a3ebaa0140dd5c8f73c42e1fcc8175dcf4cb624f519",
     "cc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
     "fc": "GNU Fortran (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
-    "git_commit": "fefa9f2489674d82d7fdd3df2274dbf38ad8ea76",
+    "git_commit": "bd7fecd07d141ca926cdfd08a0b1a7f5975fd3da",
     "git_dirty": true,
     "machine": "x86_64",
     "mkl_cbwr": null,
@@ -211,5 +212,5 @@
     "CCX_PATHFOLLOW_DTHETA",
     "CCX_UC6_CONTACT_SMOOTH"
   ],
-  "when": "2026-09-10T20:00:25Z"
+  "when": "2026-09-11T13:33:25Z"
 }

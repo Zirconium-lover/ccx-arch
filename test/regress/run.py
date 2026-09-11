@@ -57,6 +57,28 @@ def census(log):
         if worst is None or v<worst: worst=v
     return mx,worst
 
+def check_switches(log,want):
+    """Did the switches the case asked for actually reach the binary?
+
+    Reads the run's own [SWITCHES] banner - 02-DIAGNOSTICS.md section 9 says
+    to check it before believing any comparison, and a check a human has to
+    remember is a check that does not happen."""
+    bad=[]
+    try: txt=open(log,errors='replace').read()
+    except OSError: return ["no log"]
+    got={m.group(1):m.group(2).strip() for m in
+         re.finditer(r'^\[SWITCHES\]   (CCX_[A-Z0-9_]+) = (.*?)(?:   \[|$)',txt,re.M)}
+    for kv in want:
+        k,_,v=kv.partition('=')
+        if v=='':
+            if k in got:
+                bad.append("%s was asked to be UNSET and the run has it = %s"
+                           %(k,got[k]))
+        elif got.get(k)!=v:
+            bad.append("%s was asked for as %r and the run has it as %r"
+                       %(k,v,got.get(k)))
+    return bad
+
 def selftests(log,required,lines):
     """every named self test must report PASSED, no unit may report a failure
     or an error, and every required line must be present - a report that
@@ -76,8 +98,21 @@ def selftests(log,required,lines):
     return bad
 
 def run_fast(case,rundir,exe):
-    env=base_env(case['env']); env['FAST_VARIANT']=case['variant']; env['CCX_EXE']=exe
-    r=sh('%s/test/fast/run_fast.sh %s'%(ROOT,rundir),env)
+    """A case's env goes through as POSITIONAL overrides, not as environment.
+
+    run_fast.sh delegates to run_s3rad.sh, which `export`s twelve CCX_* names
+    unconditionally and only then applies the NAME=VALUE arguments.  So a
+    case that set one of those twelve in the environment was silently
+    overwritten, and fast-wrapped-nospc - whose whole stated purpose is to
+    run WITHOUT the load-path mask - ran with CCX_DAMAGE_AUTOSPC=1.e-3, i.e.
+    as a second copy of fast-wrapped.  It passed every time, and proved
+    nothing.  Not wrong: UNINFORMATIVE, which is the expensive kind.
+
+    The `[SWITCHES]` banner said so in every one of those logs.  Nobody read
+    it, which is why check_switches() below now does."""
+    env=base_env([]); env['FAST_VARIANT']=case['variant']; env['CCX_EXE']=exe
+    args=" ".join(case['env'])
+    r=sh('%s/test/fast/run_fast.sh %s %s'%(ROOT,rundir,args),env)
     return r.returncode,rundir/'run.log',rundir/'m.sta',rundir/'m.damage'
 
 def run_close(case,rundir,exe):
@@ -137,6 +172,7 @@ def one(case,outroot,exe,required,lines):
             ok = have==want
         if not ok: fails.append("%s: want %r, got %r"%(k,want,have))
     fails+=selftests(log,required,lines)
+    fails+=check_switches(log,case['env'])
     return {'name':case['name'],'what':case['what'],'seconds':round(time.time()-t0,1),
             'got':got,'fails':fails,'rundir':str(rundir)}
 

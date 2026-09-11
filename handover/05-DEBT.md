@@ -103,6 +103,31 @@ to be nearby" (`08-OBJECT-MODEL.md` §1) is usually said about the connectivity
 guard. It applies here word for word. Fixed: the parsing is unconditional
 now, and the probe runs on any deck.
 
+## 2a. A wrapper that clobbers the configuration it is handed
+
+`test/fast/run_fast.sh` delegates to `test/s3rad/run_s3rad.sh`, which
+`export`s **twelve** `CCX_*` names unconditionally and only afterwards
+applies its positional `NAME=VALUE` overrides. Anything set in the
+environment by a caller is therefore silently overwritten.
+
+Two things were broken by this, both for months, both silently:
+
+- **`fast-wrapped-nospc`** — a gate case whose entire stated purpose is to run
+  *without* the load-path mask — ran with `CCX_DAMAGE_AUTOSPC=1.e-3`. It was a
+  second copy of `fast-wrapped`, passed every time, and proved nothing. One of
+  nine cases in the three-minute gate was decoration.
+- an **A/B of `CCX_PARDISO_REUSE_SYMBOLIC`** taken in this session had the
+  switch on in both arms, and produced a confident published refutation that
+  was the exact opposite of the truth (`04-REFUTED.md`).
+
+Fixed on the caller side — `run.py` and `tools/profile.py` pass overrides
+positionally, and both now verify against the run's own `[SWITCHES]` banner
+that the configuration asked for is the configuration that ran. The wrapper
+itself is unchanged and still has the hazard: `export X=1` before processing
+`"$@"` means the environment is the weakest input, which is the opposite of
+what every caller expects. Worth turning into `: ${X:=1}` per name, which is
+a behaviour change and so needs its own measurement.
+
 ## 2b. The build does not track header dependencies
 
 `Makefile.ubuntu2404.mkl` had no `-MMD`, so editing `CalculiX.h` or

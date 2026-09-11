@@ -157,7 +157,7 @@ is small, and it is the next thing to name.
 
 ---
 
-## The hypothesis this refutes
+## The hypothesis this was supposed to refute, and the retraction
 
 `08-OBJECT-MODEL.md` §4, first candidate:
 
@@ -165,52 +165,82 @@ is small, and it is the next thing to name.
 > matrix structure, so the symbolic factorisation is redone. […] Potentially
 > a large fraction of the runtime.
 
-**Measured: it is not.** `CCX_PARDISO_REUSE_SYMBOLIC=1` already does exactly
-this, keyed on a hash of `(icol,irow)`, and on `fast-wrapped` it retains the
-analysis for **603 of 606** factorisations — the pattern is recomputed three
-times in the whole run.
+**The first version of this document said it buys nothing. That was wrong,
+and it was wrong for the most instructive reason available here.**
 
-| arm | pardiso factor, self (s) |
-|---|---|
-| stock, run 1 | 11.480 |
-| stock, run 2 | 11.528 |
-| stock, run 3 | 11.380 |
-| `CCX_PARDISO_REUSE_SYMBOLIC=1` | 11.649 |
+The A/B was run as "stock, against `CCX_PARDISO_REUSE_SYMBOLIC=1`". But
+`test/fast/run_fast.sh` delegates to `test/s3rad/run_s3rad.sh`, which
+`export`s that switch unconditionally. **Both arms had it on.** The 1%
+difference measured was noise between two runs of the same configuration, and
+the `[SWITCHES]` banner said so in both logs — `02-DIAGNOSTICS.md` §9 exists
+to catch exactly this and depends on a human remembering to look.
 
-Three control runs span 1.3%. The reuse arm is at the top of that spread, not
-below it — the symbolic phase is smaller than the cost of the structure hash
-that decides whether to skip it. And the arms are **bit-identical**
-(`m.sta`, `m.damage`, `m.cvg`), so this is a clean cost measurement and not a
-trajectory comparison.
+What found it was not a human. Splitting the profiler's factorisation event
+by the PARDISO **phase** actually executed made the "control" arm report 606
+phase-22 calls, which is only possible with the analysis being reused.
 
-This corroborates the note already in `pardiso.c` from another branch — 2.3%
-at 84 000 elements — and it scales the right way: the numerical factorisation
-grows like `N^1.5` while the analysis is nearly fixed, so at `s3rad`'s 42 807
-elements and beyond the symbolic share can only be *smaller*.
+### The measurement, with a control that is one
 
-**What would change the verdict**: a deck where erosion invalidates the
-pattern often enough that the analysis runs on a large fraction of
-factorisations. `fast-wrapped` deletes 64 elements and re-analyses 3 times;
-`s3rad` deletes 3790 in 455 batches, which is a different regime and the
-right place to be sceptical of a fast-deck refutation.
+Three interleaved repeats per arm, one thread, `fast-wrapped`. Absolute times
+are inflated because the target deck was running on two other cores; both
+arms shared that load and were interleaved, so the ratio is the reading.
 
-**First data at `s3rad` scale: the churn is nine times higher.** From a run
-killed at increment 231 (see *what is still open*), with 1330 deletions
-committed in 115 batches:
+| arm | pardiso factor, inclusive (s) | whole run (s) |
+|---|---|---|
+| reuse **off** | 16.938 / 17.202 / 17.021 | 30.59 / 31.20 / 31.04 |
+| reuse **on** | 11.655 / 11.974 / 12.547 | 24.79 / 25.51 / 26.57 |
+| | **17.05 → 12.06, −29%** | **30.94 → 25.62, −17%** |
 
-| | factorisations | fresh symbolic analyses | share |
-|---|---|---|---|
-| `fast-wrapped`, 64 deletions | 606 | 3 | **0.50%** |
-| `s3rad` partial, 1330 deletions | 1600 | 73 | **4.6%** |
+Spread within an arm is 2–7%; the gap is 29%. And the phase split gives the
+analysis cost directly, without a second experiment:
 
-So the pattern does churn an order of magnitude more at scale, exactly as
-scepticism predicted. What that is *worth* still needs the cost split — 4.6%
-of factorisations paying an analysis that is itself some fraction of a
-factorisation — and that number needs the profile the killed run never
-printed. **`NEXT_TASK.md` item 1 stays open until it does.**
+| phase | calls | mean |
+|---|---|---|
+| 12, analyse + numeric | 606 (off) / 3 (on) | **25.2 ms** |
+| 22, numeric against a retained analysis | 603 (on) | **16.5 ms** |
 
-73 re-analyses against 115 committed batches, because a batch that is rolled
-back (`[DAMAGE DE1.3 ROLLBACK]`) leaves the pattern where it was.
+**The symbolic analysis costs 8.7 ms — 35% of a full factorisation** at this
+size. The two arms are **bit-identical** (`m.sta`, `m.damage`, `m.cvg`,
+`m.dat`), so this is a pure cost measurement.
+
+### So what is left of the candidate
+
+Split it in two, because the original wording conflates them.
+
+- **"Stop re-analysing when the pattern has not changed."** Already built,
+  already on in the gate and in `run_s3rad.sh`, and worth **17% of runtime**.
+  That is the large fraction the candidate predicted. It was being collected
+  the whole time, which is why it was invisible.
+- **"Hold the pattern fixed under erosion so the analysis happens *once*."**
+  This is the part still open, and it is small. With reuse on, 3 of 606
+  factorisations re-analyse on `fast-wrapped` and **73 of 1600** on `s3rad`.
+  At 35% of a factorisation each that is at most **1.6% of factorisation
+  time, about 1% of runtime** — and it is an upper bound, because the numeric
+  phase grows like `N^1.5` while the analysis does not, so the 35% share
+  shrinks at `s3rad` size. The running profile will give the real share.
+
+### At `s3rad` scale
+
+From the interim tables of the target-deck run (2 threads,
+`MKL_CBWR=COMPATIBLE`, 601 s in, 472 factorisations):
+
+| event | calls | self (s) | % run | ms/call |
+|---|---|---|---|---|
+| pardiso factor | 472 | 395.7 | **65.8%** | 838 |
+| assembly (`mafillsmmain`) | 472 | 104.0 | **17.3%** | 220 |
+| residual (`results`) | 765 | 42.6 | **7.1%** | 55.7 |
+| pardiso solve | 471 | 13.7 | 2.3% | 29.1 |
+| not instrumented | | | 7.1% | |
+
+Against the fast deck (47% / 32% / 12% / 1.6%), the factorisation takes over
+as the problem grows, exactly as `N^1.5` against `O(N)` predicts. Two
+consequences:
+
+- **assembly falls from a third of the run to a sixth.** Still worth
+  understanding at 220 ms a call, but no longer the second-biggest thing.
+- **globalization is 2.2% of `s3rad`, not 4.6%.** 765 residual evaluations
+  against 472 Newton iterations is 1.62 per iteration, the same ratio as the
+  fast deck, but residual evaluation is now only 7.1% of the run.
 
 ## What is still open
 

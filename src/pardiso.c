@@ -499,9 +499,22 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
     NNEW(x,double,nrhs**neq);
   }
 
-  FORTRAN(pardiso,(pt,&maxfct,&mnum,&mtype,&phase,neq,aupardiso,
-		   pointers,icolpardiso,perm,&nrhs,iparm,&msglvl,
-                   b,x,&error));
+  /* Name the event by the PHASE actually executed, so one run measures what
+     the symbolic analysis costs instead of needing an A/B.  phase 12 is
+     analyse+factorise, 22 is factorise against a retained analysis, 23 is
+     the combined factorise-and-solve the CGS path uses.  The difference
+     between the means of 12 and 22 IS the analysis, and that is the number
+     the fixed-sparsity candidate in 08-OBJECT-MODEL.md section 4 turns on. */
+  {
+    const char *ph=(phase==12)?"pardiso phase 12 (analyse+numeric)":
+                   ((phase==22)?"pardiso phase 22 (numeric only)":
+                                "pardiso phase 23 (numeric+solve)");
+    logview_begin_named(ph);
+    FORTRAN(pardiso,(pt,&maxfct,&mnum,&mtype,&phase,neq,aupardiso,
+		     pointers,icolpardiso,perm,&nrhs,iparm,&msglvl,
+                     b,x,&error));
+    logview_end_named(ph);
+  }
 
   if(cgs_active){
     if(error==0){

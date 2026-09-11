@@ -21,7 +21,8 @@ same form: what was tried, and the measurement that killed it.
 
 | tried | measurement that rejected it |
 |---|---|
-| **holding the sparsity pattern fixed under erosion so the symbolic factorisation happens once** (`08-OBJECT-MODEL.md` §4, first candidate) | it already effectively does, and it buys nothing. `CCX_PARDISO_REUSE_SYMBOLIC=1` retains the analysis for **603 of 606** factorisations on `fast-wrapped`, and the factorisation cost is **11.649 s against 11.380/11.480/11.528 s** over three stock control runs - at the top of the noise, not below it. The arms are bit-identical, so this is a cost measurement and not a trajectory comparison. `research/01-PROFILING.md` |
+| ~~**holding the sparsity pattern fixed under erosion buys nothing**~~ **RETRACTED 2026-09-11.** The A/B that produced it had `CCX_PARDISO_REUSE_SYMBOLIC=1` in **both arms**: `test/fast/run_fast.sh` delegates to `run_s3rad.sh`, which exports it unconditionally, so the "stock control" was not a control and the 1% measured was noise | the real measurement, three interleaved repeats per arm with the control genuinely off: factorisation **17.05 s -> 12.06 s (-29%)**, whole run **30.94 s -> 25.62 s (-17%)**, arms bit-identical. Symbolic analysis **8.7 ms against a 16.5 ms numeric factorisation, 35% of a phase-12 call**. The mechanism is worth a sixth of the runtime and was already switched on. `research/01-PROFILING.md` |
+| **the REMAINING headroom in that candidate - eliminating the re-analyses that survive with reuse already on** | small, and now quantified. 3 of 606 factorisations on `fast-wrapped` and **73 of 1600** on `s3rad` still re-analyse; at 35% of a factorisation each that is at most **1.6% of factorisation time, about 1% of runtime**, and the share falls as `N` grows because the numeric phase grows like `N^1.5` while the analysis does not |
 | **the line-search ladder as a runtime problem** | it consumes 367 of 973 residual evaluations on `fast-wrapped` - 38% of them - but residual evaluation is **12.0%** of the run, so the whole globalization apparatus is about **4.6%**. Deleting mechanisms remains an argument about comprehensibility; it is not an argument about speed |
 
 ## About the operator, and about how it was measured
@@ -32,6 +33,25 @@ same form: what was tried, and the measurement that killed it.
 | **attributing the process-zone tangent error to `CCX_DAMAGE_TANGENT=UNSYM`** | the same state on the stock symmetric path gives **151 wrong coefficients against 157**, and `9.622e-02` against `9.573e-02`. It is not the mode; it is the bulk progressive-damage tangent in both modes |
 | **the cohesive tangent as a suspect** | exact: 30906 of 30906 coefficients agree, 2.3e-07 to 8.6e-06 relative, and on the closure benchmark 3.2e-14 with a textbook `h^2` slope |
 | **"the cohesive tangent is wrong by 1.0 of the column scale"** (an earlier run of this same probe) | a measurement bug, not a finding: the coefficient reader assumed `au` always carries an upper triangle at offset `nzs[2]`, and on the stock SYMMETRIC path it read past the end of the array. Caught by a self test written against a hand-built matrix, which then caught the first fix as wrong too |
+
+## About how measurements here go wrong
+
+Both entries below are mistakes made in this tree, by the same mechanism, and
+both were caught by the run's own `[SWITCHES]` banner after the fact rather
+than before. `02-DIAGNOSTICS.md` §9 has always said to read that block before
+believing any comparison. Nobody does. The gate and `tools/profile.py` now
+read it instead.
+
+| mistake | how it was caught |
+|---|---|
+| an A/B of `CCX_PARDISO_REUSE_SYMBOLIC` with the switch **on in both arms**, because `run_fast.sh` delegates to `run_s3rad.sh`, which exports twelve `CCX_*` names unconditionally | splitting the profiler's factorisation event by PARDISO **phase**: the "control" arm showed 606 phase-22 calls, which is only possible with reuse on. `tools/profile.py --compare` now fails when two arms have identical switch sets |
+| **`fast-wrapped-nospc`, a gate case, ran with the load-path mask ON for its whole life** - its `CCX_DAMAGE_AUTOSPC=0` went through the environment and was clobbered the same way. It passed every run as a second copy of `fast-wrapped` and proved nothing | the same search. Case env is now passed as positional overrides, and `check_switches()` verifies against the banner that what a case asked for is what the binary got. Demonstrated red |
+
+With the override actually delivered, that case finally says something: `m.sta`
+and `m.damage` byte-identical to `fast-wrapped`, and `m.cvg` differing at
+**exactly one place** - increment 93, attempt 2, iteration 3, `CORR.DISP`
+0.1018 against 0.1438. That one difference is the mask excluding a node from
+the displacement norm, and it changes nothing else.
 
 ## About the model's structure
 
