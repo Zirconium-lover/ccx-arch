@@ -4199,6 +4199,7 @@ double loadcut_width(double *co,ITG *ipkon,ITG *kon,char *lakon,ITG ne,
                      ITG nk,const ITG *nodesa,ITG na,
                      const ITG *nodesb,ITG nb,
                      const double *dam,const ITG *mi,double gmin,
+                     const double *xstate,ITG nstate,
                      const ITG *ifacdead,double target,
                      ITG *nfaces,ITG *nelem,ITG *ibelow,ITG *iexact,
                      ITG *nwork);

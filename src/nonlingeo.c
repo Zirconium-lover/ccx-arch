@@ -14022,7 +14022,8 @@ damage_active_set_closed:
                 lc_target=damage_cut_frac*damage_cut_ref;
               damage_cut_now=loadcut_width(co,ipkon,kon,lakon,*ne,*nk,
                                            lc_a,lc_na,lc_b,lc_nb,dam,mi,
-                                           1.e-4,damage_ifacdead,lc_target,
+                                           1.e-4,xstate,*nstate_,
+                                           damage_ifacdead,lc_target,
                                            &lc_nf,&lc_nel,&lc_bel,&lc_ex,
                                            &lc_w);
               if(damage_cut_now<0.){

@@ -309,3 +309,56 @@ The habit that would have caught both: `ps -eo pid,etimes,comm`, or
 `pgrep -af` against the full path, and confirm a counter is CHANGING rather
 than that a timestamp exists.  Nothing in the measurement was wrong - the cut
 trajectory above is real - only the reports of the runs' deaths.
+
+---
+
+# The measure, corrected, and what it then said
+
+The first working version of `src/loadcut.c` gave **every surviving cohesive
+facet g=1**, regardless of its damage.  That is the boolean error in weighted
+clothing - a separated interface read as a rigid link - and it is the error
+this whole page is about.
+
+It was caught the only way it could have been: **two independent
+implementations of the same quantity disagreeing by a factor of 380.**  On the
+final state of the complete run the offline analysis gave a cut of 0.0031 and
+the in-solver measure gave 1.184.  The offline one excluded facets entirely;
+the in-solver one let 5316 of them conduct at full strength, and 1765 of those
+are fully failed by `damstate_facet_dead`'s own rule.
+
+Facets now carry their own `g = 1 - D`, read from `xstate` index 1 over the
+integration points with the worst point governing, floored at `gmin`, and a
+facet flagged failed at index 3 drops to the floor.  Three self-test checks
+pin it, on a mesh that mirrors the real one - a zero-thickness facet between
+two tetrahedra with duplicated nodes, which is how the deck builds its ZrH
+interface.
+
+## And then `fast-wrapped` said this
+
+| increment | cut | ratio | what the topology says |
+|---|---|---|---|
+| first batch | 0.8701933 | 1.000 | connected |
+| 36 | **0.00028** | **0.00032** | **connected** |
+
+`2.800000e-04` is exactly what **one face of area 2.8 at the residual-stiffness
+floor** `g = 1e-04` is worth.  At increment 36 the specimen is held together by
+a single floored face and nothing else.
+
+The deck's own ending is at increment **99**, `rc=201`, 64 deletions.  So on
+this deck - a sixteen-second run - the solver spends **63 further increments
+and two thirds of its wall clock** driving a specimen that is already in two
+pieces, and deletes eighteen more elements from it, before giving up with an
+increment-size error.
+
+That is the `s3rad` story reproduced in six seconds instead of sixty-nine
+minutes, and it is now two gate cases:
+
+- `fast-wrapped-cut`, threshold `1e-09` and therefore unreachable, proving the
+  measurement does not perturb the run it measures: all five output files
+  byte-identical to `fast-wrapped`.
+- `fast-wrapped-severed`, threshold `0.001`, pinning `rc=0` at increment 36 -
+  **a clean ending at the separation instead of `rc=201` sixty-three
+  increments later.**
+
+The difference between those two endings is the whole point.  One says the
+solver gave up; the other says the specimen broke.

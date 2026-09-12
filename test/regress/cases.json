@@ -181,11 +181,11 @@
     },
     {
       "name": "fast-wrapped-cut",
-      "what": "the same wall with the load-path WIDTH measured beside the topological sweep. CCX_FRACTURE_CUT arms src/loadcut.c, which reports the minimum cut between the termination sets - the smallest total (face area x residual stiffness) that would have to break to separate them. The threshold is set at 0.001, far below anything this deck reaches, so the case tests that the measurement is a NO-OP on the solution while being exercised on every committed batch: same rc, same theta, the same 64 elements in the same order. It exists because the measure is the one thing in this tree that can tell a specimen hanging by one element face from an intact one, and a measurement that silently perturbs the run it measures is worse than none. The 12-check self test runs before the switch is allowed to arm and is required to report PASSED.",
+      "what": "the same wall with the load-path WIDTH measured on every committed batch but the stopping threshold set to 1e-09, which nothing reaches. This is the no-perturbation proof: a measurement that silently changes the run it measures is worse than no measurement, so all five output files must be byte-identical to fast-wrapped. The measure's self test - fifteen checks including the one where deleting a wide bridge collapses the cut by 99.9 percent while every boolean rule still says CONNECTED - runs before the switch is allowed to arm and must report PASSED.",
       "kind": "fast",
       "variant": "wrapped",
       "env": [
-        "CCX_FRACTURE_CUT=0.001"
+        "CCX_FRACTURE_CUT=1.e-9"
       ],
       "expect": {
         "rc": 201,
@@ -208,6 +208,21 @@
           ]
         }
       ]
+    },
+    {
+      "name": "fast-wrapped-severed",
+      "what": "the same deck, stopped when the load path has narrowed to a thousandth of its original width. MEASURED 2026-09-12: the reference cut at the first committed batch is 0.8701933; at increment 36 it is 2.800000e-04, a ratio of 3.2e-04, and that number is what a SINGLE face of area 2.8 at the residual-stiffness floor g=1e-04 is worth. The specimen is held together by one floored face and nothing else, while the topological sweep - correctly - still calls the grips CONNECTED. Without the criterion this deck grinds on to increment 99 and stops with rc=201, 63 increments and two thirds of its wall clock later, having deleted 18 more elements from a specimen that was already in two pieces. WITH it the run ends rc=0 at the separation, which is the difference between a solver that gave up and a specimen that broke. This is the s3rad story (research/09-SEVERANCE.md) reproduced in six seconds instead of sixty-nine minutes.",
+      "kind": "fast",
+      "variant": "wrapped",
+      "env": [
+        "CCX_FRACTURE_CUT=0.001"
+      ],
+      "expect": {
+        "rc": 0,
+        "last_inc": 36,
+        "theta": "0.635000E-01",
+        "deletions": 46
+      }
     },
     {
       "name": "mixed-analytic",

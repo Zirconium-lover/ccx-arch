@@ -277,6 +277,7 @@ double loadcut_width(double *co,ITG *ipkon,ITG *kon,char *lakon,ITG ne,
                      ITG nk,const ITG *nodesa,ITG na,
                      const ITG *nodesb,ITG nb,
                      const double *dam,const ITG *mi,double gmin,
+                     const double *xstate,ITG nstate,
                      const ITG *ifacdead,double target,
                      ITG *nfaces,ITG *nelem,ITG *ibelow,ITG *iexact,
                      ITG *nwork)
@@ -314,6 +315,37 @@ double loadcut_width(double *co,ITG *ipkon,ITG *kon,char *lakon,ITG ne,
       if(d<0.) d=0.;
       if(d>1.) d=1.;
       g[i]=1.-d;
+      if(g[i]<gmin) g[i]=gmin;
+    }
+
+    /* A cohesive facet carries its own damage and must be weighted by it.
+       The first version of this gave EVERY surviving facet g=1, and the
+       error is the one this whole file exists to correct, wearing
+       different clothes: a separated interface treated as a rigid link.
+       It was caught the only way it could be - two independent
+       implementations of the same measure, this one and the offline
+       analysis in research/09-SEVERANCE.md, disagreeing by a factor of
+       380 on the same final state (cut 1.184 against 0.0031) because the
+       offline one excluded facets entirely and this one let 5316 of them
+       conduct at full strength.
+
+       xstate index 1 is the facet damage over its integration points and
+       index 3 is its failed flag, read exactly as damstate_facet_dead
+       reads it.  The WORST point governs, because a facet transmits
+       across its whole area and is as weak as its weakest place. */
+
+    if((xstate!=NULL)&&(mi!=NULL)&&(nstate>=4)&&(lakon[8*i]=='U')){
+      ITG ip,nip=(mi[0]<3)?mi[0]:3,ndead=0;
+      double dw=0.;
+      for(ip=0;ip<nip;ip++){
+        double d=xstate[nstate*(ip+mi[0]*i)+1];
+        if(d<0.) d=0.;
+        if(d>1.) d=1.;
+        if(d>dw) dw=d;
+        if(xstate[nstate*(ip+mi[0]*i)+3]>=0.5) ndead++;
+      }
+      g[i]=1.-dw;
+      if((nip>0)&&(ndead==nip)) g[i]=0.;
       if(g[i]<gmin) g[i]=gmin;
     }
     eid[i]=nlive; rid[nlive]=i; nlive++;
@@ -432,6 +464,15 @@ double loadcut_width(double *co,ITG *ipkon,ITG *kon,char *lakon,ITG ne,
   {
     ITG naug=0;
     cut=lc_maxflow(&G,S,T,target,cmax,&naug);
+    if(cut>=1.e29){
+      printf("[LOADCUT] refusing: at least one element touches BOTH "
+             "termination sets, so no finite cut separates them.  The sets "
+             "have to be disjoint in the mesh, not only in the deck.\n");
+      lc_free(&G);
+      free(eid);free(rid);free(g);free(ipnoel);free(noel);free(cnt);
+      free(mark);free(stamp);free(shared);free(isa);free(isb);
+      return -1.;
+    }
     if(cut<-1.5){
       printf("[LOADCUT] refusing: the flow did not complete within %"
              ITGFORMAT " augmentations.  Reporting nothing rather than "
@@ -579,7 +620,7 @@ ITG loadcut_selftest(void)
   nodesa[0]=4; nodesb[0]=5;
 
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
+                    dam,mi,1.e-4,NULL,0,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("two tets on one face: the cut is that face's area",
          cut,0.5,1.e-9,&nbad);
 
@@ -588,7 +629,7 @@ ITG loadcut_selftest(void)
 
   dam[1]=1.6;
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
+                    dam,mi,1.e-4,NULL,0,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("a neighbour at D=0.6 scales the cut by g=0.4",
          cut,0.2,1.e-9,&nbad);
 
@@ -598,7 +639,7 @@ ITG loadcut_selftest(void)
 
   dam[1]=2.0;
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
+                    dam,mi,1.e-4,NULL,0,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("a fully damaged neighbour leaves gmin, not zero",
          cut,0.5e-4,1.e-9,&nbad);
   dam[1]=1.;
@@ -607,7 +648,7 @@ ITG loadcut_selftest(void)
 
   ipkon[1]=-1;
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
+                    dam,mi,1.e-4,NULL,0,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("with the far element deleted the cut is zero",cut,0.,1.e-12,&nbad);
   ipkon[1]=4;
 
@@ -635,13 +676,13 @@ ITG loadcut_selftest(void)
   memcpy(lakon+24,"C3D4    ",8);
   for(i=0;i<4;i++) dam[i]=1.;
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
+                    dam,mi,1.e-4,NULL,0,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("two bridges in parallel: the cut is their sum",
          cut,0.5+5.e-4,1.e-9,&nbad);
 
   ipkon[0]=-1;ipkon[1]=-1;              /* delete the wide bridge only */
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
+                    dam,mi,1.e-4,NULL,0,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("with only the sliver left the cut collapses 99.9 percent",
          cut,5.e-4,1.e-9,&nbad);
   if(cut>0.) {
@@ -652,14 +693,14 @@ ITG loadcut_selftest(void)
   /* The early exit must not change the verdict it is asked for. */
 
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,1.e-2,&nf,&nel,&below,&exact,NULL);
+                    dam,mi,1.e-4,NULL,0,NULL,1.e-2,&nf,&nel,&below,&exact,NULL);
   if(below!=1){ printf("  FAIL %-54s below=%" ITGFORMAT "\n",
                        "a target above the true cut reports BELOW",below);
                 nbad++; }
   else printf("  ok   %-54s below=1\n","a target above the true cut reports BELOW");
   ipkon[0]=0;ipkon[1]=4;
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,1.e-2,&nf,&nel,&below,&exact,NULL);
+                    dam,mi,1.e-4,NULL,0,NULL,1.e-2,&nf,&nel,&below,&exact,NULL);
   if(below!=0){ printf("  FAIL %-54s below=%" ITGFORMAT "\n",
                        "a target below the true cut reports NOT below",below);
                 nbad++; }
@@ -672,9 +713,63 @@ ITG loadcut_selftest(void)
   printf("  ..   the next line is the refusal this check provokes\n");
   memcpy(lakon+24,"C3D8    ",8);
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
+                    dam,mi,1.e-4,NULL,0,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("an unsupported live element makes it refuse (-1)",cut,-1.,1.e-12,&nbad);
   memcpy(lakon+24,"C3D4    ",8);
+
+  /* A cohesive facet must be weighted by its OWN damage.  Giving every
+     surviving facet g=1 is what made this routine disagree with the
+     offline analysis by a factor of 380 on the same state, and it is the
+     boolean error in weighted clothing: a separated interface read as a
+     rigid link.
+
+     The mesh mirrors the real one - a zero-thickness facet between two
+     tetrahedra, with the two sides carrying DUPLICATED nodes at the same
+     coordinates, which is exactly how the s3rad deck builds its ZrH
+     interface.  So the only path from grip to grip is tet - facet - tet,
+     and the facet's own stiffness is the whole answer. */
+  {
+    double xs[4*3*3];
+    ITG m;
+    nk=8; ne=3;
+    {
+      double c[24]={0.,0.,0.,  1.,0.,0.,  0.,1.,0.,  0.,0.,1.,
+                    0.,0.,0.,  1.,0.,0.,  0.,1.,0.,  0.,0.,-1.};
+      for(i=0;i<24;i++) co[i]=c[i];
+    }
+    kon[0]=1;kon[1]=2;kon[2]=3;kon[3]=4;               ipkon[0]=0;
+    kon[4]=1;kon[5]=2;kon[6]=3;kon[7]=5;kon[8]=6;kon[9]=7; ipkon[1]=4;
+    kon[10]=5;kon[11]=6;kon[12]=7;kon[13]=8;           ipkon[2]=10;
+    memcpy(lakon+0 ,"C3D4    ",8);
+    memcpy(lakon+8 ,"UC6     ",8);
+    memcpy(lakon+16,"C3D4    ",8);
+    dam[0]=1.;dam[1]=1.;dam[2]=1.;
+    nodesa[0]=4; nodesb[0]=8;
+    mi[0]=3;
+    for(m=0;m<4*3*3;m++) xs[m]=0.;
+    cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
+                      dam,mi,1.e-4,xs,4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
+    lc_chk("an undamaged cohesive facet conducts at full area",
+           cut,0.5,1.e-9,&nbad);
+    for(m=0;m<3;m++) xs[4*(m+3*1)+1]=0.75;
+    cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
+                      dam,mi,1.e-4,xs,4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
+    lc_chk("a facet at D=0.75 conducts at a quarter",cut,0.125,1.e-9,&nbad);
+    for(m=0;m<3;m++) xs[4*(m+3*1)+3]=1.0;
+    cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
+                      dam,mi,1.e-4,xs,4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
+    lc_chk("a fully failed facet drops to gmin, not to full strength",
+           cut,0.5e-4,1.e-9,&nbad);
+
+    /* and the degenerate deck: both grips on the same element */
+    printf("  ..   the next line is the refusal this check provokes\n");
+    nodesb[0]=1;
+    cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
+                      dam,mi,1.e-4,xs,4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
+    lc_chk("grips sharing an element make it refuse, not report infinity",
+           cut,-1.,1.e-12,&nbad);
+    mi[0]=1;
+  }
 
   /* Capacity scaling, which is what makes the exact mode usable at all.
      A fan of many thin paths in parallel with one thick one: with plain
