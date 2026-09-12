@@ -121,30 +121,35 @@ ITG damstate_facet_dead(const double *xstate,ITG nstate,ITG mi0,
 
 /* How many cohesive facets hold each node.
  *
- * One owner for a count two consumers disagreed about.  CCX_DAMAGE_DEADALL
- * skips any node with a facet, on the argument that a node tied to the other
- * side of an interface is not free however dead its bulk is; that argument is
- * right and 286 of 318 cohesive-only nodes on m12_epsf50 are indeed well
- * supported by it.  But the count it was computing included facets that have
- * SEPARATED, and a separated facet ties nothing.
+ * One owner for a count that used to be an inlined loop in nonlingeo.c.
+ * CCX_DAMAGE_DEADALL skips any node a cohesive facet holds, on the argument
+ * that a node tied to the other side of an interface is not free however
+ * dead its bulk is.  That argument is right: 286 of 318 cohesive-only nodes
+ * on m12_epsf50 are well supported by it.
  *
- * MEASURED at the s3rad wall, 2026-09-12: node 1246 carries the largest
- * residual force in the model.  Six bulk elements touch it, five deleted and
- * the sixth at D=1.0000 - g at the residual floor.  Six cohesive facets touch
- * it, and FIVE are fully failed by damstate_facet_dead.  The unnarrowed count
- * returns 6 and the node is skipped; the live count returns 1, and the node
- * is still skipped, because one surviving facet is still a tie.  Narrowing
- * the count does not weaken the guard - it makes it mean what it says.
+ * A NARROWED COUNT WAS TRIED AND RETIRED.  The count includes facets that
+ * have SEPARATED - every integration point failed - and the argument for
+ * skipping them is easy to make: a separated facet ties nothing.  It was
+ * implemented as CCX_DAMAGE_DEADALL_FACET, with a self test that could be
+ * shown failing, bit-identical when off.  Seven s3rad arms on one binary
+ * (research/14-THE-TRAP.md) then said:
  *
- * livefacet=0 reproduces the old count exactly, including when xstate is
- * absent: damstate_facet_dead answers 0 for a facet it cannot read, so an
- * unreadable state can never delete anything.
+ *   - it buys nothing.  The arm carrying it lands where the arm without it
+ *     lands, to four figures on the terminal grip reaction;
+ *   - in one configuration it is the ONLY difference between a run that
+ *     reaches theta 0.5569 and one that stops at 0.2550, because the twelve
+ *     extra elements it deletes are enough to put the trajectory into a
+ *     trap that a one-element perturbation decides.
+ *
+ * By CLAUDE.md's test - name the failure it addresses and the gate case that
+ * would go red without it - it had neither, so it is gone.  This comment is
+ * here so the next reader does not re-derive it: the idea is plausible, it
+ * was measured, and the measurement did not support it.
  *
  * Returns the number of facets counted; nfac[nk] receives the per-node count
  * and is zeroed first. */
 ITG damstate_facet_support(const ITG *ipkon,const char *lakon,const ITG *kon,
-                           ITG ne,ITG nk,ITG mi0,const double *xstate,
-                           ITG nstate,ITG livefacet,ITG *nfac)
+                           ITG ne,ITG nk,ITG *nfac)
 {
   ITG i,j,n,nope,ntot=0;
 
@@ -159,7 +164,6 @@ ITG damstate_facet_support(const ITG *ipkon,const char *lakon,const ITG *kon,
     if(lakon[8*i]!='U') continue;
     nope=(ITG)((unsigned char)lakon[8*i+7]);
     if((nope<1)||(nope>20)) continue;
-    if((livefacet)&&(damstate_facet_dead(xstate,nstate,mi0,i,3))) continue;
     ntot++;
     for(j=0;j<nope;j++){
       n=kon[ipkon[i]+j]-1;
@@ -267,17 +271,14 @@ ITG damstate_selftest(void)
             damstate_facet_dead(xs,nstate,mi0,e,3),0,&nbad);
   }
 
-  /* I: per-node facet support, with and without the live narrowing.
-     Three elements: one bulk (must be ignored), two six-node facets sharing
-     nodes 3,4,5.  Facet 2 is driven fully failed, then half failed. */
+  /* I: per-node facet support.  Three elements: one bulk (must be ignored),
+     two six-node facets sharing nodes 4,5,6. */
   {
-    ITG nstate=5,mi0=3,ne3=3,nk10=10,j,ntot;
+    ITG ne3=3,nk10=10,j,ntot;
     ITG ipkon[3],kon[64],nfac[10];
     char lak[24];
-    double xs[128];
 
     for(j=0;j<24;j++) lak[j]=' ';
-    for(j=0;j<128;j++) xs[j]=0.;
     strcpy1(&lak[0],"C3D4",4); lak[7]=(char)4;
     lak[8]='U'; lak[8+1]='C'; lak[8+2]='6'; lak[8+7]=(char)6;
     lak[16]='U'; lak[16+1]='C'; lak[16+2]='6'; lak[16+7]=(char)6;
@@ -286,30 +287,17 @@ ITG damstate_selftest(void)
     for(j=0;j<6;j++)  kon[4+j]=j+1;          /* facet 1 on nodes 1..6    */
     for(j=0;j<6;j++)  kon[10+j]=j+4;         /* facet 2 on nodes 4..9    */
 
-    ntot=damstate_facet_support(ipkon,lak,kon,ne3,nk10,mi0,xs,nstate,0,nfac);
-    dst_chk("I old count: two facets",ntot,2,&nbad);
-    dst_chk("I old count: shared node",nfac[3],2,&nbad);
-    dst_chk("I old count: private node",nfac[0],1,&nbad);
+    ntot=damstate_facet_support(ipkon,lak,kon,ne3,nk10,nfac);
+    dst_chk("I two facets counted",ntot,2,&nbad);
+    dst_chk("I shared node holds twice",nfac[3],2,&nbad);
+    dst_chk("I private node holds once",nfac[0],1,&nbad);
     dst_chk("I bulk element is not a facet",nfac[8],1,&nbad);
 
-    for(j=0;j<3;j++) xs[3+nstate*(j+mi0*2)]=1.;      /* facet 2 separated */
-    ntot=damstate_facet_support(ipkon,lak,kon,ne3,nk10,mi0,xs,nstate,1,nfac);
-    dst_chk("I live count: one facet left",ntot,1,&nbad);
-    dst_chk("I live count: shared node",nfac[3],1,&nbad);
-    dst_chk("I live count: node of dead facet",nfac[8],0,&nbad);
-    dst_chk("I live count: node of live facet",nfac[0],1,&nbad);
-
-    xs[3+nstate*(1+mi0*2)]=0.;                       /* two of three gone */
-    ntot=damstate_facet_support(ipkon,lak,kon,ne3,nk10,mi0,xs,nstate,1,nfac);
-    dst_chk("I half-failed facet still holds",nfac[8],1,&nbad);
-
-    for(j=0;j<3;j++) xs[3+nstate*(j+mi0*2)]=1.;
-    ntot=damstate_facet_support(ipkon,lak,kon,ne3,nk10,mi0,NULL,nstate,1,nfac);
-    dst_chk("I no state: narrowing cannot fire",ntot,2,&nbad);
-
     ipkon[2]=-ipkon[2]-2;                            /* facet 2 deleted   */
-    ntot=damstate_facet_support(ipkon,lak,kon,ne3,nk10,mi0,xs,nstate,0,nfac);
+    ntot=damstate_facet_support(ipkon,lak,kon,ne3,nk10,nfac);
+    dst_chk("I deleted facet is not counted",ntot,1,&nbad);
     dst_chk("I deleted facet holds nothing",nfac[8],0,&nbad);
+    dst_chk("I its shared node keeps the live one",nfac[3],1,&nbad);
   }
 
   damstate_free(&s);
