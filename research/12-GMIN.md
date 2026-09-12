@@ -138,3 +138,57 @@ What this rules out is worth as much as what it finds: the next place to look
 for the `s3rad` wall is not the operator's scaling.  Six of the eight wall
 events here are `divergence`, not `too-slow` - the Newton iteration is
 diverging, not creeping - and that is a different investigation.
+
+---
+
+# DEADALL at 5e-2: the wall moves 0.18% and stays
+
+`CCX_DAMAGE_DEADALL` deletes the elements around a node whose entire live
+support has fallen below a fraction of its stiffness and which carries no
+cohesive facet.  The decks run it at `1e-2`.  Raised to `5e-2`, five times
+more permissive:
+
+| | ends at | theta | deletions | wall | DEADALL firings | refinement | ending |
+|---|---|---|---|---|---|---|---|
+| 1e-02 (deck default) | 599 | 0.2550244 | 3741 | 4170 s | 148 | 8062 / 5344, mean 1.509 | `rc=201` tmin |
+| **5e-02** | **607** | **0.2554880** | 3747 | 3493 s | **148** | 7580 / 5133, mean 1.477 | `rc=201` tmin |
+
+**Eight increments further, and 0.00046 more load factor - 0.18%.**  Then the
+same `*ERROR: increment size smaller than minimum`.
+
+Three things in that table are worth more than the headline.
+
+**The firing count is identical: 148 and 148.**  A five-fold loosening of the
+threshold does not change how often the mechanism engages.  That says the
+nodes it acts on are not marginal - when a node's whole live support dies it
+dies far below either threshold, so the value of the knob between 1e-2 and
+5e-2 is almost immaterial to when it fires.
+
+**The fracture moves, slightly.**  At the baseline's own stopping load factor
+the looser threshold has deleted 3744 elements against 3741, and the sets are
+not identical.  Three elements, out of 3741, at the very end - small, and
+real.  Element deletion is a threshold decision and this is what one looks
+like.
+
+**Conditioning barely moves**: 1.477 refinement steps a solve against 1.509.
+This knob is not a conditioning knob.
+
+## What the two knobs together rule out
+
+`CCX_DAMAGE_GMIN` raised a hundredfold removes the conditioning problem
+entirely - refinement from 1.509 steps a solve to 0.005 - and the run then
+fails **earlier**, at increment 250.
+
+`CCX_DAMAGE_DEADALL` raised fivefold changes conditioning not at all and buys
+eight increments.
+
+So the `s3rad` wall is not the operator's scaling, and it is not the survival
+of nearly-dead elements around unsupported nodes.  Both were plausible, both
+are now measured, and both are out.
+
+What is left pointing somewhere: of the six wall events in the default run's
+tail, the ones that end it are `too-slow-cutback-below-tmin`, but in the
+raised-floor arm six of eight were `divergence-cutback-below-tmin` - the
+Newton iteration diverging rather than creeping.  The next question is which
+of those the wall actually is, and that is a question about the residual, not
+about any of these thresholds.
