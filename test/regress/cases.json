@@ -168,6 +168,22 @@
       "same_deletion_set_as": "fast-wrapped"
     },
     {
+      "name": "fast-wrapped-gmin",
+      "what": "the same wall with the residual-stiffness floor raised from 1e-04 to 1e-02. MEASURED 2026-09-12: THE WALL IS GONE - rc=0, theta reaches 1.0 at increment 520, with the IDENTICAL 64-element deletion set, and the cost per increment halves, 2.60 Newton iterations against 6.12. The floor's own comment in resultsmech.f claims exactly this trade - 'raising the floor trades a small unreleased load for conditioning' - and until now nobody had measured it. Swept over six decades the deck is INSENSITIVE from 1e-06 to 1e-03 (identical wall, identical 606 iterations) and worse at 1e-01 (walls earlier, at increment 61, with two fewer elements gone), so the useful band is narrow and 1e-02 is inside it. Note this is the SECOND independent cure for this wall: fast-wrapped-smooth removes it with the crack-face regulariser and arrives at the same place, theta 1.0 with the same 64 elements, at increment 515. Two mechanisms, one wall, one fracture - which says the wall is a conditioning phenomenon and not a unique defect.",
+      "kind": "fast",
+      "variant": "wrapped",
+      "env": [
+        "CCX_DAMAGE_GMIN=1.e-2"
+      ],
+      "expect": {
+        "rc": 0,
+        "last_inc": 520,
+        "theta": "0.100000E+01",
+        "deletions": 64
+      },
+      "same_deletion_set_as": "fast-wrapped"
+    },
+    {
       "name": "fast-wrapped-nospc",
       "what": "the same wall without the load-path mask, which must not change it. MEASURED 2026-09-11, once the override actually reached the binary: m.sta and m.damage are byte-identical to fast-wrapped - same wall at increment 99, same 64 deletions in the same order - and m.cvg differs at exactly one place, increment 93 attempt 2 iteration 3, CORR.DISP 0.1018 against 0.1438. That single difference IS the mask: it excludes a node from the displacement norm and changes nothing else.",
       "kind": "fast",

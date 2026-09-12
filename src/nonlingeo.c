@@ -1956,7 +1956,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_slow_allow=0,damage_slow_estres=0,damage_slow_estcorr=0,
     damage_slow_esttotal=0,damage_slow_maxiters=0;
 
-  double damage_cut_frac=0.,damage_cut_ref=-1.,damage_cut_now=0.;
+  double damage_cut_frac=0.,damage_cut_ref=-1.,damage_cut_now=0.,
+    damage_cut_gmin=1.e-4;
   double *stn=NULL,*v=NULL,*een=NULL,cam[5],*epn=NULL,*cg=NULL,
     *cdn=NULL,*pslavsurfold=NULL,*fextload=NULL,
     *f=NULL,*fn=NULL,qa[4]={0.,0.,-1.,0.},qam[2]={0.,0.},dtheta,theta,
@@ -3624,6 +3625,25 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
             damage_cut_frac=0.;
           }else{
             damage_cut_on=1;
+
+            /* The residual-stiffness floor is a DECK number, and it was
+               hard coded here as 1e-4 while resultsmech.f and
+               mafilldamas.f read CCX_DAMAGE_GMIN.  Three copies of one
+               constant, two of them settable and one not, is how a
+               measurement of the floor's own effect would have come out
+               wrong.  Parsed here exactly as they parse it, bounds
+               included. */
+
+            {
+              const char *ge=ccxopt_getenv("CCX_DAMAGE_GMIN");
+              damage_cut_gmin=1.e-4;
+              if(ge!=NULL){
+                double gv=atof(ge);
+                if((gv>=1.e-6)&&(gv<=0.2)) damage_cut_gmin=gv;
+              }
+              printf("[LOADCUT] residual-stiffness floor in the weighting: "
+                     "%.6e\n",damage_cut_gmin);
+            }
             if(ccxopt_getenv("CCX_FRACTURE_CUT_EXACT")!=NULL){
               damage_cut_exact=1;
               printf("[LOADCUT] the early exit is DISABLED: every batch "
@@ -14022,7 +14042,7 @@ damage_active_set_closed:
                 lc_target=damage_cut_frac*damage_cut_ref;
               damage_cut_now=loadcut_width(co,ipkon,kon,lakon,*ne,*nk,
                                            lc_a,lc_na,lc_b,lc_nb,dam,mi,
-                                           1.e-4,xstate,*nstate_,
+                                           damage_cut_gmin,xstate,*nstate_,
                                            damage_ifacdead,lc_target,
                                            &lc_nf,&lc_nel,&lc_bel,&lc_ex,
                                            &lc_w);
