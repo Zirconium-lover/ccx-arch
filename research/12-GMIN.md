@@ -72,3 +72,69 @@ The claim in the comment is about "a notch process zone holding thousands of
 floored elements at once", and only `s3rad` has one.  The arm that tests it
 is running: `CCX_DAMAGE_GMIN=1.e-2` against the default, with the refinement
 counter as the conditioning proxy.
+
+---
+
+# At scale the trade inverts
+
+`s3rad`, shipped configuration, `CCX_DAMAGE_GMIN=1.e-2`, four threads,
+against the same deck at the default:
+
+| | ends at | theta | deletions | wall | refinement steps | how it ends |
+|---|---|---|---|---|---|---|
+| 1e-04 (default) | 599 | 0.2550244 | 3741 | 4170 s | **8062 / 5344 solves, mean 1.509** | `rc=201` tmin |
+| **1e-02** | **250** | **0.196059** | 881 | 1270 s | **10 / 1844 solves, mean 0.005** | `rc=201` tmin |
+
+## The conditioning claim is confirmed, and quantified
+
+`resultsmech.f` says the floor buys conditioning.  It does, and the size of
+the effect is not subtle: **iterative refinement essentially disappears**,
+from 1.509 steps a solve to 0.005 - a factor of three hundred.  PARDISO stops
+needing to refine at all.  The 5.6% of runtime that the floor was costing in
+refinement is gone.
+
+That is the first direct measurement of what the floor is for, and the
+mechanism is exactly the one claimed.
+
+## And the run fails earlier anyway
+
+It walls at increment **250**, `theta=0.196`, against the default's 599 and
+0.255 - **23% less of the load history**, having deleted 881 elements against
+3741.  Same ending, `*ERROR: increment size smaller than minimum`, and the
+same rescue pile-up: eight `[DAMAGE RESCUE] WALL` events, six of them
+`divergence-cutback-below-tmin` rather than the `too-slow` that ends the
+default run.
+
+**Better conditioning, worse outcome.**  The two are not the same axis.
+
+The cost showed up before the failure did.  At `theta = 0.1955`, reached by
+both, the fracture is the same - 766 deletions against 765, so the floor is
+not distorting the physics there - but the raised floor needed **412 attempts
+against 327**, 26% more, to get there.
+
+(One methodological note, because it nearly produced a wrong report: compared
+at the same INCREMENT the two runs look wildly different - 1334 deletions
+against 772 at increment 234 - and compared at the same THETA they are
+identical.  The increment number is not a physical coordinate.  `09-STEERING`
+says exactly this and it caught me anyway.)
+
+## What it means
+
+The floor's benefit on `fast-wrapped` was real - it removed a wall - but it
+does not generalise.  On the deck that matters, raising it four decades
+removes the conditioning problem completely and the run still fails, earlier,
+by divergence rather than by slow cutback.
+
+So **conditioning is not what limits `s3rad`.**  The 5.6% the floor costs in
+refinement is buying something that is not the binding constraint, and
+lowering the floor would not help either - 1e-06 through 1e-03 are
+indistinguishable on both fast decks.
+
+**The default stays at 1e-04.**  It sits in the flat band on every deck
+measured, and the one value that changes anything for the better does so only
+on a deck small enough not to have the process zone the floor was written for.
+
+What this rules out is worth as much as what it finds: the next place to look
+for the `s3rad` wall is not the operator's scaling.  Six of the eight wall
+events here are `divergence`, not `too-slow` - the Newton iteration is
+diverging, not creeping - and that is a different investigation.
