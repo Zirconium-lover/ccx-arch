@@ -52,18 +52,28 @@ fi
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-6}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-6}
 export MKL_CBWR=${MKL_CBWR:-COMPATIBLE}
-export CCX_DAMAGE_AUTOSPC=1.e-3
-export CCX_DAMAGE_DEADALL=1.e-2
-export CCX_DAMAGE_DELETE_MAT=ALL
-export CCX_DAMAGE_LINESEARCH=ADAPTIVE
-export CCX_DAMAGE_REEQ_RESCUE2=1
-export CCX_DAMAGE_REEQ_SCALE=PHYSICAL
-export CCX_DAMAGE_TANGENT=UNSYM
-export CCX_DAMAGE_TOPOLOGY=DEFERRED
-export CCX_DAMAGE_TR_DOGLEG=1
-export CCX_DAMAGE_VISCOSITY=1.e-4
-export CCX_FRACTURE_TERMINATION=FACE_X0_NSET:FACE_XL_NSET
-export CCX_PARDISO_REUSE_SYMBOLIC=1
+# The deck's configuration.  ${NAME:-default} rather than a bare
+# assignment, because a bare one SILENTLY OVERWRITES a value the caller
+# set in the environment, and that has now cost two measurements: the
+# CCX_DAMAGE_AUTOSPC case that made a gate case run with the mask on for
+# its whole life, and a CCX_DAMAGE_DEADALL arm on 2026-09-12 that spent
+# nineteen minutes reproducing the baseline.  Positional NAME=VALUE
+# overrides below still win over both, and the provenance line says which
+# values came from where, so nothing is decided silently.
+export CCX_DAMAGE_AUTOSPC=${CCX_DAMAGE_AUTOSPC:-1.e-3}
+export CCX_DAMAGE_DEADALL=${CCX_DAMAGE_DEADALL:-1.e-2}
+export CCX_DAMAGE_DELETE_MAT=${CCX_DAMAGE_DELETE_MAT:-ALL}
+export CCX_DAMAGE_LINESEARCH=${CCX_DAMAGE_LINESEARCH:-ADAPTIVE}
+export CCX_DAMAGE_REEQ_RESCUE2=${CCX_DAMAGE_REEQ_RESCUE2:-1}
+export CCX_DAMAGE_REEQ_SCALE=${CCX_DAMAGE_REEQ_SCALE:-PHYSICAL}
+export CCX_DAMAGE_TANGENT=${CCX_DAMAGE_TANGENT:-UNSYM}
+export CCX_DAMAGE_TOPOLOGY=${CCX_DAMAGE_TOPOLOGY:-DEFERRED}
+export CCX_DAMAGE_TR_DOGLEG=${CCX_DAMAGE_TR_DOGLEG:-1}
+export CCX_DAMAGE_VISCOSITY=${CCX_DAMAGE_VISCOSITY:-1.e-4}
+export CCX_FRACTURE_TERMINATION=${CCX_FRACTURE_TERMINATION:-FACE_X0_NSET:FACE_XL_NSET}
+export CCX_PARDISO_REUSE_SYMBOLIC=${CCX_PARDISO_REUSE_SYMBOLIC:-1}
+
+
 
 unset CCX_DISSIPATION_CONTROL
 unset CCX_DISSIPATION_TARGET
