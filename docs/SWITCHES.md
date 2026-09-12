@@ -124,7 +124,7 @@ code says nothing there at all.
 | `CCX_DAMAGE_FD_SKIP` | `resultsmech.f` | **no** | - |  |
 | `CCX_DAMAGE_FLOAT_FACE` | `damfloat.f` | **no** | - |  |
 | `CCX_DAMAGE_FREE_PROBE` | `nonlingeo.c` | **no** | - |  |
-| `CCX_DAMAGE_GMIN` | `mafilldamas.f`, `resultsmech.f` | yes | - |  |
+| `CCX_DAMAGE_GMIN` | `mafilldamas.f`, `nonlingeo.c`, `resultsmech.f` | yes | - | [LOADCUT] residual-stiffness floor in the weighting: |
 | `CCX_DAMAGE_GMIN_TANGENT` | `resultsmech.f` | **no** | - |  |
 | `CCX_DAMAGE_LS_LEGACY` | `nonlingeo.c` | yes | - | [DAMAGE LINESEARCH] LEGACY ladder: floor <value>, <value> trials, |
 | `CCX_DAMAGE_LS_MIN` | `nonlingeo.c` | **no** | - | (from the comment above it) The damage line search is clamped to a compiled-in floor and trial cap. On m12_field_soft50 both bind SIMULTANEOUSLY on every iteration of the failing increment - lambda pinned at exactly 0.100 with trials=3, seven iterations running, residual oscillating in 1.70e-3..2.30e-3 with no contraction and a stable active set (E-81). A search that asks for a shorter step on every iteration and is refused on every iteration is a search whose floor is the binding constraint, not a search that has converged. The structural FD probe says the tangent there is NOT the problem: 2.52e-3 median at the wall against a 1.33e-4 elastic noise floor on the same deck and SP1's healthy 1.92e-3 (E-91). So make the two clamps measurable instead of assumed. Defaults are the compiled-in values, so an unset environment is bit-identical. |
