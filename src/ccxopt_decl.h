@@ -275,6 +275,30 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "zero",NULL},
 
 /* ---- measurement -------------------------------------------------- */
+{"CCX_PARDISO_REPACK",CCXOPT_BOOL,"unset (off)",CCXOPT_UNBOUNDED,NULL,
+ "cache the CSR permutation and refill only the values when the sparsity "
+ "pattern has not changed.  The structurally-symmetric asymmetric branch "
+ "(mtype=1), which is what CCX_DAMAGE_TANGENT=UNSYM makes every run of this "
+ "branch take, otherwise rebuilds its whole CSR on EVERY factorisation - "
+ "four allocations, a full sort of the lower triangle by row, a sort of "
+ "every row by column, and an interleave - measured at 73 ms a call and "
+ "9.4 percent of an s3rad run, 6.5 minutes of 69.  The permutation depends "
+ "only on the pattern, and the hash that detects a pattern change already "
+ "runs on every call: it fires on 165 of 5344.  Acceptance is BIT "
+ "IDENTITY, because the same values land in the same slots",NULL},
+
+{"CCX_PARDISO_REPACK_VERIFY",CCXOPT_BOOL,"unset (off)",CCXOPT_UNBOUNDED,NULL,
+ "with CCX_PARDISO_REPACK armed, rebuild the whole CSR anyway on every "
+ "reuse call and compare it slot by slot against what the cached "
+ "permutation produced.  This is the only check that can actually fail - "
+ "it compares the shortcut against the thing it short-cuts, on real "
+ "matrices.  Expensive by construction: it does both",NULL},
+
+{"CCX_PARDISO_REPACK_BREAK",CCXOPT_INT,"unset (off)",CCXOPT_UNBOUNDED,NULL,
+ "corrupt one entry of the cached permutation so that the verify check can "
+ "be SEEN to go red.  A check that has never been observed failing is not "
+ "a check.  DIAGNOSTIC ONLY - it makes the matrix wrong",NULL},
+
 {"CCX_PARDISO_REFINE_EVERY",CCXOPT_INT,"200 (solves between reports)",
  CCXOPT_UNBOUNDED,NULL,
  "how often [PARDISO REFINE] prints the running count of iterative "

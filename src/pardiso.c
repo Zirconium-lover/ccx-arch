@@ -29,6 +29,75 @@
 #include <mkl_service.h>
 
 ITG *icolpardiso=NULL,*pointers=NULL,iparm[64];
+
+/* The CSR REPACK cache.
+   ------------------------------------------------------------------
+   The mtype=1 branch below - structurally symmetric, numerically
+   asymmetric, which is what CCX_DAMAGE_TANGENT=UNSYM produces and
+   therefore what every run of this branch takes - rebuilds its whole CSR
+   on EVERY factorisation: four allocations, a full sort of the lower
+   triangle by row (isortiid over nzs entries), a sort of every row by
+   column (isortid), and an interleave into neq+2*nzs slots.
+
+   Measured on s3rad: 73 ms a call, 5344 calls, 9.4% of a 69-minute run -
+   6.5 minutes spent rewriting the same numbers into the same places
+   (research/01-PROFILING.md).
+
+   But the permutation that sort produces depends ONLY on (icol,irow,jq),
+   the sparsity pattern - the values are pure payload.  The mechanism that
+   decides whether the pattern changed already exists and already runs:
+   pardiso_structure_hash, which says it changes on 165 calls out of 5344.
+   So on 97% of calls the sort reproduces itself exactly.
+
+   pardiso_src[k] records where slot k came from:
+       >= 0  ->  au[ pardiso_src[k] ]
+       <  0  ->  ad[ -pardiso_src[k]-1 ]
+   and refilling is then one indexed scatter.  It is built by running the
+   ordinary construction with the SOURCE INDEX as payload instead of the
+   value - the sorts carry a double and an index below 2^53 is exact in
+   one - so there is exactly one copy of the ordering logic and the fast
+   path cannot drift from it. */
+
+static ITG *pardiso_src=NULL;
+static ITG pardiso_src_n=0;
+static ITG pardiso_repack_hits=0,pardiso_repack_builds=0;
+
+void pardiso_repack_report(void);
+
+static ITG pardiso_repack_on(void)
+{
+  static ITG init=0,on=0;
+  if(!init){
+    const char *e=ccxopt_getenv("CCX_PARDISO_REPACK");
+    init=1;
+    atexit(pardiso_repack_report);
+    on=((e!=NULL)&&((e[0]=='1')||(e[0]=='Y')||(e[0]=='y')||
+                    (e[0]=='O')||(e[0]=='o')))?1:0;
+  }
+  return on;
+}
+
+static ITG pardiso_repack_verify(void)
+{
+  static ITG init=0,on=0;
+  if(!init){ init=1; on=(ccxopt_getenv("CCX_PARDISO_REPACK_VERIFY")!=NULL)?1:0; }
+  return on;
+}
+
+static void pardiso_repack_free(void)
+{
+  if(pardiso_src!=NULL){ SFREE(pardiso_src); pardiso_src=NULL; }
+  pardiso_src_n=0;
+}
+
+void pardiso_repack_report(void)
+{
+  if((pardiso_repack_builds+pardiso_repack_hits)<=0) return;
+  printf("[PARDISO REPACK] rebuilt %" ITGFORMAT " time(s), refilled from the "
+         "cached permutation %" ITGFORMAT " time(s)\n",
+         pardiso_repack_builds,pardiso_repack_hits);
+  fflush(stdout);
+}
 long long pt[64];
 double *aupardiso=NULL;
 /* double dparm[64];  not used */
@@ -213,11 +282,14 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
   /*  char env1[32]; */
   ITG i,j,k,l,maxfct=1,mnum=1,phase=12,nrhs=1,*perm=NULL,mtype,
     msglvl=0,error=0,*irowpardiso=NULL,kflag,kstart,n,ifortran,
-    lfortran,index,id,k2,reuse_requested=0,reuse_current=0,cgs_active=0;
+    lfortran,index,id,k2,reuse_requested=0,reuse_current=0,cgs_active=0,
+    repack_on=0,repack_fast=0,repack_verify=0;
   ITG ndim,nthread,nthread_v;
-  double *b=NULL,*x=NULL;
+  double *b=NULL,*x=NULL,*repack_ref=NULL;
   unsigned long long structure_hash=0;
 
+  repack_on=pardiso_repack_on();
+  repack_verify=pardiso_repack_verify();
   reuse_requested=pardiso_reuse_eligible(*symmetryflag,*inputformat);
   if(reuse_requested){
     /* The price of the reuse mechanism, measured separately from what it
@@ -451,12 +523,43 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
          state lives in pt and is untouched, which is where the reuse
          benefit actually is. */
 
+      /* FAST PATH: the pattern has not changed, so pointers and
+         icolpardiso are already the ones this matrix needs and only the
+         values have to be put back in their slots. */
+
+      if((repack_on)&&(reuse_current)&&(pardiso_src!=NULL)&&
+         (pardiso_src_n==*neq+2**nzs)&&(aupardiso!=NULL)&&
+         (icolpardiso!=NULL)&&(pointers!=NULL)){
+        for(k=0;k<pardiso_src_n;k++){
+          ITG sidx=pardiso_src[k];
+          aupardiso[k]=(sidx>=0)?au[sidx]:ad[-sidx-1];
+        }
+        pardiso_repack_hits++;
+
+        /* VERIFY: keep what the fast path produced, then rebuild the whole
+           CSR from scratch anyway and compare slot by slot.  This is the
+           only check that can actually fail - it compares the shortcut
+           against the thing it is short-cutting, on real matrices, with no
+           model of either.  CCX_PARDISO_REPACK_BREAK corrupts one entry of
+           the permutation so that the check can be SEEN to go red. */
+
+        if(repack_verify){
+          NNEW(repack_ref,double,pardiso_src_n);
+          for(k=0;k<pardiso_src_n;k++) repack_ref[k]=aupardiso[k];
+        }else{
+          repack_fast=1;
+        }
+      }
+
+      if(!repack_fast){
+
       SFREE(pointers);
       SFREE(icolpardiso);
       SFREE(aupardiso);
       pointers=NULL;
       icolpardiso=NULL;
       aupardiso=NULL;
+      pardiso_repack_free();
 
       ndim=*nzs;
       NNEW(pointers,ITG,*neq+1);
@@ -469,7 +572,7 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
 	for(j=0;j<icol[i];j++){
 	  icolpardiso[k]=i+1;
 	  irowpardiso[k]=irow[k];
-	  aupardiso[k]=au[k];
+	  aupardiso[k]=repack_on?(double)k:au[k];
 	  k++;
 	}
       }
@@ -531,10 +634,10 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
 	l=k+1;
 	for(j=jq[i+1]-1;j>=jq[i];j--){
 	  icolpardiso[--k]=irow[j-1];
-	  aupardiso[k]=au[j+*nzs3-1];
+	  aupardiso[k]=repack_on?(double)(j+*nzs3-1):au[j+*nzs3-1];
 	}
 	icolpardiso[--k]=i+1;
-	aupardiso[k]=ad[i];
+	aupardiso[k]=repack_on?(double)(-(i+1)):ad[i];
 	for(j=pointers[i+1]-1;j>=pointers[i];j--){
 	  icolpardiso[--k]=icolpardiso[j-1];
 	  aupardiso[k]=aupardiso[j-1];
@@ -542,6 +645,64 @@ void pardiso_factor(double *ad, double *au, double *adb, double *aub,
 	pointers[i+1]=l;
       }
       pointers[0]=1;
+
+      /* Materialise: the payload is currently the source index of every
+         slot.  Record it, then put the real values through it - which is
+         also the first exercise of the fast path's own arithmetic, so a
+         wrong index shows up immediately rather than on the next call. */
+
+      if(repack_on){
+        pardiso_repack_free();
+        NNEW(pardiso_src,ITG,ndim);
+        pardiso_src_n=ndim;
+        for(k=0;k<ndim;k++) pardiso_src[k]=(ITG)aupardiso[k];
+        for(k=0;k<ndim;k++){
+          ITG sidx=pardiso_src[k];
+          aupardiso[k]=(sidx>=0)?au[sidx]:ad[-sidx-1];
+        }
+        pardiso_repack_builds++;
+
+        /* The break is applied to the CACHE only, after this rebuild has
+           already produced the correct matrix.  Corrupting it earlier
+           would corrupt both sides of the comparison equally and the
+           check would pass, which is precisely the failure mode a
+           deliberate-break switch exists to rule out. */
+
+        {
+          const char *brk=ccxopt_getenv("CCX_PARDISO_REPACK_BREAK");
+          if((brk!=NULL)&&(ndim>1)){
+            ITG kb=(ITG)atoi(brk);
+            if((kb<0)||(kb>=ndim)) kb=ndim/2;
+            pardiso_src[kb]=pardiso_src[(kb+1)%ndim];
+            printf("[PARDISO REPACK] DELIBERATELY BROKEN: cache slot %"
+                   ITGFORMAT " now reads its neighbour's source.  The "
+                   "verify check must go red on the next reuse.\n",kb);
+            fflush(stdout);
+          }
+        }
+      }
+
+      if(repack_ref!=NULL){
+        ITG nbad=0;
+        double worst=0.;
+        for(k=0;k<ndim;k++){
+          double d=fabs(repack_ref[k]-aupardiso[k]);
+          if(d>0.){ nbad++; if(d>worst) worst=d; }
+        }
+        if(nbad==0){
+          printf("[PARDISO REPACK] verify: %" ITGFORMAT " slot(s) identical "
+                 "to a full rebuild\n",ndim);
+        }else{
+          printf("[PARDISO REPACK] verify *ERROR: %" ITGFORMAT " of %"
+                 ITGFORMAT " slot(s) differ from a full rebuild, worst "
+                 "%.6e.  The cached permutation does not describe this "
+                 "matrix.\n",nbad,ndim,worst);
+        }
+        fflush(stdout);
+        SFREE(repack_ref); repack_ref=NULL;
+      }
+
+      }   /* end of !repack_fast */
     }
   }
 
@@ -685,6 +846,7 @@ void pardiso_cleanup(ITG *neq,ITG *symmetryflag,ITG *inputformat){
   pointers=NULL;
   pardiso_cache_valid=0;
   pardiso_cache_hash=0;
+  pardiso_repack_free();   /* the permutation describes a CSR that is gone */
   pardiso_cgs_report(1);
   pardiso_cgs_ok=0;pardiso_cgs_fail=0;pardiso_cgs_iter=0;
 

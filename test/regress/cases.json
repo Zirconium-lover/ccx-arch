@@ -107,6 +107,36 @@
       "same_deletion_set_as": "fast-plain"
     },
     {
+      "name": "fast-plain-repack",
+      "what": "the same deck with the CSR permutation cached. The structurally-symmetric asymmetric branch - which is what CCX_DAMAGE_TANGENT=UNSYM makes every run of this branch take - otherwise rebuilds its whole CSR on every factorisation: four allocations, a full sort of the lower triangle by row, a sort of every row by column, and an interleave. The permutation depends only on the sparsity pattern, and on this deck the pattern changes ONCE: measured 1 rebuild against 1282 refills. Acceptance is BIT IDENTITY, because the same values land in the same slots, and that is what this case pins - all five files byte-for-byte. MEASURED 2026-09-12: 25.62 s against 27.92 s here and 13.43 s against 15.10 s on fast-wrapped. CCX_PARDISO_REPACK_VERIFY rebuilds the whole CSR anyway and compares it slot by slot, and CCX_PARDISO_REPACK_BREAK corrupts one cache entry so that check can be seen to go red - it catches 1 slot in 58408 every time.",
+      "kind": "fast",
+      "variant": "plain",
+      "env": [
+        "CCX_PARDISO_REPACK=1"
+      ],
+      "expect": {
+        "rc": 0,
+        "last_inc": 507,
+        "theta": "0.100000E+01",
+        "deletions": 90
+      },
+      "same_deletion_set_as": "fast-plain",
+      "equal_to": [
+        {
+          "case": "fast-plain",
+          "rtol": 0.0,
+          "atol": 0.0,
+          "files": [
+            "m.sta",
+            "m.damage",
+            "m.cvg",
+            "m.dat",
+            "m.frd"
+          ]
+        }
+      ]
+    },
+    {
       "name": "fast-wrapped",
       "what": "the eroding phase wrapped in facets: reaches a node with no bulk support, and walls on the crack-face kink",
       "kind": "fast",
