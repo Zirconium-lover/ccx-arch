@@ -379,3 +379,61 @@ minutes, and it is now two gate cases:
 
 The difference between those two endings is the whole point.  One says the
 solver gave up; the other says the specimen broke.
+
+---
+
+# It fires, on the target deck
+
+`s3rad`, shipped configuration, `CCX_FRACTURE_CUT=0.01`, facets weighted by
+their own damage, 4 threads:
+
+```
+[FRACTURE COMPLETE] inc=553 step_time=2.426875e-01
+                    the load path between FACE_X0_NSET and FACE_XL_NSET has
+                    narrowed to 0.009562 of its original width, below the
+                    0.01 the deck asked for.  The topological sweep still
+                    calls them CONNECTED.
+ Job finished
+```
+
+Against the same deck without it:
+
+| | ends at | theta | grip reaction | wall clock | deletions | how it ends |
+|---|---|---|---|---|---|---|
+| shipped | 599 | 0.2550244 | 66.45 = **2.13%** of peak | 4170 s | 3741 | `rc=201`, *increment size smaller than minimum* |
+| `CCX_FRACTURE_CUT=0.01` | **553** | 0.2426875 | 202.57 = **6.51%** of peak | **3572 s** | 3661 | **`Job finished`** |
+
+**46 increments and 598 seconds** - ten minutes of a sixty-nine minute run -
+and the whole twelve-firing rescue pile-up at increments 596-599
+(`08-S3RAD-COMPLETE.md`) never happens, because the run is over before it.
+
+The measurement's own cost is inside that 3572 s, so the saving from stopping
+early is larger than 598 s; the two are not separated here and do not need to
+be, because the sign is not in doubt.
+
+**And the ending changed.**  `rc=201` with an increment-size error is a solver
+reporting that it could not continue.  `Job finished` at a stated separation
+criterion is a run that completed.  That is the difference `09-STEERING` asks
+for - *the answer is the model is wrong, change the deck, not go debug the
+Newton loop* - except that here the model was not wrong either.  It was over,
+and now the deck can say so.
+
+## Choosing the default from the data
+
+| | reference cut | fires at | load there |
+|---|---|---|---|
+| `fast-wrapped` | 0.8701933 | ratio 3.2e-04, increment 36 of 99 | - |
+| `s3rad` | 4.154734 | ratio 9.6e-03, increment 553 of 599 | 6.5% of peak |
+
+Two decks, two decades apart in where the ratio lands, which is what a
+threshold has to survive.  `0.01` fires on both and fires late - at 6.5% of
+peak load on the deck that matters, with the specimen hanging by less than a
+hundredth of its original path.  Anything smaller is safer still and buys
+less.  **`0.01` is the number to offer as a default**, and it should stay
+opt-in until a second full-scale deck has been through it.
+
+Note also what the facet correction did to the reference itself: **5.570258
+before, 4.154734 after**.  A quarter of the load path this deck appears to
+start with is cohesive interface that is already damaged at the first
+committed batch.  The buggy version counted it at full strength, which is
+also why it never fired.
