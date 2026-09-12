@@ -275,7 +275,8 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "zero",NULL},
 
 /* ---- measurement -------------------------------------------------- */
-{"CCX_PARDISO_REPACK",CCXOPT_BOOL,"unset (off)",CCXOPT_UNBOUNDED,NULL,
+{"CCX_PARDISO_REPACK",CCXOPT_BOOL,"ON by default; set 0 to disable",
+ CCXOPT_UNBOUNDED,NULL,
  "cache the CSR permutation and refill only the values when the sparsity "
  "pattern has not changed.  The structurally-symmetric asymmetric branch "
  "(mtype=1), which is what CCX_DAMAGE_TANGENT=UNSYM makes every run of this "
@@ -285,7 +286,10 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "9.4 percent of an s3rad run, 6.5 minutes of 69.  The permutation depends "
  "only on the pattern, and the hash that detects a pattern change already "
  "runs on every call: it fires on 165 of 5344.  Acceptance is BIT "
- "IDENTITY, because the same values land in the same slots",NULL},
+ "IDENTITY, because the same values land in the same slots - verified on "
+ "both fast decks and on s3rad, where the deletion record is byte-for-byte "
+ "identical, all 3741, for 11.7x less repacking and 14 percent less wall "
+ "clock.  It only engages where symbolic reuse is already eligible",NULL},
 
 {"CCX_PARDISO_REPACK_VERIFY",CCXOPT_BOOL,"unset (off)",CCXOPT_UNBOUNDED,NULL,
  "with CCX_PARDISO_REPACK armed, rebuild the whole CSR anyway on every "

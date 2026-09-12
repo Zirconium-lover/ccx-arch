@@ -68,11 +68,20 @@ static ITG pardiso_repack_on(void)
 {
   static ITG init=0,on=0;
   if(!init){
+    /* ON by default since 2026-09-12.  It only ever engages where
+       symbolic reuse is already eligible, so it rides an existing opt-in
+       and changes nothing where that is off.  The evidence for the flip:
+       bit-identical on both fast decks and on the target deck - the
+       deletion record byte-for-byte, all 3741, same ending increment -
+       for 11.7x less repacking and 14% less wall clock at scale
+       (research/01-PROFILING.md).  Set it to 0 to turn it off. */
+
     const char *e=ccxopt_getenv("CCX_PARDISO_REPACK");
     init=1;
     atexit(pardiso_repack_report);
-    on=((e!=NULL)&&((e[0]=='1')||(e[0]=='Y')||(e[0]=='y')||
-                    (e[0]=='O')||(e[0]=='o')))?1:0;
+    on=1;
+    if((e!=NULL)&&((e[0]=='0')||(e[0]=='N')||(e[0]=='n')||
+                   (e[0]=='F')||(e[0]=='f')||(e[0]==0))) on=0;
   }
   return on;
 }

@@ -458,6 +458,45 @@ floor's *value* - how much worse the conditioning would be without it - has
 still never been measured.  `CCX_DAMAGE_GMIN` is settable, and the arm that
 would answer it is one run.
 
+## The CSR repacking, removed
+
+`pardiso.c`'s `mtype=1` branch - structurally symmetric, numerically
+asymmetric, which is what `CCX_DAMAGE_TANGENT=UNSYM` makes every run of this
+branch take - rebuilt its whole CSR on every factorisation: four allocations,
+a full sort of the lower triangle by row over `nzs` entries, a sort of every
+row by column, and an interleave into `neq + 2*nzs` slots.
+
+The permutation depends only on the sparsity pattern.  The hash that detects
+a pattern change already ran on every call.  `CCX_PARDISO_REPACK` caches the
+permutation and refills only the values.
+
+Same deck, same machine, four threads, shipped configuration:
+
+| | `pardiso factor` self | per call | share of run | wall clock |
+|---|---|---|---|---|
+| before (`_runs/prof2`) | 391.1 s | 73.7 ms | **9.4%** | 4170 s |
+| after (`_runs/repack`) | **33.3 s** | **6.2 ms** | **0.93%** | **3588 s** |
+
+**The repacking is 11.7 times cheaper and the run is 582 seconds shorter -
+fourteen percent of a sixty-nine minute deck.**
+
+`[PARDISO REPACK] rebuilt 165 time(s), refilled from the cached permutation
+5179 time(s)`, and 165 is exactly the number of phase-12 analyses in the same
+run.  The two mechanisms agree on when the pattern changed without being told
+about each other, which is the cross-check that matters here.
+
+**Acceptance was bit identity and it holds**: the deletion record is
+byte-identical to `prof2`'s, all 3741 of them, and the run ends at the same
+increment 599, the same `theta=0.2550244`.
+
+One honest caveat about the 582 s.  The repacking event itself accounts for
+358 s of it.  The other events also came out 3-5% faster - phase 22 1804.8 s
+against 1898.7, assembly 675.6 against 714.2, solve 356.4 against 386.4 -
+which is consistent with removing ~50 MB of allocation and a large sort from
+every factorisation, but it is a single pair of runs and run-to-run variation
+is not excluded.  The 358 s is measured directly; the rest is a reasonable
+attribution, not a measurement.
+
 ## What is still open
 
 - **The `s3rad` breakdown at scale.** Two attempts were killed part way
