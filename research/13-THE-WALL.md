@@ -1,5 +1,29 @@
 # The s3rad wall: what held it, and what took it down
 
+> **RETRACTED IN PART, 2026-09-12 22:10.  Read this box before the tables.**
+>
+> The central claim below — that `CCX_DAMAGE_AUTOSPC_FORCE` takes the run
+> past the wall — is **false**, and the measurement that refutes it is the
+> control arm that should have been run first.
+>
+> `base2`: the stock recipe, **no added switches at all**, on the same
+> binary as every other arm here (`389909a7`).  It reaches theta
+> **0.556913** with 3796 elements deleted and 0.0435 % of peak carried —
+> the same place `spconly` reaches with the force mask armed (0.557017,
+> 3796 deletions, 0.0434 %).  The force mask is a **no-op on this deck at
+> this threshold**.  It is not what moved anything.
+>
+> The comparisons in this note were made against `prof2`, which was run
+> with a **different binary** (`d58ce3ab`, 11 September) — twelve commits
+> older.  That is my error, not a trap in the deck: an executable hash is
+> printed in `provenance.txt` of every run and I did not read it before
+> building a conclusion on the comparison.
+>
+> What the arms actually say is in `14-THE-TRAP.md`.  The honesty check on
+> the excluded residual (521/525 accepted increments, never above
+> tolerance) stands as measured — it was just measuring a mechanism that
+> was doing nothing.
+
 *Measured 2026-09-12.  Binary `5420dac`, deck `m12_s3rad_gc24_w.inp`
 (sha256 2fb0cf4…), `OMP_NUM_THREADS=MKL_NUM_THREADS=6`, `MKL_CBWR=COMPATIBLE`
 on every arm.*
