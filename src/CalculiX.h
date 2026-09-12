@@ -5024,6 +5024,9 @@ void damstate_update(damstate *s,const double *ad,const ITG *nactdof,ITG mt);
 ITG  damstate_dead(const damstate *s,ITG node);
 ITG  damstate_facet_dead(const double *xstate,ITG nstate,ITG mi0,
                          ITG elem,ITG nip);
+ITG  damstate_facet_support(const ITG *ipkon,const char *lakon,const ITG *kon,
+                            ITG ne,ITG nk,ITG mi0,const double *xstate,
+                            ITG nstate,ITG livefacet,ITG *nfac);
 ITG  damstate_selftest(void);
 
 /* ---- the backtracking ladder of the damage line search (lsladder.c) --

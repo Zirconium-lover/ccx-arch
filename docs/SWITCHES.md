@@ -6,12 +6,12 @@ Two tables, and the difference between them is the point.
 
 | | |
 |---|---|
-| names the binary reads | **152** |
-| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **45** |
+| names the binary reads | **153** |
+| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **46** |
 | undeclared, documented only by whatever the source says of them | 107 |
 | **explained nowhere at all** | **51** |
 | exercised by `test/regress/run.py` | 17 |
-| **never set by any test in this tree** | **135** |
+| **never set by any test in this tree** | **136** |
 | **no declaration, no test and no prose - the retirement queue** | **51** |
 
 Every run prints the ones that are set (`[SWITCHES]` at the top of any
@@ -33,6 +33,7 @@ are read from the declaration, not from the line that reads it.
 | `CCX_DAMAGE_AUTOSPC_FORCE` | bool | unset (off) | - | - | extend the same judgement to the FORCE residual.  Set to anything.  Prints the excluded residual next to the criterion: if that number stops returning to zero the mechanism has become a fiction and is hiding a real imbalance (02-DIAGNOSTICS.md section 4) |
 | `CCX_DAMAGE_AUTOSPC_NEG` | bool | unset (off) | - | - | count a NON-POSITIVE assembled diagonal as dead as well.  The census reports nonpositive= separately, and on every deck measured so far it is zero |
 | `CCX_DAMAGE_DEADALL` | real | unset (off) | [0, 0.5] | yes | a node whose entire live support is dead below this fraction is treated as having none; clamped to [0,0.5] in nonlingeo.c |
+| `CCX_DAMAGE_DEADALL_FACET` | bool | unset (off) | - | - | narrow the CCX_DAMAGE_DEADALL facet guard to LIVE facets: a cohesive facet whose every integration point has failed (damstate_facet_dead, the same rule CCX_FRACTURE_DEADFACET uses) no longer counts as holding a node.  The guard is not removed - one surviving facet still skips the node.  MEASURED at the s3rad wall on 2026-09-12: node 1246, which carries the largest residual force in the model, has six bulk elements of which five are deleted and the sixth is at D=1.0000, and six cohesive facets of which five are fully failed; the unnarrowed guard skips it on the strength of those five |
 | `CCX_DAMAGE_DELETE_MAT` | string | unset (no filter) | - | yes | restrict terminal deletion to elements of these materials; ALL means every material |
 | `CCX_DAMAGE_GMIN` | real | 1.e-4 | [1.e-6, 0.2] | - | the residual-stiffness floor: a fully damaged element keeps this fraction g=1-D of its tangent until the terminal scan deletes it.  Out-of-range values are silently replaced by the default in resultsmech.f and mafilldamas.f, so the range here is the real one.  COST, measured: the conditioning it produces forces PARDISO into 8062 iterative-refinement steps over 5344 solves on s3rad, about 5.6 percent of the run (research/01-PROFILING.md).  BENEFIT, measured: on fast-wrapped raising it from 1e-04 to 1e-02 REMOVES the wall entirely - the run completes the load history with the identical 64-element deletion set and half the Newton iterations per increment - while 1e-06 through 1e-03 are indistinguishable and 1e-01 is worse than the default.  The useful band is narrow and the default sits four decades below it (research/12-GMIN.md, gate case fast-wrapped-gmin) |
 | `CCX_DAMAGE_LINESEARCH` | enum | off | ADAPTIVE\|adaptive\|1 | yes | arm the adaptive damage line-search ladder (lsladder.c).  Measured cost: the ladder and the rescues together consume 4.6% of the run (research/01-PROFILING.md) |

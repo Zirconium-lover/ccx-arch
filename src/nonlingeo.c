@@ -1346,14 +1346,33 @@ static ITG damage_de13_mark_deadsole(const double *dam,const double *visc,
  * cohesive-only node is Class B - a CONDITIONING defect (E-67, E-68) that must
  * not be answered by deleting material.  286 of 318 cohesive-only nodes on
  * m12_epsf50 are perfectly well supported.
+ *
+ * BUT THE GUARD COUNTS FACETS THAT ARE NO LONGER THERE.  A facet whose three
+ * integration points have all failed ties nothing, and the guard cannot tell
+ * it from an intact one.  Measured at the s3rad wall on 2026-09-12: the node
+ * carrying the largest residual force in the whole model, 1246, is held by
+ * six bulk elements of which five are deleted and the sixth sits at D=1.0000
+ * exactly - g floored at gmin - and by six cohesive facets of which FIVE ARE
+ * FULLY FAILED by damstate_facet_dead's own rule, the sixth having two of its
+ * three points gone.  It is precisely the free swinging point this routine
+ * exists to remove, and the guard skips it on the strength of facets that
+ * have separated.  Raising CCX_DAMAGE_DEADALL from 1e-2 to 5e-2 changed
+ * nothing for it, because the threshold is never reached: the guard returns
+ * first.
+ *
+ * CCX_DAMAGE_DEADALL_FACET counts only LIVE facets, by the same rule
+ * CCX_FRACTURE_DEADFACET uses.  It narrows the guard rather than removing it:
+ * a node with one surviving facet is still skipped, so the 286 of 318 stay
+ * skipped.  Off by default and bit-identical when off.
  */
 static ITG damage_de13_mark_deadall(const double *dam,const double *visc,
                                     ITG usevisc,ITG *ipkon,const char *lakon,
                                     const ITG *kon,ITG nk,ITG ne,ITG ne0,
                                     ITG mi0,double gdead,ITG batchmax,
-                                    ITG *nnodes)
+                                    ITG *nnodes,const double *xstate,
+                                    ITG nstate,ITG livefacet)
 {
-  ITG i,j,n,nip,nope,nnew=0,usedam;
+  ITG i,j,n,nip,nnew=0,usedam;
   ITG *nlive=NULL,*ndead=NULL,*nfac=NULL,*take=NULL;
   const double *src;
   double dmx,g;
@@ -1367,18 +1386,9 @@ static ITG damage_de13_mark_deadall(const double *dam,const double *visc,
   NNEW(ndead,ITG,nk);
   NNEW(nfac,ITG,nk);
 
-  /* live cohesive support, over the whole element range: user elements carry
-     their node count in byte 7 of lakon, the idiom the node dump uses. */
-  for(i=0;i<ne;i++){
-    if(ipkon[i]<0) continue;
-    if(lakon[8*i]!='U') continue;
-    nope=(ITG)((unsigned char)lakon[8*i+7]);
-    if((nope<1)||(nope>20)) continue;
-    for(j=0;j<nope;j++){
-      n=kon[ipkon[i]+j]-1;
-      if((n>=0)&&(n<nk)) nfac[n]++;
-    }
-  }
+  /* cohesive support per node - damstate.c owns the count and its self test */
+  damstate_facet_support(ipkon,lakon,kon,ne,nk,mi0,xstate,nstate,livefacet,
+                         nfac);
 
   for(i=0;i<ne0;i++){
     if(ipkon[i]<0) continue;
@@ -1426,7 +1436,7 @@ static ITG damage_de13_mark_deadall(const double *dam,const double *visc,
       if(take[n]==0) continue;
       printf("[DAMAGE DEADALL]   element %" ITGFORMAT " deleted: node %"
              ITGFORMAT " has %" ITGFORMAT " live element(s), all dead, "
-             "no cohesive facet\n",i+1,n+1,nlive[n]);
+             "no %scohesive facet\n",i+1,n+1,nlive[n],livefacet?"live ":"");
       ipkon[i]=-ipkon[i]-2;
       nnew++;
       break;
@@ -2090,6 +2100,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
   double damage_qam_floor=0.,damage_qam_peak=0.;
   double damage_stab_alpha=0.,damage_deadsole_g=0.,damage_deadall_g=0.,
     damage_spc_g=0.;
+  ITG damage_deadall_facet=0,damage_damstate_tested=0;
   char *damage_stab_env=NULL,*damage_deadsole_env=NULL,
     *damage_deadall_env=NULL;
 
@@ -3875,7 +3886,9 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           damage_stiff_probe=1;
           /* [DAMSTATE] prove the judgement before letting it decide
              anything, on every run, the discipline lsladder.c set. */
+          damage_damstate_tested=1;
           if(damstate_selftest()!=0){
+            damage_damstate_tested=-1;
             printf("[DAMSTATE] *ERROR: the load-path judgement self test "
                    "failed; disabling AUTOSPC rather than judging nodes by a "
                    "rule that is not the one that was tested.\n");
@@ -3934,6 +3947,30 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                  "(g < %.1e) and which no cohesive facet holds has that "
                  "support deleted; only dead elements can be taken\n",
                  damage_deadall_g);
+        }
+      }
+      if((damage_deadall_env=ccxopt_getenv("CCX_DAMAGE_DEADALL_FACET"))!=NULL){
+        damage_deadall_facet=atoi(damage_deadall_env);
+        if(damage_deadall_facet<0) damage_deadall_facet=0;
+        if(damage_deadall_facet>1) damage_deadall_facet=1;
+        /* the narrowed count is damstate.c's, so prove damstate.c before
+           letting it decide which elements come out. */
+        if(damage_deadall_facet){
+          if(damage_damstate_tested==0){
+            damage_damstate_tested=(damstate_selftest()==0)?1:-1;
+          }
+          if(damage_damstate_tested<0){
+            printf("[DAMAGE DEADALL] *ERROR: the damstate self test failed; "
+                   "the facet guard stays as it was rather than being "
+                   "narrowed by a rule that is not the one that was "
+                   "tested.\n");
+            damage_deadall_facet=0;
+          }
+        }
+        if((damage_deadall_facet)&&(damage_deadall_g>0.)){
+          printf("[DAMAGE DEADALL] the facet guard counts LIVE facets only: a "
+                 "cohesive facet all of whose integration points have failed "
+                 "no longer holds a node\n");
         }
       }
       damage_deadsole_env=ccxopt_getenv("CCX_DAMAGE_DEADSOLE");
@@ -13238,7 +13275,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           ITG nda=damage_de13_mark_deadall(
               dam,damage_damvisc,damage_delete_visc,ipkon,lakon,kon,*nk,
               *ne,ne0,mi[0],damage_deadall_g,
-              DAMAGE_DE13_BATCH_MAX-damage_de13_new,&damage_deadall_nodes);
+              DAMAGE_DE13_BATCH_MAX-damage_de13_new,&damage_deadall_nodes,
+              xstate,*nstate_,damage_deadall_facet);
           if(nda>0){
             damage_de13_new+=nda;
             damage_deadall_total+=nda;
@@ -14759,7 +14797,8 @@ damage_controller_done:
         ITG nda=damage_de13_mark_deadall(
             dam,damage_damvisc,damage_delete_visc,ipkon,lakon,kon,*nk,
             *ne,ne0,mi[0],damage_deadall_g,
-            DAMAGE_DE13_BATCH_MAX-damage_de13_new,&damage_deadall_nodes);
+            DAMAGE_DE13_BATCH_MAX-damage_de13_new,&damage_deadall_nodes,
+            xstate,*nstate_,damage_deadall_facet);
         if(nda>0){
           damage_de13_new+=nda;
           damage_deadall_total+=nda;

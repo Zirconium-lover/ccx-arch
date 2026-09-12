@@ -59,6 +59,17 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "a node whose entire live support is dead below this fraction is treated as "
  "having none; clamped to [0,0.5] in nonlingeo.c",NULL},
 
+{"CCX_DAMAGE_DEADALL_FACET",CCXOPT_BOOL,"unset (off)",CCXOPT_UNBOUNDED,NULL,
+ "narrow the CCX_DAMAGE_DEADALL facet guard to LIVE facets: a cohesive facet "
+ "whose every integration point has failed (damstate_facet_dead, the same "
+ "rule CCX_FRACTURE_DEADFACET uses) no longer counts as holding a node.  "
+ "The guard is not removed - one surviving facet still skips the node.  "
+ "MEASURED at the s3rad wall on 2026-09-12: node 1246, which carries the "
+ "largest residual force in the model, has six bulk elements of which five "
+ "are deleted and the sixth is at D=1.0000, and six cohesive facets of which "
+ "five are fully failed; the unnarrowed guard skips it on the strength of "
+ "those five",NULL},
+
 /* ---- erosion and topology ----------------------------------------- */
 {"CCX_DAMAGE_DELETE_MAT",CCXOPT_STRING,"unset (no filter)",CCXOPT_UNBOUNDED,NULL,
  "restrict terminal deletion to elements of these materials; ALL means every "

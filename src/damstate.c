@@ -119,6 +119,56 @@ ITG damstate_facet_dead(const double *xstate,ITG nstate,ITG mi0,
   return 1;
 }
 
+/* How many cohesive facets hold each node.
+ *
+ * One owner for a count two consumers disagreed about.  CCX_DAMAGE_DEADALL
+ * skips any node with a facet, on the argument that a node tied to the other
+ * side of an interface is not free however dead its bulk is; that argument is
+ * right and 286 of 318 cohesive-only nodes on m12_epsf50 are indeed well
+ * supported by it.  But the count it was computing included facets that have
+ * SEPARATED, and a separated facet ties nothing.
+ *
+ * MEASURED at the s3rad wall, 2026-09-12: node 1246 carries the largest
+ * residual force in the model.  Six bulk elements touch it, five deleted and
+ * the sixth at D=1.0000 - g at the residual floor.  Six cohesive facets touch
+ * it, and FIVE are fully failed by damstate_facet_dead.  The unnarrowed count
+ * returns 6 and the node is skipped; the live count returns 1, and the node
+ * is still skipped, because one surviving facet is still a tie.  Narrowing
+ * the count does not weaken the guard - it makes it mean what it says.
+ *
+ * livefacet=0 reproduces the old count exactly, including when xstate is
+ * absent: damstate_facet_dead answers 0 for a facet it cannot read, so an
+ * unreadable state can never delete anything.
+ *
+ * Returns the number of facets counted; nfac[nk] receives the per-node count
+ * and is zeroed first. */
+ITG damstate_facet_support(const ITG *ipkon,const char *lakon,const ITG *kon,
+                           ITG ne,ITG nk,ITG mi0,const double *xstate,
+                           ITG nstate,ITG livefacet,ITG *nfac)
+{
+  ITG i,j,n,nope,ntot=0;
+
+  if((nfac==NULL)||(nk<=0)) return 0;
+  for(n=0;n<nk;n++) nfac[n]=0;
+  if((ipkon==NULL)||(lakon==NULL)||(kon==NULL)) return 0;
+
+  /* user elements carry their node count in byte 7 of lakon, the idiom the
+     node dump uses. */
+  for(i=0;i<ne;i++){
+    if(ipkon[i]<0) continue;
+    if(lakon[8*i]!='U') continue;
+    nope=(ITG)((unsigned char)lakon[8*i+7]);
+    if((nope<1)||(nope>20)) continue;
+    if((livefacet)&&(damstate_facet_dead(xstate,nstate,mi0,i,3))) continue;
+    ntot++;
+    for(j=0;j<nope;j++){
+      n=kon[ipkon[i]+j]-1;
+      if((n>=0)&&(n<nk)) nfac[n]++;
+    }
+  }
+  return ntot;
+}
+
 /* ---------------------------------------------------------------- tests */
 
 static ITG dst_chk(const char *name,ITG got,ITG want,ITG *nbad)
@@ -215,6 +265,51 @@ ITG damstate_selftest(void)
     xs[3+nstate*(1+mi0*e)]=0.;
     dst_chk("H one point alive -> not dead",
             damstate_facet_dead(xs,nstate,mi0,e,3),0,&nbad);
+  }
+
+  /* I: per-node facet support, with and without the live narrowing.
+     Three elements: one bulk (must be ignored), two six-node facets sharing
+     nodes 3,4,5.  Facet 2 is driven fully failed, then half failed. */
+  {
+    ITG nstate=5,mi0=3,ne3=3,nk10=10,j,ntot;
+    ITG ipkon[3],kon[64],nfac[10];
+    char lak[24];
+    double xs[128];
+
+    for(j=0;j<24;j++) lak[j]=' ';
+    for(j=0;j<128;j++) xs[j]=0.;
+    strcpy1(&lak[0],"C3D4",4); lak[7]=(char)4;
+    lak[8]='U'; lak[8+1]='C'; lak[8+2]='6'; lak[8+7]=(char)6;
+    lak[16]='U'; lak[16+1]='C'; lak[16+2]='6'; lak[16+7]=(char)6;
+    ipkon[0]=0; ipkon[1]=4; ipkon[2]=10;
+    for(j=0;j<4;j++)  kon[j]=j+1;            /* bulk on nodes 1..4       */
+    for(j=0;j<6;j++)  kon[4+j]=j+1;          /* facet 1 on nodes 1..6    */
+    for(j=0;j<6;j++)  kon[10+j]=j+4;         /* facet 2 on nodes 4..9    */
+
+    ntot=damstate_facet_support(ipkon,lak,kon,ne3,nk10,mi0,xs,nstate,0,nfac);
+    dst_chk("I old count: two facets",ntot,2,&nbad);
+    dst_chk("I old count: shared node",nfac[3],2,&nbad);
+    dst_chk("I old count: private node",nfac[0],1,&nbad);
+    dst_chk("I bulk element is not a facet",nfac[8],1,&nbad);
+
+    for(j=0;j<3;j++) xs[3+nstate*(j+mi0*2)]=1.;      /* facet 2 separated */
+    ntot=damstate_facet_support(ipkon,lak,kon,ne3,nk10,mi0,xs,nstate,1,nfac);
+    dst_chk("I live count: one facet left",ntot,1,&nbad);
+    dst_chk("I live count: shared node",nfac[3],1,&nbad);
+    dst_chk("I live count: node of dead facet",nfac[8],0,&nbad);
+    dst_chk("I live count: node of live facet",nfac[0],1,&nbad);
+
+    xs[3+nstate*(1+mi0*2)]=0.;                       /* two of three gone */
+    ntot=damstate_facet_support(ipkon,lak,kon,ne3,nk10,mi0,xs,nstate,1,nfac);
+    dst_chk("I half-failed facet still holds",nfac[8],1,&nbad);
+
+    for(j=0;j<3;j++) xs[3+nstate*(j+mi0*2)]=1.;
+    ntot=damstate_facet_support(ipkon,lak,kon,ne3,nk10,mi0,NULL,nstate,1,nfac);
+    dst_chk("I no state: narrowing cannot fire",ntot,2,&nbad);
+
+    ipkon[2]=-ipkon[2]-2;                            /* facet 2 deleted   */
+    ntot=damstate_facet_support(ipkon,lak,kon,ne3,nk10,mi0,xs,nstate,0,nfac);
+    dst_chk("I deleted facet holds nothing",nfac[8],0,&nbad);
   }
 
   damstate_free(&s);

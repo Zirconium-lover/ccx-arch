@@ -49,3 +49,6 @@ test/s3rad/_runs/
 *.xz
 *.bundle
 test/regress/_runs/
+
+# gcc -MMD dependency files
+*.d
