@@ -45,7 +45,8 @@ number is *where the solver gave up*, which is the thing under test.
 |---|---|---|---|---|---|---|
 | `prof2` (baseline) | — | 201 | 599 | 0.255023 | 66.4 | **2.13 %** |
 | `dafacet` | `CCX_DAMAGE_DEADALL_FACET=1` | 201 | 664 | 0.254991 | — | — |
-| `spcforce` | `+ CCX_DAMAGE_AUTOSPC_FORCE=1` | 201 | 997 | **0.556835** | 1.35 | **0.043 %** |
+| `spcforce` | `DEADALL_FACET + AUTOSPC_FORCE` | 201 | 997 | 0.556835 | 1.3501 | 0.0434 % |
+| `spconly` | `CCX_DAMAGE_AUTOSPC_FORCE=1` alone | 201 | 1003 | **0.557017** | 1.3502 | **0.0434 %** |
 
 ## What did NOT take the wall down: narrowing the DEADALL guard
 
@@ -127,21 +128,42 @@ mechanism reporting its own limit rather than concealing it.
 **Verdict: not a fiction.**  On this deck, at this threshold, the mask
 excludes dofs that do reach equilibrium.
 
+## Attribution, measured
+
+`spconly` carries `CCX_DAMAGE_AUTOSPC_FORCE` and nothing else.  It lands on
+the same place as the two-switch arm:
+
+| | `spcforce` (both) | `spconly` (force mask alone) |
+|---|---|---|
+| theta | 0.556835 | 0.557017 |
+| grip reaction | 1.3501 | 1.3502 |
+| % of peak | 0.0434 % | 0.0434 % |
+| elements deleted | 3808 | 3796 |
+| DEADALL firings | 42 | 29 |
+
+The two arms agree on theta to 0.03 % and on the terminal reaction to four
+significant figures.  **The whole of the gain is `AUTOSPC_FORCE`.**
+
+`DEADALL_FACET` is not inert — it fires thirteen more times and deletes
+twelve more elements — and it still changes nothing that can be measured at
+the reaction.  It is correct, it has a self test that can be shown failing,
+it is bit-identical when off, and on this deck it buys nothing.  By
+`CLAUDE.md`'s own test — *name the failure it addresses and the gate case
+that would go red without it* — it is a **retirement candidate**, and is
+recorded here as one rather than defended.
+
+The honesty check holds on the isolated arm too: 525 accepted increments,
+none with a final excluded residual above the tolerance (max 0.0155 of it),
+including all 126 past the old wall; the 3 over-tolerance prints are all on
+rejected attempts.
+
 ## What is still open
 
-1. **Attribution is not yet isolated.**  `spcforce` carries both
-   `DEADALL_FACET` and `AUTOSPC_FORCE`.  `dafacet` proves `DEADALL_FACET`
-   alone does nothing, which makes `AUTOSPC_FORCE` the near-certain cause,
-   but "near-certain" is not measured.  An `AUTOSPC_FORCE`-only arm is
-   running.
-2. **There is still no `FRACTURE COMPLETE`.**  The run ends `rc=201`, just
+1. **There is still no `FRACTURE COMPLETE`.**  The run ends `rc=201`, just
    at 0.043 % of peak instead of 2.13 %.  `CCX_FRACTURE_CUT` was not armed
    in any of these arms; on the fast deck it ends the run at severance
    (`09-SEVERANCE.md`).  The combination `AUTOSPC_FORCE + FRACTURE_CUT` is
    the run that should produce a clean termination rather than a later wall.
 3. **The threshold is the deck's, not a derived quantity.**  `1.e-3` came
    from the recipe.  Nothing here measures how the result moves with it.
-4. **`DEADALL_FACET` has no measured benefit yet.**  It is correct, it is
-   bit-identical when off, and it currently buys nothing on this deck.  It
-   stays off by default; if the isolation arm reproduces `spcforce` exactly,
-   the honest thing is to say so in the recipe rather than carry it.
+4. **`DEADALL_FACET` is a retirement candidate**, per the section above.
