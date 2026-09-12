@@ -169,6 +169,21 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "rank-1 projection itself is verified by damrank1test in src/damrank1.f",
  NULL},
 
+{"CCX_DAMAGE_GMIN",CCXOPT_REAL,"1.e-4",1.e-6,0.2,NULL,
+ "the residual-stiffness floor: a fully damaged element keeps this fraction "
+ "g=1-D of its tangent until the terminal scan deletes it.  Out-of-range "
+ "values are silently replaced by the default in resultsmech.f and "
+ "mafilldamas.f, so the range here is the real one.  COST, measured: the "
+ "conditioning it produces forces PARDISO into 8062 iterative-refinement "
+ "steps over 5344 solves on s3rad, about 5.6 percent of the run "
+ "(research/01-PROFILING.md).  BENEFIT, measured: on fast-wrapped raising "
+ "it from 1e-04 to 1e-02 REMOVES the wall entirely - the run completes the "
+ "load history with the identical 64-element deletion set and half the "
+ "Newton iterations per increment - while 1e-06 through 1e-03 are "
+ "indistinguishable and 1e-01 is worse than the default.  The useful band "
+ "is narrow and the default sits four decades below it "
+ "(research/12-GMIN.md, gate case fast-wrapped-gmin)",NULL},
+
 {"CCX_DAMAGE_VISCOSITY",CCXOPT_REAL,"0 (off)",CCXOPT_UNBOUNDED,NULL,
  "viscous regularisation eta for the damage evolution; negative values are "
  "clamped to zero",NULL},

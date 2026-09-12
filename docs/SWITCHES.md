@@ -7,8 +7,8 @@ Two tables, and the difference between them is the point.
 | | |
 |---|---|
 | names the binary reads | **152** |
-| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **44** |
-| undeclared, documented only by whatever the source says of them | 108 |
+| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **45** |
+| undeclared, documented only by whatever the source says of them | 107 |
 | **explained nowhere at all** | **51** |
 | exercised by `test/regress/run.py` | 17 |
 | **never set by any test in this tree** | **135** |
@@ -34,6 +34,7 @@ are read from the declaration, not from the line that reads it.
 | `CCX_DAMAGE_AUTOSPC_NEG` | bool | unset (off) | - | - | count a NON-POSITIVE assembled diagonal as dead as well.  The census reports nonpositive= separately, and on every deck measured so far it is zero |
 | `CCX_DAMAGE_DEADALL` | real | unset (off) | [0, 0.5] | yes | a node whose entire live support is dead below this fraction is treated as having none; clamped to [0,0.5] in nonlingeo.c |
 | `CCX_DAMAGE_DELETE_MAT` | string | unset (no filter) | - | yes | restrict terminal deletion to elements of these materials; ALL means every material |
+| `CCX_DAMAGE_GMIN` | real | 1.e-4 | [1.e-6, 0.2] | - | the residual-stiffness floor: a fully damaged element keeps this fraction g=1-D of its tangent until the terminal scan deletes it.  Out-of-range values are silently replaced by the default in resultsmech.f and mafilldamas.f, so the range here is the real one.  COST, measured: the conditioning it produces forces PARDISO into 8062 iterative-refinement steps over 5344 solves on s3rad, about 5.6 percent of the run (research/01-PROFILING.md).  BENEFIT, measured: on fast-wrapped raising it from 1e-04 to 1e-02 REMOVES the wall entirely - the run completes the load history with the identical 64-element deletion set and half the Newton iterations per increment - while 1e-06 through 1e-03 are indistinguishable and 1e-01 is worse than the default.  The useful band is narrow and the default sits four decades below it (research/12-GMIN.md, gate case fast-wrapped-gmin) |
 | `CCX_DAMAGE_LINESEARCH` | enum | off | ADAPTIVE\|adaptive\|1 | yes | arm the adaptive damage line-search ladder (lsladder.c).  Measured cost: the ladder and the rescues together consume 4.6% of the run (research/01-PROFILING.md) |
 | `CCX_DAMAGE_NODE_DUMP` | int | 0 (off) | - | - | dump one named node every increment: every element that touches it, its type, whether it is still assembled, the damage at each integration point of a cohesive element, and the assembled diagonal beside its intact reference.  Global counters have twice disagreed with each other here; this asks the question directly instead |
 | `CCX_DAMAGE_NODE_INC` | int | 1 | - | - | the increment from which CCX_DAMAGE_NODE_DUMP starts printing |
@@ -124,7 +125,6 @@ code says nothing there at all.
 | `CCX_DAMAGE_FD_SKIP` | `resultsmech.f` | **no** | - |  |
 | `CCX_DAMAGE_FLOAT_FACE` | `damfloat.f` | **no** | - |  |
 | `CCX_DAMAGE_FREE_PROBE` | `nonlingeo.c` | **no** | - |  |
-| `CCX_DAMAGE_GMIN` | `mafilldamas.f`, `nonlingeo.c`, `resultsmech.f` | yes | - | [LOADCUT] residual-stiffness floor in the weighting: |
 | `CCX_DAMAGE_GMIN_TANGENT` | `resultsmech.f` | **no** | - |  |
 | `CCX_DAMAGE_LS_LEGACY` | `nonlingeo.c` | yes | - | [DAMAGE LINESEARCH] LEGACY ladder: floor <value>, <value> trials, |
 | `CCX_DAMAGE_LS_MIN` | `nonlingeo.c` | **no** | - | (from the comment above it) The damage line search is clamped to a compiled-in floor and trial cap. On m12_field_soft50 both bind SIMULTANEOUSLY on every iteration of the failing increment - lambda pinned at exactly 0.100 with trials=3, seven iterations running, residual oscillating in 1.70e-3..2.30e-3 with no contraction and a stable active set (E-81). A search that asks for a shorter step on every iteration and is refused on every iteration is a search whose floor is the binding constraint, not a search that has converged. The structural FD probe says the tangent there is NOT the problem: 2.52e-3 median at the wall against a 1.33e-4 elastic noise floor on the same deck and SP1's healthy 1.92e-3 (E-91). So make the two clamps measurable instead of assumed. Defaults are the compiled-in values, so an unset environment is bit-identical. |
