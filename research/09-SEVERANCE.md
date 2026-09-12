@@ -248,10 +248,19 @@ solver change.
 
 # The cut trajectory, measured
 
+> **These numbers were measured with the facet bug in place** - see "The
+> measure, corrected" below.  Every surviving cohesive facet was weighted at
+> `g=1` regardless of its damage, so the cut is OVERSTATED, and increasingly
+> so as the interface fails.  The true curve falls faster than this one.  The
+> table is kept because the *shape* is what it was recorded for and the bias
+> is monotone; the values need a re-measurement, which is one 69-minute run.
+
 `src/loadcut.c` turns the load path from a boolean into a width.  Run on the
 target deck in exact mode - `CCX_FRACTURE_CUT=0.005 CCX_FRACTURE_CUT_EXACT=1`,
-shipped configuration otherwise, 4 threads - it produced **154 measurements**
-over 66 minutes before the run was killed externally at increment 274.
+shipped configuration otherwise, 4 threads - it ran to the deck's own ending
+at increment 599 and produced **445 measurements**.  It never fired the
+narrowing criterion, and that is the bug: with facets at full strength the
+ratio bottomed out at 0.213, never approaching the 0.005 asked for.
 
 The reference cut at the first committed batch is **5.570258**, against a bar
 whose nominal cross-section is about 5.7.  The measure reproduces the
@@ -266,10 +275,18 @@ that was available.
 | 209 | 0.19684 | 3.85390 | 0.692 | 0.792 | connected |
 | 241 | 0.19816 | 3.66461 | 0.658 | 0.744 | connected |
 | 274 | 0.20124 | 3.41864 | 0.614 | 0.695 | connected |
+| 433 | 0.21885 | 1.81235 | 0.325 | - | connected |
+| 592 | 0.25488 | 1.18438 | 0.213 | 0.022 | connected |
 
-and the end state of the complete run, from the offline analysis above:
+and the same end state measured OFFLINE with facets excluded, which is the
+bracket on the other side:
 
 | 598 | 0.25502 | 0.0031 | **0.00056** | **0.021** | connected |
+
+The two disagree by 380x and the truth is between them: the in-solver number
+counted every facet at full strength, the offline one counted none at all.
+With facets weighted by their own damage - which is what the code does now -
+the answer is neither.
 
 **The cut ratio tracks the load fraction.**  Not by construction - the cut is
 a property of the mesh and the damage field, and the reaction is a property of
