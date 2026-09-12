@@ -243,3 +243,60 @@ constitutive law:
 
 Both are model statements a deck author can make and defend.  Neither is a
 solver change.
+
+---
+
+# The cut trajectory, measured
+
+`src/loadcut.c` turns the load path from a boolean into a width.  Run on the
+target deck in exact mode - `CCX_FRACTURE_CUT=0.005 CCX_FRACTURE_CUT_EXACT=1`,
+shipped configuration otherwise, 4 threads - it produced **154 measurements**
+over 66 minutes before the run was killed externally at increment 274.
+
+The reference cut at the first committed batch is **5.570258**, against a bar
+whose nominal cross-section is about 5.7.  The measure reproduces the
+specimen's own section without being told it, which is the best sanity check
+that was available.
+
+| increment | theta | cut | ratio | grip load / peak | topology says |
+|---|---|---|---|---|---|
+| 91 | 0.17950 | 5.57026 | 1.000 | 0.993 | connected |
+| 140 | 0.18962 | 5.00876 | 0.899 | 0.972 | connected |
+| 184 | 0.19321 | 4.52006 | 0.811 | 0.924 | connected |
+| 209 | 0.19684 | 3.85390 | 0.692 | 0.792 | connected |
+| 241 | 0.19816 | 3.66461 | 0.658 | 0.744 | connected |
+| 274 | 0.20124 | 3.41864 | 0.614 | 0.695 | connected |
+
+and the end state of the complete run, from the offline analysis above:
+
+| 598 | 0.25502 | 0.0031 | **0.00056** | **0.021** | connected |
+
+**The cut ratio tracks the load fraction.**  Not by construction - the cut is
+a property of the mesh and the damage field, and the reaction is a property of
+the boundary - but over this range they move together, the cut leading the
+load slightly.  That is the evidence that the minimum cut is measuring the
+thing that carries the load, and it is what makes a threshold on it a
+physical statement rather than a numerical one.
+
+It also settles the choice of a default.  Anything between 1% and 10% of the
+original width sits deep in the tail where the specimen is carrying a few
+percent of peak and the run is grinding towards `tmin`.  The measured
+alternative - a reaction-drop criterion - needs the deck to name a load set
+and works only where one exists; the cut needs neither, and on a specimen
+loaded through a pressure or a body force it is the only one of the two that
+can be stated at all.
+
+## What the interrupted runs cost, and what was learned anyway
+
+Two s3rad runs were stopped at 00:39 by something outside either of them -
+no OOM (cgroup `oom_kill` 0, `failcnt` 0, peak 4.55 GB of 16), no error, both
+logs ending within eleven seconds of each other, one of them 66 minutes in and
+one 83 seconds in.  The cause is not established.
+
+What that episode DID establish, at the cost of a wrong conclusion committed
+and then retracted: **`pgrep -c <name>` silently reports zero for any process
+whose name exceeds fifteen characters**, because Linux truncates the `comm`
+field at fifteen and `ccx_2.23_pardiso` is sixteen.  `pgrep` prints a warning
+saying exactly this - and the check that produced the wrong answer had stderr
+redirected to `/dev/null`.  Every liveness check in this tree should use
+`pgrep -f`, and none should silence its stderr.

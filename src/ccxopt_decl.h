@@ -93,10 +93,10 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "batch reports the TRUE minimum cut instead of a lower bound.  Costs a "
  "full max-flow per batch - about 1.6 percent of an s3rad run - and is how "
  "the cut trajectory is measured before a stopping fraction is chosen.  "
- "MEASURED EXPENSIVE at s3rad scale: the first version of the flow hung "
- "there at increment 173 and the algorithm is now capacity-scaled with a "
- "work budget, but the exact mode is still a diagnostic and not a "
- "production setting - the early exit is what makes the measure free.  "
+ "MEASURED EXPENSIVE at s3rad scale: 274 increments in 66 minutes against "
+ "599 in 69 minutes without it, so roughly half the throughput.  A "
+ "diagnostic, not a production setting - the early exit is what makes the "
+ "measure free.  "
  "Without it the reported number is printed as cut>= and ratio>=, because "
  "that is what it is",NULL},
 

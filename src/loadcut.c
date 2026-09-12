@@ -148,16 +148,27 @@ static void lc_edge(lcgraph *G,ITG u,ITG v,double c)
 
 /* Max flow, by Dinic with CAPACITY SCALING, and with a work budget.
 
-   The first version of this used plain Edmonds-Karp and it HUNG on the
-   target deck at increment 173 - not crashed, hung.  The reason is worth
-   recording because it is a property of the problem and not a slip: the
-   capacities here span four decades, from a healthy face at ~1e-2 down to
-   a face against an element pinned at the residual-stiffness floor, where
-   area*gmin is ~1e-6.  Each augmenting path moves only its own bottleneck,
-   so once damage has spread, saturating a cut of order 1 in steps of 1e-6
-   needs millions of augmentations over a graph with 300000 edges.  With
-   integer capacities Edmonds-Karp is bounded; with real ones spanning
-   decades it is not.
+   CORRECTION, recorded because the first version of this comment asserted
+   a cause that did not happen.  It claimed plain Edmonds-Karp HUNG the
+   target deck at increment 173.  It did not.  That run was alive and
+   progressing the whole time - it reached increment 274 over 66 minutes
+   and produced 154 measurements with a smoothly falling cut - and it was
+   killed by something external at 00:39 together with a second run that
+   had started 83 seconds earlier.  The "it is dead" reading came from
+   `pgrep -c ccx_2.23_pardiso` WITHOUT -f: Linux truncates a process's
+   comm field to 15 characters and this name is 16, so the match is always
+   empty.  pgrep says so on stderr, and the check that produced the wrong
+   conclusion had stderr redirected to /dev/null.
+
+   What IS true, and is why the algorithm changed anyway: the exact mode
+   is expensive.  Same deck, same machine, 4 threads - 599 increments in
+   69 minutes without it, 274 in 66 minutes with it, so roughly half the
+   throughput.  And the reason is real: the capacities span four decades,
+   from a healthy face at ~1e-2 down to area*gmin ~1e-6 against an element
+   pinned at the residual-stiffness floor.  Each augmenting path moves
+   only its own bottleneck, so plain augmentation degrades badly as damage
+   spreads.  With integer capacities Edmonds-Karp is bounded; with real
+   ones spanning decades it is not.
 
    Scaling fixes exactly that.  Work at a threshold D, admitting only arcs
    whose residual capacity is at least D, and halve D when no more flow can
