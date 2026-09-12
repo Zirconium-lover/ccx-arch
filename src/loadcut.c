@@ -148,17 +148,24 @@ static void lc_edge(lcgraph *G,ITG u,ITG v,double c)
 
 /* Max flow, by Dinic with CAPACITY SCALING, and with a work budget.
 
-   CORRECTION, recorded because the first version of this comment asserted
-   a cause that did not happen.  It claimed plain Edmonds-Karp HUNG the
-   target deck at increment 173.  It did not.  That run was alive and
-   progressing the whole time - it reached increment 274 over 66 minutes
-   and produced 154 measurements with a smoothly falling cut - and it was
-   killed by something external at 00:39 together with a second run that
-   had started 83 seconds earlier.  The "it is dead" reading came from
-   `pgrep -c ccx_2.23_pardiso` WITHOUT -f: Linux truncates a process's
-   comm field to 15 characters and this name is 16, so the match is always
-   empty.  pgrep says so on stderr, and the check that produced the wrong
-   conclusion had stderr redirected to /dev/null.
+   CORRECTION.  An earlier version of this comment claimed plain
+   Edmonds-Karp HUNG the target deck at increment 173, and a second version
+   claimed the run was killed externally.  Both were wrong: the run was
+   alive and progressing throughout, past increment 430 and still going.
+
+   Two bad liveness checks produced them, and the habit is worth recording
+   because neither looks wrong when you read it:
+
+     - `pgrep -c ccx_2.23_pardiso` without -f returns ZERO for a running
+       process.  Linux truncates a process's comm field to 15 characters
+       and this name is 16.  pgrep prints a warning saying exactly that,
+       and the check had stderr redirected to /dev/null.
+     - a file's mtime read as "last write" is only "it stopped there" if
+       you compare it against the CURRENT time.  Read on its own it is
+       just now.
+
+   Use `ps -eo pid,etimes,comm`, or `pgrep -af` with the full path, and
+   check that a counter is CHANGING rather than that a timestamp exists.
 
    What IS true, and is why the algorithm changed anyway: the exact mode
    is expensive.  Same deck, same machine, 4 threads - 599 increments in

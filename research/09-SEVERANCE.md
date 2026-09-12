@@ -286,17 +286,26 @@ and works only where one exists; the cut needs neither, and on a specimen
 loaded through a pressure or a body force it is the only one of the two that
 can be stated at all.
 
-## What the interrupted runs cost, and what was learned anyway
+## Two wrong death reports, one root cause
 
-Two s3rad runs were stopped at 00:39 by something outside either of them -
-no OOM (cgroup `oom_kill` 0, `failcnt` 0, peak 4.55 GB of 16), no error, both
-logs ending within eleven seconds of each other, one of them 66 minutes in and
-one 83 seconds in.  The cause is not established.
+The table above stops at increment 274 because that is where the run was when
+it was sampled.  It did not stop there.  It was declared dead twice - once as
+a hang in the max-flow, once as an external kill - and both times it was alive
+and progressing; it passed increment 430 with the cut still falling smoothly.
 
-What that episode DID establish, at the cost of a wrong conclusion committed
-and then retracted: **`pgrep -c <name>` silently reports zero for any process
-whose name exceeds fifteen characters**, because Linux truncates the `comm`
-field at fifteen and `ccx_2.23_pardiso` is sixteen.  `pgrep` prints a warning
-saying exactly this - and the check that produced the wrong answer had stderr
-redirected to `/dev/null`.  Every liveness check in this tree should use
-`pgrep -f`, and none should silence its stderr.
+Two liveness checks produced those readings, and neither looks wrong when you
+read it:
+
+- **`pgrep -c <name>` reports zero for a running process whose name exceeds
+  fifteen characters.**  Linux truncates the `comm` field at fifteen and
+  `ccx_2.23_pardiso` is sixteen.  `pgrep` prints a warning saying precisely
+  this, and the check that produced the wrong answer had stderr redirected to
+  `/dev/null`.
+- **A file's mtime is "it stopped there" only when compared against the
+  current time.**  Read on its own it is simply *now*, which is what a file
+  being actively written looks like.
+
+The habit that would have caught both: `ps -eo pid,etimes,comm`, or
+`pgrep -af` against the full path, and confirm a counter is CHANGING rather
+than that a timestamp exists.  Nothing in the measurement was wrong - the cut
+trajectory above is real - only the reports of the runs' deaths.
