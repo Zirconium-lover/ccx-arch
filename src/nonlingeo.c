@@ -14012,7 +14012,7 @@ damage_active_set_closed:
 
           if((damage_cut_on==1)&&(damage_cut_bad==0)){
             ITG *lc_a=NULL,*lc_b=NULL,lc_na=0,lc_nb=0,lc_nf=0,lc_nel=0,
-                lc_bel=0,lc_ex=1;
+                lc_bel=0,lc_ex=1,lc_w=0;
             double lc_target=-1.;
             if((loadcut_sets(set,*nset,istartset,iendset,ialset,
                              damage_fracture_seta,&lc_a,&lc_na)==1)&&
@@ -14023,7 +14023,8 @@ damage_active_set_closed:
               damage_cut_now=loadcut_width(co,ipkon,kon,lakon,*ne,*nk,
                                            lc_a,lc_na,lc_b,lc_nb,dam,mi,
                                            1.e-4,damage_ifacdead,lc_target,
-                                           &lc_nf,&lc_nel,&lc_bel,&lc_ex);
+                                           &lc_nf,&lc_nel,&lc_bel,&lc_ex,
+                                           &lc_w);
               if(damage_cut_now<0.){
                 damage_cut_bad=1;
               }else{

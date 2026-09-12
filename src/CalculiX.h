@@ -4200,7 +4200,8 @@ double loadcut_width(double *co,ITG *ipkon,ITG *kon,char *lakon,ITG ne,
                      const ITG *nodesb,ITG nb,
                      const double *dam,const ITG *mi,double gmin,
                      const ITG *ifacdead,double target,
-                     ITG *nfaces,ITG *nelem,ITG *ibelow,ITG *iexact);
+                     ITG *nfaces,ITG *nelem,ITG *ibelow,ITG *iexact,
+                     ITG *nwork);
 ITG loadcut_selftest(void);
 
 void FORTRAN(damrank1test,(ITG *nbad));

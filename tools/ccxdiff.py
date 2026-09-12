@@ -265,12 +265,16 @@ def resolution(path,limit=400000):
     return rels[len(rels)//2]
 
 _CLOCK=re.compile(rb'^(    1UTIME +)\d\d:\d\d:\d\d *$',re.M)
+_DATE=re.compile(rb'^(    1UDATE +)\d{1,2}\.[A-Za-z]+\.\d{4} *$',re.M)
 
 def _strip_clock(data):
     """The ONE exception to byte identity, and it is not a tolerance.
 
     CalculiX stamps the wall clock into the .frd header as a 1UTIME
-    record.  Two runs of the same binary on the same deck therefore
+    record and the calendar date as a 1UDATE one.  The first version of
+    this excused only the clock, and the omission surfaced the honest way:
+    two gate runs either side of midnight reported all twelve cases as
+    differing, and the difference was 11.september against 12.september.  Two runs of the same binary on the same deck therefore
     never compare byte-identical, which quietly made --exact useless on
     the file that carries the nodal results - the extraction of
     damrank1.f on 2026-09-11 was reported as changing m.frd in all nine
@@ -282,7 +286,8 @@ def _strip_clock(data):
     for byte.
     """
     out,n=_CLOCK.subn(rb'\g<1>HH:MM:SS',data)
-    return out,n
+    out,m=_DATE.subn(rb'\g<1>DD.MONTH.YYYY',out)
+    return out,n+m
 
 def compare_file(refdir,newdir,fname,rtol,atol,exact,quiet=False):
     a=pathlib.Path(refdir)/fname; b=pathlib.Path(newdir)/fname
@@ -426,6 +431,15 @@ def selftest():
         _mk(T/'clk3','m.frd',frd.replace("2.23","2.24"))
         run("anything else in the same header still is",
             T/'clk',T/'clk3',True,files=['m.frd'],exact=True)
+        dated=("    1UDATE              11.september.2026"+" "*31+"\n"
+               +"    1UVERSION  CalculiX 2.23\n")
+        _mk(T/'dt','m.frd',dated)
+        _mk(T/'dt2','m.frd',dated.replace("11.september","12.september"))
+        run("a run either side of midnight is not a difference",
+            T/'dt',T/'dt2',False,files=['m.frd'],exact=True)
+        _mk(T/'dt3','m.frd',dated.replace("2026","2027").replace("1UDATE","1UDATX"))
+        run("and a mangled date record IS still a difference",
+            T/'dt',T/'dt3',True,files=['m.frd'],exact=True)
 
         # and --exact must be strictly stronger than any tolerance
         _mk(T/'ws','m.sta',_sta(base).replace('\n',' \n',1))

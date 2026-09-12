@@ -146,37 +146,98 @@ static void lc_edge(lcgraph *G,ITG u,ITG v,double c)
   G->to[G->ne]=u; G->cap[G->ne]=c; G->next[G->ne]=G->head[v]; G->head[v]=G->ne++;
 }
 
-/* Edmonds-Karp with an early exit.  Returns the flow, stopping as soon as
-   it is at least `target` (a negative target means "run to completion"). */
+/* Max flow, by Dinic with CAPACITY SCALING, and with a work budget.
 
-static double lc_maxflow(lcgraph *G,ITG s,ITG t,double target)
+   The first version of this used plain Edmonds-Karp and it HUNG on the
+   target deck at increment 173 - not crashed, hung.  The reason is worth
+   recording because it is a property of the problem and not a slip: the
+   capacities here span four decades, from a healthy face at ~1e-2 down to
+   a face against an element pinned at the residual-stiffness floor, where
+   area*gmin is ~1e-6.  Each augmenting path moves only its own bottleneck,
+   so once damage has spread, saturating a cut of order 1 in steps of 1e-6
+   needs millions of augmentations over a graph with 300000 edges.  With
+   integer capacities Edmonds-Karp is bounded; with real ones spanning
+   decades it is not.
+
+   Scaling fixes exactly that.  Work at a threshold D, admitting only arcs
+   whose residual capacity is at least D, and halve D when no more flow can
+   be found at that threshold.  Every augmentation then moves at least D,
+   so the augmentations per phase are bounded by flow/D and the phases are
+   logarithmic in the capacity range.
+
+   The budget is the second half of the fix.  If the flow still cannot be
+   completed within it the routine REFUSES - returns a negative value -
+   rather than spending a run's wall clock inside a diagnostic.  A
+   measurement that is absent can be recovered; a run that never finishes
+   cannot. */
+
+static double lc_maxflow(lcgraph *G,ITG s,ITG t,double target,
+                         double cmax,ITG *iwork)
 {
-  ITG *q,*pe,*pv,qh,qt,u,e,v,i;
-  double flow=0.,push;
+  ITG *lvl,*it,*st,*pe,sp,u,v,e,i,naug=0;
+  double flow=0.,push,D;
+  const ITG budget=4000000;
+
+  if(iwork!=NULL) *iwork=0;
   if((s<0)||(t<0)||(s>=G->n)||(t>=G->n)) return 0.;
-  q =(ITG*)malloc(sizeof(ITG)*(size_t)G->n);
-  pe=(ITG*)malloc(sizeof(ITG)*(size_t)G->n);
-  pv=(ITG*)malloc(sizeof(ITG)*(size_t)G->n);
-  if((q==NULL)||(pe==NULL)||(pv==NULL)){free(q);free(pe);free(pv);return 0.;}
-  while(1){
-    if((target>0.)&&(flow>=target)) break;
-    for(i=0;i<G->n;i++){pe[i]=-1;pv[i]=-1;}
-    qh=0;qt=0;q[qt++]=s;pv[s]=s;
-    while((qh<qt)&&(pv[t]<0)){
-      u=q[qh++];
-      for(e=G->head[u];e>=0;e=G->next[e]){
-        v=G->to[e];
-        if((pv[v]<0)&&(G->cap[e]>1.e-14)){pv[v]=u;pe[v]=e;q[qt++]=v;}
+  lvl=(ITG*)malloc(sizeof(ITG)*(size_t)G->n);
+  it =(ITG*)malloc(sizeof(ITG)*(size_t)G->n);
+  st =(ITG*)malloc(sizeof(ITG)*(size_t)(G->n+2));
+  pe =(ITG*)malloc(sizeof(ITG)*(size_t)(G->n+2));
+  if((lvl==NULL)||(it==NULL)||(st==NULL)||(pe==NULL)){
+    free(lvl);free(it);free(st);free(pe);return 0.;}
+
+  for(D=(cmax>0.)?cmax:1.;D>1.e-14;D*=0.5){
+    while(1){
+      if((target>0.)&&(flow>=target)) break;
+      if(naug>budget) break;
+      {
+        ITG qh=0,qt=0,*q=st;            /* st doubles as the BFS queue */
+        for(i=0;i<G->n;i++) lvl[i]=-1;
+        lvl[s]=0; q[qt++]=s;
+        while(qh<qt){
+          u=q[qh++];
+          for(e=G->head[u];e>=0;e=G->next[e]){
+            v=G->to[e];
+            if((lvl[v]<0)&&(G->cap[e]>=D)){lvl[v]=lvl[u]+1;q[qt++]=v;}
+          }
+        }
+      }
+      if(lvl[t]<0) break;
+      for(i=0;i<G->n;i++) it[i]=G->head[i];
+      while(1){                         /* one blocking flow */
+        sp=0; st[0]=s; u=s;
+        while(1){
+          if(u==t) break;
+          for(e=it[u];e>=0;e=G->next[e]){
+            v=G->to[e];
+            if((G->cap[e]>=D)&&(lvl[v]==lvl[u]+1)) break;
+          }
+          it[u]=e;
+          if(e<0){                      /* dead end: retreat */
+            lvl[u]=-1;
+            if(sp==0) break;
+            sp--; u=st[sp];
+            if(it[u]>=0) it[u]=G->next[it[u]];
+            continue;
+          }
+          pe[sp]=e; sp++; st[sp]=G->to[e]; u=st[sp];
+        }
+        if(u!=t) break;
+        push=LC_INF;
+        for(i=0;i<sp;i++) if(G->cap[pe[i]]<push) push=G->cap[pe[i]];
+        if(!(push>0.)) break;
+        for(i=0;i<sp;i++){G->cap[pe[i]]-=push;G->cap[pe[i]^1]+=push;}
+        flow+=push; naug++;
+        if((target>0.)&&(flow>=target)) break;
+        if(naug>budget) break;
       }
     }
-    if(pv[t]<0) break;
-    push=LC_INF;
-    for(v=t;v!=s;v=pv[v]) if(G->cap[pe[v]]<push) push=G->cap[pe[v]];
-    if(!(push>1.e-14)) break;
-    for(v=t;v!=s;v=pv[v]){G->cap[pe[v]]-=push;G->cap[pe[v]^1]+=push;}
-    flow+=push;
+    if((target>0.)&&(flow>=target)) break;
   }
-  free(q);free(pe);free(pv);
+  free(lvl);free(it);free(st);free(pe);
+  if(iwork!=NULL) *iwork=naug;
+  if(naug>budget) return -2.;
   return flow;
 }
 
@@ -199,18 +260,20 @@ double loadcut_width(double *co,ITG *ipkon,ITG *kon,char *lakon,ITG ne,
                      const ITG *nodesb,ITG nb,
                      const double *dam,const ITG *mi,double gmin,
                      const ITG *ifacdead,double target,
-                     ITG *nfaces,ITG *nelem,ITG *ibelow,ITG *iexact)
+                     ITG *nfaces,ITG *nelem,ITG *ibelow,ITG *iexact,
+                     ITG *nwork)
 {
   ITG *cnt=NULL,*noel=NULL,*ipnoel=NULL,*mark=NULL,*stamp=NULL;
   ITG *shared=NULL,*isa=NULL,*isb=NULL,*eid=NULL,*rid=NULL;
   ITG i,j,k,n,e,o,nn,nlive=0,nedge=0,S,T,bad=0;
-  double *g=NULL,cut=0.,a;
+  double *g=NULL,cut=0.,a,cmax=0.;
   lcgraph G;
 
   if(nfaces!=NULL) *nfaces=0;
   if(nelem!=NULL)  *nelem=0;
   if(ibelow!=NULL) *ibelow=0;
   if(iexact!=NULL) *iexact=1;
+  if(nwork!=NULL) *nwork=0;
   if((ne<=0)||(nk<=0)||(na<=0)||(nb<=0)) return -1.;
 
   eid=(ITG*)calloc((size_t)ne,sizeof(ITG));
@@ -315,7 +378,11 @@ double loadcut_width(double *co,ITG *ipkon,ITG *kon,char *lakon,ITG ne,
         if(nn<3) continue;
         a=lc_tri(co,shared[0],shared[1],shared[2]);
         if(!(a>0.)) continue;
-        lc_edge(&G,k,o,a*(g[i]<g[rid[o]]?g[i]:g[rid[o]]));
+        {
+          double cc=a*(g[i]<g[rid[o]]?g[i]:g[rid[o]]);
+          lc_edge(&G,k,o,cc);
+          if(cc>cmax) cmax=cc;
+        }
         nedge++;
       }
     }
@@ -344,7 +411,20 @@ double loadcut_width(double *co,ITG *ipkon,ITG *kon,char *lakon,ITG ne,
     if(isb[k]) lc_edge(&G,k,T,LC_INF);
   }
 
-  cut=lc_maxflow(&G,S,T,target);
+  {
+    ITG naug=0;
+    cut=lc_maxflow(&G,S,T,target,cmax,&naug);
+    if(cut<-1.5){
+      printf("[LOADCUT] refusing: the flow did not complete within %"
+             ITGFORMAT " augmentations.  Reporting nothing rather than "
+             "spending the run inside a diagnostic.\n",naug);
+      lc_free(&G);
+      free(eid);free(rid);free(g);free(ipnoel);free(noel);free(cnt);
+      free(mark);free(stamp);free(shared);free(isa);free(isb);
+      return -1.;
+    }
+    if(nwork!=NULL) *nwork=naug;
+  }
   if((ibelow!=NULL)&&(target>0.)) *ibelow=(cut<target)?1:0;
 
   /* The early exit stops as soon as the flow reaches the target, so in
@@ -481,7 +561,7 @@ ITG loadcut_selftest(void)
   nodesa[0]=4; nodesb[0]=5;
 
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact);
+                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("two tets on one face: the cut is that face's area",
          cut,0.5,1.e-9,&nbad);
 
@@ -490,7 +570,7 @@ ITG loadcut_selftest(void)
 
   dam[1]=1.6;
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact);
+                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("a neighbour at D=0.6 scales the cut by g=0.4",
          cut,0.2,1.e-9,&nbad);
 
@@ -500,7 +580,7 @@ ITG loadcut_selftest(void)
 
   dam[1]=2.0;
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact);
+                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("a fully damaged neighbour leaves gmin, not zero",
          cut,0.5e-4,1.e-9,&nbad);
   dam[1]=1.;
@@ -509,7 +589,7 @@ ITG loadcut_selftest(void)
 
   ipkon[1]=-1;
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact);
+                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("with the far element deleted the cut is zero",cut,0.,1.e-12,&nbad);
   ipkon[1]=4;
 
@@ -537,13 +617,13 @@ ITG loadcut_selftest(void)
   memcpy(lakon+24,"C3D4    ",8);
   for(i=0;i<4;i++) dam[i]=1.;
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact);
+                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("two bridges in parallel: the cut is their sum",
          cut,0.5+5.e-4,1.e-9,&nbad);
 
   ipkon[0]=-1;ipkon[1]=-1;              /* delete the wide bridge only */
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact);
+                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("with only the sliver left the cut collapses 99.9 percent",
          cut,5.e-4,1.e-9,&nbad);
   if(cut>0.) {
@@ -554,14 +634,14 @@ ITG loadcut_selftest(void)
   /* The early exit must not change the verdict it is asked for. */
 
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,1.e-2,&nf,&nel,&below,&exact);
+                    dam,mi,1.e-4,NULL,1.e-2,&nf,&nel,&below,&exact,NULL);
   if(below!=1){ printf("  FAIL %-54s below=%" ITGFORMAT "\n",
                        "a target above the true cut reports BELOW",below);
                 nbad++; }
   else printf("  ok   %-54s below=1\n","a target above the true cut reports BELOW");
   ipkon[0]=0;ipkon[1]=4;
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,1.e-2,&nf,&nel,&below,&exact);
+                    dam,mi,1.e-4,NULL,1.e-2,&nf,&nel,&below,&exact,NULL);
   if(below!=0){ printf("  FAIL %-54s below=%" ITGFORMAT "\n",
                        "a target below the true cut reports NOT below",below);
                 nbad++; }
@@ -574,9 +654,42 @@ ITG loadcut_selftest(void)
   printf("  ..   the next line is the refusal this check provokes\n");
   memcpy(lakon+24,"C3D8    ",8);
   cut=loadcut_width(co,ipkon,kon,lakon,ne,nk,nodesa,1,nodesb,1,
-                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact);
+                    dam,mi,1.e-4,NULL,-1.,&nf,&nel,&below,&exact,NULL);
   lc_chk("an unsupported live element makes it refuse (-1)",cut,-1.,1.e-12,&nbad);
   memcpy(lakon+24,"C3D4    ",8);
+
+  /* Capacity scaling, which is what makes the exact mode usable at all.
+     A fan of many thin paths in parallel with one thick one: with plain
+     augmentation the thin ones are found first and the count explodes
+     with their number, which is how the target deck hung at increment
+     173.  With scaling the thick path is saturated in the first phase.
+     The check is on the augmentation COUNT, because that is the thing
+     that would regress if somebody replaced the algorithm. */
+  {
+    lcgraph G2; ITG m,naug=0; double f;
+    const ITG NP=400;
+    if(lc_init(&G2,NP+4,2*NP+8)){
+      /* 0 = source, 1 = sink; NP thin parallel arcs plus one thick */
+      for(m=0;m<NP;m++){
+        lc_edge(&G2,0,2+m,1.e-6);
+        lc_edge(&G2,2+m,1,1.e-6);
+      }
+      lc_edge(&G2,0,2+NP,1.0);
+      lc_edge(&G2,2+NP,1,1.0);
+      f=lc_maxflow(&G2,0,1,-1.,1.0,&naug);
+      if((fabs(f-(1.0+NP*1.e-6))<1.e-9)&&(naug<=NP+4)){
+        printf("  ok   %-54s %d augmentations\n",
+               "400 thin paths beside one thick: scaling keeps the count low",
+               (int)naug);
+      }else{
+        printf("  FAIL %-54s f=%.9f naug=%d\n",
+               "400 thin paths beside one thick: scaling keeps the count low",
+               f,(int)naug);
+        nbad++;
+      }
+      lc_free(&G2);
+    }
+  }
 
   /* The set resolver: the trailing N, the case folding, and the
      generated-range expansion a, b, -c.  It is repeated from Fortran, so
