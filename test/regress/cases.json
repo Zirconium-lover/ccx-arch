@@ -180,6 +180,36 @@
       }
     },
     {
+      "name": "fast-wrapped-cut",
+      "what": "the same wall with the load-path WIDTH measured beside the topological sweep. CCX_FRACTURE_CUT arms src/loadcut.c, which reports the minimum cut between the termination sets - the smallest total (face area x residual stiffness) that would have to break to separate them. The threshold is set at 0.001, far below anything this deck reaches, so the case tests that the measurement is a NO-OP on the solution while being exercised on every committed batch: same rc, same theta, the same 64 elements in the same order. It exists because the measure is the one thing in this tree that can tell a specimen hanging by one element face from an intact one, and a measurement that silently perturbs the run it measures is worse than none. The 12-check self test runs before the switch is allowed to arm and is required to report PASSED.",
+      "kind": "fast",
+      "variant": "wrapped",
+      "env": [
+        "CCX_FRACTURE_CUT=0.001"
+      ],
+      "expect": {
+        "rc": 201,
+        "last_inc": 99,
+        "theta": "0.158766E+00",
+        "deletions": 64
+      },
+      "same_deletion_set_as": "fast-wrapped",
+      "equal_to": [
+        {
+          "case": "fast-wrapped",
+          "rtol": 0.0,
+          "atol": 0.0,
+          "files": [
+            "m.sta",
+            "m.damage",
+            "m.cvg",
+            "m.dat",
+            "m.frd"
+          ]
+        }
+      ]
+    },
+    {
       "name": "mixed-analytic",
       "what": "inclined cohesive plane against the closed-form post-peak branch, 36 percent shear",
       "kind": "mixed",
@@ -256,7 +286,8 @@
   "selftests_required": [
     "DAMAGE TR SELFTEST",
     "DAMSTATE",
-    "LSLADDER"
+    "LSLADDER",
+    "LOADCUT SELFTEST"
   ],
   "required_lines": [
     "[SWITCHES] this binary reads"
