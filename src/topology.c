@@ -176,6 +176,75 @@ void topo_txn_collect(topo_txn *t,ITG step,ITG increment,
   }
 }
 
+/* ------------------------------------------------------------ the commit
+
+   Step C.  Unlike discard and collect this appears ONCE, so the argument
+   for moving it is not deduplication - it is that the record format had
+   two implementations in this repository and no owner for either.
+
+   The nine fields written here are parsed by tools/ccxdiff.py
+   (read_damage), which is the comparison tool every bit-identity claim in
+   this project rests on.  If the writer gains a field and the reader does
+   not, ccxdiff keeps comparing and starts comparing the wrong columns -
+   a silent failure in the instrument rather than in the thing measured,
+   which is the expensive kind.  The order is therefore stated once, here,
+   and the self test writes a batch and reads it back to prove the writer
+   still produces it.
+
+   The printing is Monitor's job and this is a way-station, the same
+   admission converge_report makes: the batch line is here so that the
+   commit is one call, not so that this file owns output.              */
+
+/* element step increment step_time total_time material damage ip batch */
+#define TOPO_HISTORY_FIELDS 9
+
+/* Writing the record and announcing it are two things, and the self test
+   is what made that obvious: a commit that always prints puts a
+   [DAMAGE COMMIT] line into every run's log at start-up, from a test. */
+void topo_txn_write_history(const topo_txn *t,FILE *fdamage,ITG batch)
+{
+  ITG i;
+
+  if(t->count<=0) return;
+
+  if(fdamage!=NULL){
+    for(i=0;i<t->count;i++){
+      fprintf(fdamage,
+              "%" ITGFORMAT " %" ITGFORMAT " %" ITGFORMAT
+              " %.15e %.15e %" ITGFORMAT " %.15e %" ITGFORMAT
+              " %" ITGFORMAT "\n",
+              t->elem[i],t->step,
+              t->increment,t->step_time,
+              t->total_time,t->mat[i],
+              t->value[i],t->ip[i],batch);
+    }
+    fflush(fdamage);
+  }
+}
+
+void topo_txn_commit(const topo_txn *t,FILE *fdamage,ITG batch,
+                     ITG de13_transaction,ITG active_pass)
+{
+  if(t->count<=0) return;
+
+  topo_txn_write_history(t,fdamage,batch);
+
+  printf("[DAMAGE COMMIT] batch=%" ITGFORMAT
+         " inc=%" ITGFORMAT " time=%.12e deleted=%" ITGFORMAT
+         " active_passes=%" ITGFORMAT "\n",
+         batch,t->increment,
+         t->step_time,t->count,
+         active_pass);
+  if(de13_transaction){
+    printf("[DAMAGE DE1.3 COMMIT] inc=%" ITGFORMAT
+           " time=%.12e terminal_deleted=%" ITGFORMAT
+           " active_passes=%" ITGFORMAT "\n",
+           t->increment,t->step_time,
+           t->count,active_pass);
+  }
+  fflush(stdout);
+}
+
 /* ---------------------------------------------------------------- tests */
 
 static ITG topo_chki(const char *name,ITG got,ITG want,ITG *nbad)
@@ -300,6 +369,55 @@ ITG topo_selftest(void)
     topo_txn_collect(&c,3,43,0.25,7.25,4,ipkondamageini,ipkon,ielmat,mi,
                      lakon,dam,NULL,NULL,0,0,0,NULL,NULL);
     topo_chki("collect replaces, it does not append",c.count,2,&nbad);
+    topo_txn_discard(&c);
+  }
+
+  /* the record format, round-tripped.  tools/ccxdiff.py parses these nine
+     fields positionally, so the contract this test defends is the ORDER
+     and the COUNT: a writer that gains a field the reader does not expect
+     does not make ccxdiff fail, it makes ccxdiff compare the wrong
+     columns and keep going. */
+  {
+    topo_txn c;
+    FILE *f;
+    char line[512];
+    double f3,f4,f6;
+    long f0,f1,f2,f5,f7,f8;
+    ITG nf=0,nrow=0,fieldsok=0;
+    const char *path="topo_selftest_history.tmp";
+
+    topo_txn_init(&c);
+    NNEW(c.elem,ITG,2); NNEW(c.mat,ITG,2); NNEW(c.ip,ITG,2);
+    NNEW(c.value,double,2);
+    c.count=2; c.step=3; c.increment=42;
+    c.step_time=0.25; c.total_time=7.25;
+    c.elem[0]=11; c.mat[0]=2; c.ip[0]=5; c.value[0]=0.75;
+    c.elem[1]=13; c.mat[1]=2; c.ip[1]=1; c.value[1]=0.5;
+
+    f=fopen(path,"w");
+    if(f!=NULL){
+      topo_txn_write_history(&c,f,9);
+      fclose(f);
+      f=fopen(path,"r");
+      if(f!=NULL){
+        while(fgets(line,sizeof(line),f)!=NULL){
+          nf=sscanf(line,"%ld %ld %ld %lf %lf %ld %lf %ld %ld",
+                    &f0,&f1,&f2,&f3,&f4,&f5,&f6,&f7,&f8);
+          nrow++;
+          if(nrow==1){
+            fieldsok=((nf==TOPO_HISTORY_FIELDS)&&
+                      (f0==11)&&(f1==3)&&(f2==42)&&
+                      (f3==0.25)&&(f4==7.25)&&(f5==2)&&
+                      (f6==0.75)&&(f7==5)&&(f8==9));
+          }
+        }
+        fclose(f);
+      }
+      remove(path);
+    }
+    topo_chki("history: one row per marked element",nrow,2,&nbad);
+    topo_chki("history: nine fields, in the order ccxdiff reads",
+              fieldsok,1,&nbad);
     topo_txn_discard(&c);
   }
 

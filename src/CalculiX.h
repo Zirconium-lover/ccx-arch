@@ -5090,6 +5090,9 @@ void topo_txn_collect(topo_txn *t,ITG step,ITG increment,
                       ITG ndmat_,ITG ntmat_,
                       ITG de13_transaction,const double *de13_trigger_value,
                       const ITG *de13_trigger_ip);
+void topo_txn_write_history(const topo_txn *t,FILE *fdamage,ITG batch);
+void topo_txn_commit(const topo_txn *t,FILE *fdamage,ITG batch,
+                     ITG de13_transaction,ITG active_pass);
 ITG  topo_selftest(void);
 
 /* Defined in nonlingeo.c.  Whether a material's damage is progressive is a

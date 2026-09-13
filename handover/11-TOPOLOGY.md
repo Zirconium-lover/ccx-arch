@@ -148,8 +148,20 @@ a `static` in nonlingeo.c shared by sixteen call sites and testable by
 nobody. It is a pure function of the element label, so it is the one part
 of this object that can be tested exhaustively rather than by example.
 
-Step C is `commit` and the observers, which is where the history write and
-`topodiag` go.
+Step C is `commit`. It appears **once**, so the reason to move it is not
+duplication — it is that the nine-field record it writes is parsed by
+`tools/ccxdiff.py` (`read_damage`), the comparison tool every bit-identity
+claim in this project rests on. The format had two implementations in this
+repository and an owner for neither. A writer that gains a field the reader
+does not expect does not make `ccxdiff` fail; it makes `ccxdiff` compare the
+wrong columns and keep going — a silent failure in the instrument rather
+than in the thing measured, which is the expensive kind. The self test
+writes a batch and reads it back, so the field order and count are pinned.
+
+Writing the record and announcing it are split — `topo_txn_write_history`
+and `topo_txn_commit` — and the self test is what made that necessary: a
+commit that always prints put a `[DAMAGE COMMIT]` line into every run's log
+at start-up, from a test.
 
 Each step proves bit-identity on the gate and on the target deck before the
 next one starts, the discipline steps A-C of `10-CONVERGENCE.md` used.

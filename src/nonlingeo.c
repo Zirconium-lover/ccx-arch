@@ -13799,33 +13799,16 @@ damage_active_set_closed:
       if(dtxn.count>0){
         damage_batch++;
 
-        for(i=0;i<dtxn.count;i++){
-          fprintf(fdamage,
-                  "%" ITGFORMAT " %" ITGFORMAT " %" ITGFORMAT
-                  " %.15e %.15e %" ITGFORMAT " %.15e %" ITGFORMAT
-                  " %" ITGFORMAT "\n",
-                  dtxn.elem[i],dtxn.step,
-                  dtxn.increment,dtxn.step_time,
-                  dtxn.total_time,dtxn.mat[i],
-                  dtxn.value[i],dtxn.ip[i],damage_batch);
-        }
+        /* [TOPOLOGY] step C.  This block appeared once, so the reason to
+           move it is not duplication: the nine-field record it writes is
+           parsed by tools/ccxdiff.py, so the format had two
+           implementations in this repository and an owner for neither.
+           A writer that gains a field the reader does not expect makes
+           ccxdiff compare the wrong columns - a silent failure in the
+           instrument rather than in the thing measured. */
 
-        fflush(fdamage);
-
-        printf("[DAMAGE COMMIT] batch=%" ITGFORMAT
-               " inc=%" ITGFORMAT " time=%.12e deleted=%" ITGFORMAT
-               " active_passes=%" ITGFORMAT "\n",
-               damage_batch,dtxn.increment,
-               dtxn.step_time,dtxn.count,
-               damage_active_pass);
-        if(damage_de13_transaction){
-          printf("[DAMAGE DE1.3 COMMIT] inc=%" ITGFORMAT
-                 " time=%.12e terminal_deleted=%" ITGFORMAT
-                 " active_passes=%" ITGFORMAT "\n",
-                 dtxn.increment,dtxn.step_time,
-                 dtxn.count,damage_active_pass);
-        }
-        fflush(stdout);
+        topo_txn_commit(&dtxn,fdamage,damage_batch,
+                        damage_de13_transaction,damage_active_pass);
 
         /* Configurable fracture termination.
 
