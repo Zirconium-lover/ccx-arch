@@ -287,3 +287,36 @@ measured a wall attributable to either — **do not regularise them on faith**.
 - `CCX_DAMAGE_AUTOSPC` is silently clamped at `1.e-1`. Legitimate as a safety
   rail, invisible as a behaviour — a deck whose worst node sits at `1.04e-01`
   masks nobody and gives no indication why.
+
+## 8. Two asymmetries in the convergence criterion — 2026-09-13
+
+Found by naming the clauses, not by reading the expression. The criterion
+is eight clauses of `&&` and `||` written out three times in
+`checkconvergence.c` (mechanical, thermal, thermomechanical); once each
+leaf had a name it was visible that the three forms are not the same
+criterion. Both are in the stock source, both are now pinned by
+`converge_selftest()` so that removing either is a decision and not a
+tidy-up.
+
+**8a. `iflagact` gates the mechanical form and not the thermomechanical
+one.** `ithermal<2` requires `*iflagact==0` — no significant change in the
+contact element set — before it will accept an increment. `ithermal==3`
+has no such leaf. The same changing contact set that forces another
+iteration in a mechanical run is accepted in a thermomechanical one. Test:
+`thermomech ignores iflagact` next to `mech with same numbers blocked`.
+
+**8b. The `ral` leaf carries an extra `iit>1` in the pure-thermal form
+only.** In `ithermal==2` the clause reads
+`((ram[1]<=ral*qam[1])&&(*iit>1))`; the stock source marks it `change
+25.11.2017` and leaves the previous version commented out directly above.
+The thermal half of `ithermal==3` has no `iit>1`. So a first iteration
+whose flux residual is far below `ral*qam` is accepted by the
+thermomechanical form and rejected by the thermal one. Test: `thermal ral
+leaf gated on iit>1`.
+
+Neither is touched. This project's decks are mechanical (`ithermal<2`), so
+neither is exercised by the gate or the target deck, and the standard for
+step B was bit-identity. What they cost is that "what counts as converged"
+has three answers and the difference between them is undocumented. Whoever
+unifies them needs a thermal deck in the gate first — that is the real
+prerequisite, and it does not exist yet.

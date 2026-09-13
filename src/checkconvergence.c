@@ -80,6 +80,7 @@ void checkconvergence(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,
 		      double *energystartstep) {
 
   char *sideload=NULL;
+  cvg_verdict cvgverdict;
   
   ITG i0,ir,ip,ic,il,ig,ia,iest,iest1=0,iest2=0,iconvergence,idivergence,
     ngraph=1,k,*ipneigh=NULL,*neigh=NULL,*inum=NULL,id,istart,iend,inew,
@@ -125,79 +126,32 @@ void checkconvergence(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,
 
   if(qa[2]>0.){idivergence=1;}
 
-  if(*ithermal!=2){
-    if(qa[0]>ea*qam[0]){
-      if(*iit<=ip){c1[0]=ran;}
-      else{c1[0]=rap;}
-      c2[0]=can;
-    }
-    else{
-      c1[0]=ea;
-      c2[0]=cae;
-    }
-    if(ram1[0]<ram2[0]){ram2[0]=ram1[0];}
-  }
-  if(*ithermal>1){
-    if(qa[1]>ea*qam[1]){
-      if(*iit<=ip){c1[1]=ran;}
-      else{c1[1]=rap;}
-      c2[1]=can;
-    }
-    else{
-      c1[1]=ea;
-      c2[1]=cae;
-    }
-    if(ram1[1]<ram2[1]){ram2[1]=ram1[1];}
-  }
+  /* [CONVERGE] what counts as converged now has an owner: converge.c,
+     step B of handover/10-CONVERGENCE.md.  Eighty lines of && and || -
+     the tolerance selection, the ram2 ratchet and the same eight-clause
+     expression written out three times with the names thrown away - are
+     one call whose leaves have names, values, thresholds and a status.
 
-  iconvergence=0; 
- 
-  /* mechanical */
+     This is a NOX StatusTest Combo tree with the names kept.  Nothing
+     about the boolean changes and bit-identity is the standard: checked
+     on the gate, on stdout byte for byte, and on the target deck.
 
-  if(*ithermal<2){
-    //         number of iterations exceeding 1
-    if((*iit>1)&&
-       //         force residual criterion satisfied (0.5 %)
-       (ram[0]<=c1[0]*qam[0])&&
-       //         no significant change in contact elements
-       (*iflagact==0)&&
-       //         cetol criterion satisfied if *visco
-       ((*nmethod!=-1)||(qa[3]<=cetol))&&
-       //         solution change criterion satisfied (1 %)
-       ((cam[0]<=c2[0]*uam[0])||
-	(((ram[0]*cam[0]<c2[0]*uam[0]*ram2[0])||(ram[0]<=ral*qam[0])||
-	  (qa[0]<=ea*qam[0]))&&(*ntg==0))||
-	(cam[0]<1.e-8))) iconvergence=1;
-  }
+     What is added is that the tree can now say which clause is holding an
+     increment back, which is the question this file could never answer.
+     CCX_CONVERGE_EXPLAIN prints it; off by default, and off is
+     bit-identical by construction because the verdict does not read it. */
 
-  /* thermal */
+  {
+    static ITG cvg_explain=-1;
+    cvg_tol cvgtol;
 
-  if(*ithermal==2){
-    if((ram[1]<=c1[1]*qam[1])&&
-       (cam[2]<*deltmx)&&
-       ((cam[1]<=c2[1]*uam[1])||
-	//   change 25.11.2017
-	//	    (((ram[1]*cam[1]<c2[1]*uam[1]*ram2[1])||(ram[1]<=ral*qam[1])||
-	(((ram[1]*cam[1]<c2[1]*uam[1]*ram2[1])||((ram[1]<=ral*qam[1])&&(*iit>1))||
-	  (qa[1]<=ea*qam[1]))&&(*ntg==0))||
-	(cam[1]<1.e-8)))iconvergence=1;
-  }
+    if(cvg_explain<0) cvg_explain=(ccxopt_getenv("CCX_CONVERGE_EXPLAIN")!=NULL);
 
-  /* thermomechanical */
-
-  if(*ithermal==3){
-    if(((*iit>1)&&(ram[0]<=c1[0]*qam[0])&&
-	((*nmethod!=-1)||(qa[3]<=cetol))&&
-	((cam[0]<=c2[0]*uam[0])||
-	 (((ram[0]*cam[0]<c2[0]*uam[0]*ram2[0])||(ram[0]<=ral*qam[0])||
-	   (qa[0]<=ea*qam[0]))&&(*ntg==0))||
-	 (cam[0]<1.e-8)))&&
-       ((ram[1]<=c1[1]*qam[1])&&
-	(cam[2]<*deltmx)&&
-	((cam[1]<=c2[1]*uam[1])||
-	 (((ram[1]*cam[1]<c2[1]*uam[1]*ram2[1])||(ram[1]<=ral*qam[1])||
-	   (qa[1]<=ea*qam[1]))&&(*ntg==0))||
-	 (cam[1]<1.e-8))))iconvergence=1;
+    cvg_tol_from_ctrl(&cvgtol,ctrl);
+    iconvergence=converge_verdict(&cvgverdict,&cvgtol,*ithermal,*iit,
+                                  *nmethod,*iflagact,*ntg,*deltmx,
+                                  ram,ram1,ram2,cam,uam,qa,qam,c1,c2);
+    if(cvg_explain) converge_verdict_print(&cvgverdict);
   }
 
   /* reset kscale */

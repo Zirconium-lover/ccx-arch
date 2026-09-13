@@ -5062,6 +5062,54 @@ void converge_report(const converge *c,const ITG *nactdofinv,ITG mt,
                      ITG ithermal,double ran,
                      const double *qa,const double *qam,const double *ram,
                      const double *cam,const double *uam);
+/* ---- what counts as converged (converge.c, step B of 10-CONVERGENCE) --
+
+   The mechanical criterion is eight clauses joined by && and ||, written
+   out three times in checkconvergence.c (mechanical, thermal, thermo-
+   mechanical) with the names thrown away.  A NOX StatusTest Combo tree is
+   exactly this shape with the names kept, so each leaf here gets a name, a
+   value, the threshold it was compared against, and a status - which makes
+   "which clause is holding this increment back" answerable.  The boolean
+   is unchanged and bit-identity is the standard.                        */
+
+typedef enum {
+  CVG_UNEVALUATED=0,   /* the variant in force did not ask this leaf     */
+  CVG_PASS       =1,
+  CVG_FAIL       =2
+}cvg_status;
+
+typedef struct{
+  const char *name;
+  double value;        /* the quantity tested                            */
+  double thresh;       /* what it was tested against                     */
+  cvg_status status;
+}cvg_clause;
+
+#define CVG_MAXCLAUSE 20
+
+typedef struct{
+  ITG converged;              /* the boolean checkconvergence used to set */
+  ITG nclause;
+  cvg_clause clause[CVG_MAXCLAUSE];
+  const char *blocker;        /* first failing leaf of the top-level AND  */
+  double blocker_value,blocker_thresh;
+}cvg_verdict;
+
+/* the tolerances the verdict applies, named once instead of ctrl[] indices
+   spelled out at each use site */
+typedef struct{
+  double ran,can,rap,ea,cae,ral,cetol;
+  ITG ip;
+}cvg_tol;
+
+void cvg_tol_from_ctrl(cvg_tol *t,const double *ctrl);
+ITG  converge_verdict(cvg_verdict *v,const cvg_tol *t,ITG ithermal,ITG iit,
+                      ITG nmethod,ITG iflagact,ITG ntg,double deltmx,
+                      const double *ram,const double *ram1,double *ram2,
+                      const double *cam,const double *uam,
+                      const double *qa,const double *qam,
+                      double *c1,double *c2);
+void converge_verdict_print(const cvg_verdict *v);
 ITG  converge_selftest(void);
 
 /* ---- the backtracking ladder of the damage line search (lsladder.c) --

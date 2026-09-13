@@ -128,7 +128,7 @@ declaration of `CCX_DAMAGE_AUTOSPC_FORCE` promises that the excluded
 residual is reported next to the criterion it was excluded from, and a
 promise like that belongs to the thing that does the excluding.
 
-### B. Verdict — designed, not built
+### B. Verdict — BUILT, 2026-09-13
 
 The mechanical criterion is eight clauses.  Written as a NOX-shaped tree
 they are:
@@ -151,11 +151,33 @@ evaluated in the same order and short-circuits the same way, so the verdict
 is bit-identical; what is added is that `getStatus()` per leaf makes "which
 clause is holding this increment back" answerable for the first time.
 
-This is deliberately **not** yet implemented.  `checkconvergence.c` is
-shared with `electromagnetics.c` and the same expression appears three times
-in it (mechanical, thermal, thermomechanical); doing it properly means
-touching a file this project has otherwise left alone, and the strangle
-discipline says one responsibility at a time.
+`checkconvergence.c` is shared with `electromagnetics.c`, which was the
+reason to hold this back; it was done anyway because the shared file is
+exactly where the duplication lives, and leaving the tree alone would have
+meant leaving the three copies alone too.  Seventy-five lines of `&&` and
+`||` are now one call.
+
+**One deliberate deviation from the sketch above.**  The sketch
+short-circuited like the original, so a leaf past the first failure was
+never evaluated and could not be reported — and a table with holes in it
+does not answer the question the object exists for.  Every leaf is a
+comparison of two doubles with no side effect, so evaluating all of them
+cannot change the combination.  All ten are evaluated and recorded; the
+boolean is assembled from the same expression in the same shape.
+
+**What naming them found.**  The three forms are not the same criterion:
+`iflagact` gates the mechanical form and not the thermomechanical one, and
+the `ral` leaf carries an extra `iit>1` in the pure-thermal form only.
+Neither is visible in the expression as written and neither is touched
+here; both are pinned by the self test and recorded in `05-DEBT.md` §8.
+
+**Evidence.**  Gate 16 of 16 with every output file byte-identical at
+rtol=0 atol=0; stdout byte-identical across all sixteen cases outside the
+self-test block; target deck byte-identical on all five files.
+`CCX_CONVERGE_EXPLAIN` on is byte-identical to off on a controlled pair.
+Twenty-five self-test checks, and the test was shown to go red on the
+plausible tidy-up — removing 8b's `iit>1` to make the two thermal forms
+agree.
 
 ### C. Reason — designed, not built
 

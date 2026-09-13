@@ -373,6 +373,15 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "from atexit.  A profiler that reports only at the end is useless on "
  "exactly the runs it exists for",NULL},
 
+{"CCX_CONVERGE_EXPLAIN",CCXOPT_BOOL,"unset (off)",CCXOPT_UNBOUNDED,NULL,
+ "print the convergence verdict as a table of named clauses - each with "
+ "the value it tested, the threshold it was tested against and pass/FAIL "
+ "- and name the clause holding the increment back.  Its defender: the "
+ "criterion is eight clauses of && and || written out three times, and "
+ "until this existed nothing could say WHICH one an increment was failing. "
+ "Diagnostic only; the verdict does not read it and the run is "
+ "bit-identical with it on",NULL},
+
 {"CCX_LOG_VIEW",CCXOPT_BOOL,"unset (off)",CCXOPT_UNBOUNDED,NULL,
  "print where the run spent its time: named events with a call count, an "
  "inclusive and a self time, and who called whom.  Measurement only; the run "

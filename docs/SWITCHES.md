@@ -6,12 +6,12 @@ Two tables, and the difference between them is the point.
 
 | | |
 |---|---|
-| names the binary reads | **152** |
-| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **47** |
+| names the binary reads | **153** |
+| **declared** in `src/ccxopt_decl.h` - type, default, range, spellings, prose | **48** |
 | undeclared, documented only by whatever the source says of them | 105 |
 | **explained nowhere at all** | **51** |
 | exercised by `test/regress/run.py` | 20 |
-| **never set by any test in this tree** | **132** |
+| **never set by any test in this tree** | **133** |
 | **no declaration, no test and no prose - the retirement queue** | **51** |
 
 Every run prints the ones that are set (`[SWITCHES]` at the top of any
@@ -27,6 +27,7 @@ are read from the declaration, not from the line that reads it.
 
 | option | type | default | range / values | in the gate | what it is |
 |---|---|---|---|---|---|
+| `CCX_CONVERGE_EXPLAIN` | bool | unset (off) | - | - | print the convergence verdict as a table of named clauses - each with the value it tested, the threshold it was tested against and pass/FAIL - and name the clause holding the increment back.  Its defender: the criterion is eight clauses of && and \|\| written out three times, and until this existed nothing could say WHICH one an increment was failing. Diagnostic only; the verdict does not read it and the run is bit-identical with it on |
 | `CCX_CRACK_CONTROL` | real | unset (off) | - | yes | crack control: the control increment per step, which must be strictly positive or the mechanism refuses to arm.  Needs UC6 elements present and its own kinematics self test to pass.  Mutually exclusive with CCX_PATHFOLLOW_COD; the code refuses to arm if both are set |
 | `CCX_CRACK_CONTROL_ENGAGE` | int | 0 | - | yes | increment at which crack control engages |
 | `CCX_DAMAGE_AUTOSPC` | real | unset (no mask) | [0, 1.e-1] | yes | fraction of a node's OWN intact assembled diagonal below which it is judged to have lost its load path and is excluded from the displacement residual; silently clamped to 1.e-1 in nonlingeo.c, so a deck whose worst node is at 1.04e-01 can never exercise it |
