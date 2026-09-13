@@ -77,7 +77,16 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "its reference by increment 56 and stays there while the solver applies "
  "load for 480 more increments.  Lowering this threshold does not make the "
  "specimen break; it makes the solver stop noticing that it already has.  "
- "Arm CCX_FRACTURE_CUT if you change it",NULL},
+ "ON THE TARGET DECK IT IS WORSE STILL: 0.99 with CCX_FRACTURE_CUT armed "
+ "dies at increment 168, theta 0.1914, with the grip reaction at 95.4 "
+ "percent of peak and 278 elements deleted, against theta 0.2588 and 3749 "
+ "deletions at the default.  The run is killed just past peak load.  The "
+ "mechanism is the one written at the trigger itself: an element removed at "
+ "Dvis=0.99 is still carrying one percent of its effective stress and "
+ "releases it in one increment at constant load, and the residual there "
+ "DIVERGES (7.2 -> 16.9) instead of creeping.  Raising this number is a "
+ "change to how much force a deletion dumps, not a change to when the "
+ "specimen breaks",NULL},
 
 {"CCX_DAMAGE_DELETE_VISC",CCXOPT_BOOL,"1 (on)",CCXOPT_UNBOUNDED,NULL,
  "judge terminal deletion by the VISCOUS damage rather than the "
