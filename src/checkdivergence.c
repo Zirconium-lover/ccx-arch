@@ -89,6 +89,9 @@ void checkdivergence(double *co, ITG *nk, ITG *kon, ITG *ipkon, char *lakon,
 	/* check whether new increment size is smaller than minimum */
 	
 	if(*dtheta<*tmin){
+	    /* [CONVERGE] the fourth site that prints this one sentence.  It
+	       has no verdict in scope and says so rather than inventing one. */
+	    converge_stop_report(CVG_DIVERGED_MINSTEP_EXTERNAL,NULL);
 	    printf("\n *ERROR: increment size smaller than minimum\n");
 	    printf(" best solution and residuals are in the frd file\n\n");
 	    NNEW(fn,double,mt**nk);

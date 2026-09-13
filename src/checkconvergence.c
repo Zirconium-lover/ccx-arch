@@ -338,6 +338,7 @@ void checkconvergence(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,
 	*dthetaref=*dtheta;
 	printf(" convergence; the increment size is decreased to %e\n\n",*dtheta**tper);
 	if(*dtheta<*tmin){
+	  converge_stop_report(CVG_DIVERGED_MINSTEP_AFTER_CONV,&cvgverdict);
 	  printf("\n *ERROR: increment size smaller than minimum\n");
 	  printf(" best solution and residuals are in the frd file\n\n");
 	  NNEW(fn,double,mt**nk);
@@ -660,6 +661,7 @@ void checkconvergence(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,
 	             " accepted\n");
 	      fflush(stdout);
 	    }
+	    converge_stop_report(CVG_DIVERGED_MINSTEP_ON_DIVERGENCE,&cvgverdict);
 	    printf("\n *ERROR: increment size smaller than minimum\n");
 	    printf(" best solution and residuals are in the frd file\n\n");
 	    NNEW(fn,double,mt**nk);
@@ -803,6 +805,7 @@ void checkconvergence(double *co,ITG *nk,ITG *kon,ITG *ipkon,char *lakon,
 	             " accepted\n");
 	      fflush(stdout);
 	    }
+	    converge_stop_report(CVG_DIVERGED_MINSTEP_TOO_SLOW,&cvgverdict);
 	    printf("\n *ERROR: increment size smaller than minimum\n");
 	    printf(" best solution and residuals are in the frd file\n\n");
 	    NNEW(fn,double,mt**nk);

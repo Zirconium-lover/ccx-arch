@@ -179,13 +179,46 @@ Twenty-five self-test checks, and the test was shown to go red on the
 plausible tidy-up — removing 8b's `iit>1` to make the two thermal forms
 agree.
 
-### C. Reason — designed, not built
+### C. Reason — BUILT, 2026-09-13
 
 A `converge_reason` enum on the PETSc pattern, positive converged, negative
-diverged, zero iterating.  The value of it here is specific and measured:
-`rc=201` currently covers at least a deletion shock, a stalled node at the
-stiffness floor, and a separated specimen, and those want three different
-answers from the person reading the log.
+diverged, zero iterating.
+
+What the code actually knows, now that it is written: `rc=201` and the one
+sentence "increment size smaller than minimum" are printed from **four**
+sites that mean **three** different things.
+
+| reason | site | what happened |
+|---|---|---|
+| `DIVERGED_MINSTEP_AFTER_CONVERGENCE` | checkconvergence.c ~341 | the increment CONVERGED; it took enough iterations that the next step was decreased below `tmin`.  The run stops on a step size, not on a failure to converge — and the stock message says the opposite to anyone reading it |
+| `DIVERGED_MINSTEP_ON_DIVERGENCE` | ~664 | the residual diverged, the cut-back fell below `tmin` |
+| `DIVERGED_MINSTEP_TOO_SLOW` | ~808 | the estimated iteration count exceeded the limit, the cut-back fell below `tmin` |
+| `DIVERGED_MINSTEP_EXTERNAL` | checkdivergence.c ~92 | divergence detected outside `checkconvergence`, cut-back below `tmin` |
+
+Each stop now also prints the last verdict's blocking clause, which is what
+step B made available.  On the gate that reads:
+
+```
+[CONVERGE STOP] DIVERGED_MINSTEP_ON_DIVERGENCE
+   the residual diverged and the cut-back increment fell below tmin
+   last verdict: held back by ForceResidual (9.741021e-03 vs 1.856474e-03)
+```
+
+**What is proven and what is not.**  The four sites are distinguished in
+the source and each is named.  The gate reaches only one of them —
+`ON_DIVERGENCE`, in all four cases that stop — so the other three names are
+correct by construction and unexercised.  Reaching them needs decks that do
+not exist yet; that is the honest state, not a claim that the
+discrimination has been demonstrated in practice.  The design note's
+earlier guess that `rc=201` separates "a deletion shock, a stalled node and
+a separated specimen" is a PHYSICAL claim and remains unproven: what the
+code can now report is the site and the blocking clause, which is what it
+knows.
+
+The verdict is passed to the report rather than kept in a file-scope
+variable.  Three of the four sites are in the same function as the verdict;
+the fourth has none in scope and passes NULL, and the report prints "not
+available at this site" rather than inventing one.
 
 ## 4. What is NOT in this object
 

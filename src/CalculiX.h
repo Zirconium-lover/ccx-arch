@@ -5110,6 +5110,31 @@ ITG  converge_verdict(cvg_verdict *v,const cvg_tol *t,ITG ithermal,ITG iit,
                       const double *qa,const double *qam,
                       double *c1,double *c2);
 void converge_verdict_print(const cvg_verdict *v);
+
+/* ---- why the run stopped (converge.c, step C of 10-CONVERGENCE) -------
+
+   PETSc's SNESConvergedReason exists because "it did not converge" is not
+   an answer.  This tree ends with rc=201 and one message - "increment size
+   smaller than minimum" - printed from four different places that mean
+   three different things: the increment CONVERGED but wanted a next step
+   below tmin; the residual DIVERGED and the cutback hit tmin; convergence
+   was too SLOW and the cutback hit tmin.  Same exit code, same sentence.
+
+   Sign convention follows PETSc: positive converged, negative diverged,
+   zero still iterating.                                                */
+
+typedef enum {
+  CVG_DIVERGED_MINSTEP_EXTERNAL      =-4,
+  CVG_DIVERGED_MINSTEP_TOO_SLOW      =-3,
+  CVG_DIVERGED_MINSTEP_ON_DIVERGENCE =-2,
+  CVG_DIVERGED_MINSTEP_AFTER_CONV    =-1,
+  CVG_ITERATING                      = 0,
+  CVG_CONVERGED_CRITERIA             = 1
+}cvg_reason;
+
+const char *converge_reason_name(cvg_reason r);
+const char *converge_reason_explain(cvg_reason r);
+void        converge_stop_report(cvg_reason r,const cvg_verdict *v);
 ITG  converge_selftest(void);
 
 /* ---- the backtracking ladder of the damage line search (lsladder.c) --

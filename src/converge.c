@@ -492,6 +492,73 @@ void converge_verdict_print(const cvg_verdict *v)
   fflush(stdout);
 }
 
+/* --------------------------------------------------- why the run stopped
+
+   Step C.  Nothing here changes a decision: the four stop sites keep their
+   stock message and their stock exit.  What is added is the one line that
+   says WHICH of them fired and what the last verdict was blocked on, so
+   that "increment size smaller than minimum" stops being a symptom shared
+   by three unrelated situations.
+
+   The verdict is passed in rather than remembered in a file-scope
+   variable: three of the four sites are in the same function as the
+   verdict, and the fourth (checkdivergence.c) honestly has none - it
+   passes NULL and the report says so instead of inventing one.        */
+
+const char *converge_reason_name(cvg_reason r)
+{
+  switch(r){
+  case CVG_DIVERGED_MINSTEP_EXTERNAL:      return "DIVERGED_MINSTEP_EXTERNAL";
+  case CVG_DIVERGED_MINSTEP_TOO_SLOW:      return "DIVERGED_MINSTEP_TOO_SLOW";
+  case CVG_DIVERGED_MINSTEP_ON_DIVERGENCE: return "DIVERGED_MINSTEP_ON_DIVERGENCE";
+  case CVG_DIVERGED_MINSTEP_AFTER_CONV:    return "DIVERGED_MINSTEP_AFTER_CONVERGENCE";
+  case CVG_ITERATING:                      return "ITERATING";
+  case CVG_CONVERGED_CRITERIA:             return "CONVERGED_CRITERIA";
+  }
+  return "UNKNOWN";
+}
+
+const char *converge_reason_explain(cvg_reason r)
+{
+  switch(r){
+  case CVG_DIVERGED_MINSTEP_EXTERNAL:
+    return "divergence was detected outside checkconvergence and the "
+           "cut-back increment fell below tmin";
+  case CVG_DIVERGED_MINSTEP_TOO_SLOW:
+    return "the increment was converging too slowly - the estimated "
+           "iteration count exceeded the limit - and the cut-back "
+           "increment fell below tmin";
+  case CVG_DIVERGED_MINSTEP_ON_DIVERGENCE:
+    return "the residual diverged and the cut-back increment fell below "
+           "tmin";
+  case CVG_DIVERGED_MINSTEP_AFTER_CONV:
+    return "the increment CONVERGED, but it took enough iterations that "
+           "the next increment was decreased below tmin - the run stops "
+           "on a step size, not on a failure to converge";
+  case CVG_ITERATING:        return "still iterating";
+  case CVG_CONVERGED_CRITERIA:
+    return "every clause of the convergence criterion is satisfied";
+  }
+  return "unknown reason";
+}
+
+void converge_stop_report(cvg_reason r,const cvg_verdict *v)
+{
+  printf("\n[CONVERGE STOP] %s\n",converge_reason_name(r));
+  printf("   %s\n",converge_reason_explain(r));
+  if(v==NULL){
+    printf("   last verdict: not available at this site\n");
+  }else if(v->converged){
+    printf("   last verdict: converged\n");
+  }else if(v->blocker!=NULL){
+    printf("   last verdict: held back by %s (%.6e vs %.6e)\n",
+           v->blocker,v->blocker_value,v->blocker_thresh);
+  }else{
+    printf("   last verdict: not yet, no clause recorded\n");
+  }
+  fflush(stdout);
+}
+
 /* ---------------------------------------------------------------- tests */
 
 static ITG cvg_chk(const char *name,double got,double want,double tol,
@@ -626,6 +693,46 @@ ITG converge_selftest(void)
   converge_norms(&c,b,neq,nactdofinv,mt,1,0,0,0,0,qa,qamold,1,0.,1.e-2,
                  ram,ram1,ram2,cam,uam,qam);
   cvg_chk("F qam floored at 0.25 of its peak",qam[0],25.,1.e-12,&nbad);
+
+  /* ----------------------------------------------------------- reason */
+  {
+    cvg_reason rs[6]={CVG_DIVERGED_MINSTEP_EXTERNAL,
+                      CVG_DIVERGED_MINSTEP_TOO_SLOW,
+                      CVG_DIVERGED_MINSTEP_ON_DIVERGENCE,
+                      CVG_DIVERGED_MINSTEP_AFTER_CONV,
+                      CVG_ITERATING,CVG_CONVERGED_CRITERIA};
+    ITG a,bq,distinct=1;
+
+    /* every reason has a name and a sentence, and no two share either -
+       the whole complaint against rc=201 is that one name covered four
+       sites, so a duplicate here would reproduce the defect */
+    for(a=0;a<6;a++){
+      for(bq=a+1;bq<6;bq++){
+        if(strcmp(converge_reason_name(rs[a]),
+                  converge_reason_name(rs[bq]))==0) distinct=0;
+        if(strcmp(converge_reason_explain(rs[a]),
+                  converge_reason_explain(rs[bq]))==0) distinct=0;
+      }
+      if(strcmp(converge_reason_name(rs[a]),"UNKNOWN")==0) distinct=0;
+    }
+    cvg_chki("all six reasons named and distinct",distinct,1,&nbad);
+
+    /* PETSc's sign convention: negative diverged, zero iterating,
+       positive converged */
+    cvg_chki("diverged reasons are negative",
+             (CVG_DIVERGED_MINSTEP_EXTERNAL<0)&&
+             (CVG_DIVERGED_MINSTEP_TOO_SLOW<0)&&
+             (CVG_DIVERGED_MINSTEP_ON_DIVERGENCE<0)&&
+             (CVG_DIVERGED_MINSTEP_AFTER_CONV<0),1,&nbad);
+    cvg_chki("iterating is zero",CVG_ITERATING==0,1,&nbad);
+    cvg_chki("converged is positive",CVG_CONVERGED_CRITERIA>0,1,&nbad);
+
+    /* the one that is easiest to get wrong when reading the log: this
+       stop follows a CONVERGED increment and is about step size */
+    cvg_chks("after-convergence stop names convergence",
+             strstr(converge_reason_explain(CVG_DIVERGED_MINSTEP_AFTER_CONV),
+                    "CONVERGED")?"yes":"no","yes",&nbad);
+  }
 
   /* ---------------------------------------------------------- verdict */
   {
