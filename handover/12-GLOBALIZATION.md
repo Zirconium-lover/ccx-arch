@@ -96,3 +96,61 @@ anything is removed.
   `checkconvergence.c` still owns.
 - **Deleting anything.** Step A measures. What the measurement justifies is
   step B, with its own hypothesis, as a separate change.
+
+## 5. Step A result: the anecdote is now a rate
+
+Built, armed on every run, and aggregated over all sixteen gate cases:
+
+```
+14851 attempts, 4780 with no mechanism at all, 12 reproduced the previous
+                                               sequence exactly
+
+mechanism                  firings  attempts  changed  inert  unknown
+line-search ladder             143        40       40      0        0
+transactional backtrack         48         6        6      0        0
+rescue level 1                   9         9        9      0        0
+rescue level 2                  15        15        3     12        0
+trust region (dogleg)          132         6        6      0        0
+path following               20004      9996     9996      0        0
+```
+
+**Rescue level 2 is inert in 12 of the 15 attempts in which it acts.** The
+debt entry recorded one wall where three consecutive attempts produced
+bit-identical residual sequences; it is 80% of this mechanism's firings
+across the whole gate.
+
+### What this does and does not establish
+
+It establishes **inertness**, which is the necessary condition for
+deleting a mechanism: on twelve of fifteen occasions rescue level 2 acted
+and the entire iteration sequence that followed was bit-identical to the
+one before it. Nothing it did reached the solve.
+
+It does **not** establish that the other five earn their keep. "Changed the
+correction sequence" is a weak positive, and for path following it is close
+to tautological: it modifies `b` directly, so the hash necessarily differs.
+A mechanism can change the sequence and still not help. The brief's test has
+two halves — *name the failure it addresses* and *the gate case that would go
+red without it* — and this instrument answers neither. It answers a third
+question, "did it do anything at all", and that is the one that makes a
+deletion arguable rather than a matter of taste.
+
+Two units in one table, deliberately: `firings` counts calls, everything
+after it counts attempts. A mechanism that loops trials inside one attempt
+shows many firings and few attempts, which is not a contradiction. The self
+test pins that.
+
+### The reporting gap this found, immediately
+
+The first version printed only at the end of `nonlingeo()`. The gate showed
+at once why that is wrong: the four cases that hit a wall exit through
+`checkconvergence`'s `FORTRAN(stop)` and produced **no census at all** — the
+runs the instrument exists for were exactly the runs it did not cover.
+
+This tree had already learned it once. `CCX_LOG_VIEW`'s defender in
+`docs/SWITCHES.md` is two 2.3-hour runs killed part way through that
+produced no profile, because the table was printed from `atexit`. The
+remedy here is `atexit`, and the difference matters: `FORTRAN(stop)` is an
+*orderly* exit, so `atexit` runs. A run killed with a signal still loses the
+census; if that becomes a problem the answer is LOG_VIEW's — interim
+reports — and not another exit hook.

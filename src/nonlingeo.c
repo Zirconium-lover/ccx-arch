@@ -2075,6 +2075,11 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      that argued for it.  Six copies of "discard the marked set", in three
      different variants, are now one call. */
   topo_txn dtxn;
+
+  /* [GLOBALIZE] the census of which globalization mechanism ever changes
+     anything; handover/12-GLOBALIZATION.md.  Counts and reports, decides
+     nothing, changes no arithmetic. */
+  glob_census damage_glob;
   double damage_nl_ell=0.;
   ITG damage_nl_mode=0;
   double damage_qam_floor=0.;
@@ -4154,6 +4159,17 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      under the same rule: the self test runs on every run and a failure
      stops the job.  A transaction whose discard leaks or double-frees
      corrupts a run that still prints plausible numbers. */
+  glob_census_init(&damage_glob);
+  glob_census_arm(&damage_glob);
+  if(glob_selftest()!=0){
+    printf("[GLOBALIZE] *ERROR: the globalization-census self test failed. "
+           " An instrument that has not been checked cannot be used to "
+           "justify deleting a mechanism, which is what this one exists "
+           "for, so the run stops here.\n");
+    fflush(stdout);
+    FORTRAN(stop,());
+  }
+
   topo_txn_init(&dtxn);
   if(topo_selftest()!=0){
     printf("[TOPOLOGY] *ERROR: the erosion-transaction self test failed.  "
@@ -5859,6 +5875,11 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     }
 
     if(*iexpl<=1){
+      /* [GLOBALIZE] the previous attempt ends where the next is
+         announced.  An attempt in which nothing was solved is not counted,
+         so a cutback that never reaches a solve cannot dilute the
+         denominator. */
+      glob_attempt_end(&damage_glob);
       printf(" increment %" ITGFORMAT " attempt %" ITGFORMAT " \n",iinc,icutb+1);
       printf(" increment size= %e\n",dtheta**tper);
       printf(" sum of previous increments=%e\n",theta**tper);
@@ -9351,6 +9372,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	      pf_applied=pathfollow_cod_step(b,pf_uf,pf_cu,&pf_lam,pf_clip,
 	                                     &pf_g,&pf_dlam,&pf_reason);
 	      pf_dg=pf_cu;
+	      if(pf_applied==1) glob_fired(&damage_glob,GLOB_PATHFOLLOW);
 	      if(pf_applied==1){
 	        pf_dlamit=pf_lam-pf_lam0it;
 	        for(k=0;k<*nboun;k++){
@@ -11324,6 +11346,10 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
              a step of zero length. ---- */
           tkind=damage_dl_pick(damage_dl_delta,damage_dl_nd2,damage_dl_nw2,
                                damage_dl_npn2,damage_dl_dtpn,&tpa,&tpb,&tnrm);
+          /* a REFUSAL is not a firing: tkind==0 means no step was
+             constructed, and counting it would credit the mechanism for
+             declining to act */
+          if(tkind!=0) glob_fired(&damage_glob,GLOB_TRUSTREGION);
           if(tkind==0){
             printf("[DAMAGE TR] inc=%" ITGFORMAT " iter=%" ITGFORMAT
                    " trial=%" ITGFORMAT ": the step construction REFUSED a "
@@ -11621,6 +11647,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           NNEW(damage_linesearch_step,double,neq[1]);
           isiz=neq[1];cpypardou(damage_linesearch_step,b,&isiz,&num_cpus);
           damage_linesearch_contracted=0;
+          glob_fired(&damage_glob,GLOB_LADDER);
           lsladder_start(&damage_lsl,flinesearch,
                          damage_linesearch_oldnorm,damage_ls_min,0.5,
                          damage_ls_trials,damage_ls_legacy);
@@ -12297,6 +12324,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                   t0g,t1g,islavquadel,aut,irowt,jqt,&mortartrafoflag,
                   &intscheme,physcon,dam,damn,iponoel);
         if(ne1d2d==1)SFREE(inum);
+        glob_fired(&damage_glob,GLOB_BACKTRACK);
         printf("[DAMAGE BT] inc=%" ITGFORMAT " iter=%" ITGFORMAT
                " R0=%.6e trials=%" ITGFORMAT " %s%.6f%s",
                iinc,iit,damage_bt_r0,damage_bt_ntrial,
@@ -12537,6 +12565,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	damage_cvg.mask_force=damage_spc_force;
 	damage_cvg.mask=damage_spc_mask;
 	damage_cvg.mask_nk=damage_spc_nk;
+	glob_iterate(&damage_glob,b,neq[0]);
 	converge_norms(&damage_cvg,b,neq,nactdofinv,mt,*ithermal,*mortar,
 	               *ne,ne0,neold,qa,qamold,jnz,qau,ea,
 	               ram,ram1,ram2,cam,uam,qam);
@@ -12986,6 +13015,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           damage_rescue_nfired++;
           dtheta=damage_rescue_dtheta_last;
           dthetaref=damage_rescue_dthetaref_last;
+          glob_fired(&damage_glob,(damage_rescue_used>=2)?
+                     GLOB_RESCUE2:GLOB_RESCUE1);
           printf("[DAMAGE RESCUE] FIRED #%" ITGFORMAT " inc=%" ITGFORMAT
                  " iter=%" ITGFORMAT " time=%.12e dtime=%.12e; dtheta restored "
                  "to the last admissible %.12e; transactional BT armed for "
@@ -15890,6 +15921,12 @@ damage_controller_done:
        nonlingeo damage baselines so later steps/output calls cannot retain
        dangling pointers. */
     results_set_de12_context(0,0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0.);
+    /* [GLOBALIZE] close the last attempt and report.  Unconditional:
+       a census that has to be switched on is a census nobody reads,
+       and this one exists to be read before a mechanism is deleted. */
+    glob_attempt_end(&damage_glob);
+    glob_census_report(&damage_glob);
+
     topo_txn_discard(&dtxn);
 
     if(fdamage!=NULL){

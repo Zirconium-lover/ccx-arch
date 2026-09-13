@@ -5062,6 +5062,48 @@ void converge_report(const converge *c,const ITG *nactdofinv,ITG mt,
                      ITG ithermal,double ran,
                      const double *qa,const double *qam,const double *ram,
                      const double *cam,const double *uam);
+/* ---- which globalization mechanism did anything (globalize.c) ---------
+
+   handover/12-GLOBALIZATION.md.  Six mechanisms stacked in a fixed order
+   with no interface; 05-DEBT.md section 3 records three consecutive
+   attempts producing bit-identical residual sequences, two rescue levels
+   having run and changed nothing.  This turns that anecdote into a
+   counter, so that "name the failure it addresses" can be answered with
+   data before anything is deleted.
+
+   Reason vocabulary from PETSc SNESLineSearchReason (petscsnes.h:918).
+   It counts and reports; it changes no arithmetic.                     */
+
+typedef enum {
+  GLOB_LADDER      =0,
+  GLOB_BACKTRACK   =1,
+  GLOB_RESCUE1     =2,
+  GLOB_RESCUE2     =3,
+  GLOB_TRUSTREGION =4,
+  GLOB_PATHFOLLOW  =5,
+  GLOB_NMECH       =6
+}glob_mech;
+
+typedef struct{
+  ITG fired[GLOB_NMECH];      /* the mechanism said it acted            */
+  ITG effective[GLOB_NMECH];  /* ...and the correction changed          */
+  ITG inert[GLOB_NMECH];      /* ...and it did not                      */
+  ITG unknown[GLOB_NMECH];    /* ...on an attempt with no predecessor   */
+  ITG attempts,bare_attempts,repeats;
+  unsigned long long prev_hash,cur_hash;
+  ITG have_prev,niter;
+  unsigned pending;           /* mechanisms that acted this attempt     */
+}glob_census;
+
+const char *glob_mech_name(glob_mech m);
+void glob_census_init(glob_census *g);
+void glob_fired(glob_census *g,glob_mech m);
+void glob_iterate(glob_census *g,const double *b,ITG n);
+void glob_attempt_end(glob_census *g);
+void glob_census_arm(const glob_census *g);
+void glob_census_report(const glob_census *g);
+ITG  glob_selftest(void);
+
 /* ---- the transaction that commits an erosion (topology.c) -------------
 
    handover/11-TOPOLOGY.md.  The marked set is one object with one
