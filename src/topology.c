@@ -63,6 +63,119 @@ void topo_txn_discard(topo_txn *t)
   t->count=0;
 }
 
+/* How many integration points does this element type carry?
+
+   Moved here from a static in nonlingeo.c, where sixteen call sites shared
+   it and nothing could test it.  It is a property of the mesh, which is
+   what this object owns, and it is a pure function of the element label -
+   so it is the one part of this module that can be tested exhaustively
+   rather than by example. */
+ITG topo_element_nip(const char *lakonel,ITG mi0)
+{
+  if((lakonel[6]=='L')&&(lakonel[7]=='C')) return mi0;
+  if(strncmp(lakonel,"C3D20RB",7)==0) return mi0;
+  if(strncmp(lakonel,"C3D8R",5)==0) return 1;
+  if(strncmp(lakonel,"C3D8I",5)==0) return 8;
+  if(strncmp(lakonel,"C3D20R",6)==0) return 8;
+  if(strncmp(lakonel,"C3D20",5)==0) return 27;
+  if(strncmp(lakonel,"C3D10",5)==0) return 4;
+  if(strncmp(lakonel,"C3D4",4)==0) return 1;
+  if(strncmp(lakonel,"C3D15",5)==0) return 9;
+  if(strncmp(lakonel,"C3D6",4)==0) return 2;
+  if(strncmp(lakonel,"C3D8",4)==0) return 8;
+  return mi0;
+}
+
+/* Collect the elements this increment eroded.
+
+   This is the block that was written out THREE times - 13472, 14382 and
+   14850 in the pre-extraction file, identical once whitespace and comments
+   are stripped.  Two passes over the same predicate, `was alive at the
+   baseline and is dead now`: one to size the marked set, one to fill it.
+
+   The DE1.3 override at the end is deal.II's prepare_coarsening_and_-
+   refinement: the marked set is adjusted before it is committed, because
+   the DE1.3 path already knows the value and the integration point that
+   triggered the deletion and they are better than what the scan found.
+   This tree had that phase and no name for it.
+
+   Discards first, so that "collect" means "the marked set is now exactly
+   this".  Two of the three sites discarded immediately before; the third
+   did not, and was safe only because nothing allocates between its path's
+   discard and it - an argument the reader had to make from a hundred and
+   sixty lines away.  Now nobody has to make it.
+
+   damage_progressive_material is called directly and stays defined in
+   nonlingeo.c: whether a material's damage is progressive is a Material
+   question and that object does not exist yet.  Building a per-element
+   predicate array to avoid the dependency would add an allocation and a
+   loop the original never did - paying real work to hide a honest
+   coupling.  The coupling is named here instead.                       */
+void topo_txn_collect(topo_txn *t,ITG step,ITG increment,
+                      double step_time,double total_time,
+                      ITG ne0,const ITG *ipkondamageini,const ITG *ipkon,
+                      const ITG *ielmat,const ITG *mi,const char *lakon,
+                      const double *dam,
+                      const ITG *ndmcon,const double *dmcon,
+                      ITG ndmat_,ITG ntmat_,
+                      ITG de13_transaction,const double *de13_trigger_value,
+                      const ITG *de13_trigger_ip)
+{
+  ITG i,j,nip,cap=0;
+  double dmax;
+
+  topo_txn_discard(t);
+
+  for(i=0;i<ne0;i++){
+    if((ipkondamageini[i]>=0)&&(ipkon[i]<0)) cap++;
+  }
+  if(cap<=0) return;
+
+  NNEW(t->elem,ITG,cap);
+  NNEW(t->mat,ITG,cap);
+  NNEW(t->ip,ITG,cap);
+  NNEW(t->value,double,cap);
+
+  t->step=step;
+  t->increment=increment;
+  t->step_time=step_time;
+  t->total_time=total_time;
+  t->count=0;
+
+  for(i=0;i<ne0;i++){
+    if((ipkondamageini[i]>=0)&&(ipkon[i]<0)){
+      t->elem[t->count]=i+1;
+      t->mat[t->count]=ielmat[mi[2]*i];
+
+      nip=topo_element_nip(&lakon[8*i],mi[0]);
+      if(nip<1) nip=1;
+      if(nip>mi[0]) nip=mi[0];
+
+      dmax=dam[mi[0]*i];
+      t->ip[t->count]=1;
+      for(j=1;j<nip;j++){
+        if(dam[mi[0]*i+j]>dmax){
+          dmax=dam[mi[0]*i+j];
+          t->ip[t->count]=j+1;
+        }
+      }
+      if((t->mat[t->count]>0)&&
+         damage_progressive_material(t->mat[t->count],ndmcon,dmcon,
+                                     ndmat_,ntmat_)&&
+         (dmax>1.)) dmax-=1.;
+
+      if((de13_transaction)&&(de13_trigger_value!=NULL)&&
+         (de13_trigger_value[i]>=0.)){
+        t->value[t->count]=de13_trigger_value[i];
+        t->ip[t->count]=de13_trigger_ip[i];
+      }else{
+        t->value[t->count]=dmax;
+      }
+      t->count++;
+    }
+  }
+}
+
 /* ---------------------------------------------------------------- tests */
 
 static ITG topo_chki(const char *name,ITG got,ITG want,ITG *nbad)
@@ -80,6 +193,28 @@ ITG topo_selftest(void)
   topo_txn t;
 
   printf("[TOPOLOGY] self test%s","\n");
+
+  /* the element map, exhaustively: eleven branches and a fallback, and a
+     pure function of the label is the one thing here that can be tested
+     completely rather than by example */
+  {
+    struct{const char *lab;ITG mi0,want;}m[]={
+      {"C3D8R   ",27,1},{"C3D8I   ",27,8},{"C3D20R  ",27,8},
+      {"C3D20   ",27,27},{"C3D10   ",27,4},{"C3D4    ",27,1},
+      {"C3D15   ",27,9},{"C3D6    ",27,2},{"C3D8    ",27,8},
+      {"C3D20RB ",27,27},          /* the RB form defers to mi0 */
+      {"C3D8   LC",27,27},         /* composite layer: also mi0 */
+      {"UNKNOWN ",13,13}};         /* fallback is mi0, not a guess */
+    ITG k,allok=1;
+    for(k=0;k<12;k++){
+      if(topo_element_nip(m[k].lab,m[k].mi0)!=m[k].want){
+        printf("   nip(%s) got=%" ITGFORMAT " want=%" ITGFORMAT "%s",
+               m[k].lab,topo_element_nip(m[k].lab,m[k].mi0),m[k].want,"\n");
+        allok=0;
+      }
+    }
+    topo_chki("element nip map, all 12 forms",allok,1,&nbad);
+  }
 
   topo_txn_init(&t);
   topo_chki("a fresh transaction holds nothing",
@@ -114,6 +249,53 @@ ITG topo_selftest(void)
   topo_txn_discard(&t);
   topo_chki("discard is idempotent",
             (t.elem==NULL)&&(t.count==0),1,&nbad);
+
+  /* collect, on a four-element mesh where two elements died this
+     increment.  mat=0 everywhere so the progressive-material branch is
+     not reached and no material tables are needed - the point here is the
+     scan, the worst-integration-point search and the DE1.3 override. */
+  {
+    ITG ipkondamageini[4]={0,0,0,-1};   /* element 3 was already dead */
+    ITG ipkon[4]={-1,0,-1,-1};          /* 0 and 2 died this increment */
+    ITG ielmat[4]={0,0,0,0};
+    ITG mi[3]={2,0,1};                  /* two integration points       */
+    char lakon[33]="C3D8    C3D8    C3D8    C3D8    ";
+    double dam[8]={0.3,0.7,  0.0,0.0,  0.9,0.1,  0.0,0.0};
+    double trig[4]={-1.,-1.,-1.,-1.};
+    ITG trigip[4]={0,0,0,0};
+    topo_txn c;
+
+    topo_txn_init(&c);
+    topo_txn_collect(&c,3,42,0.25,7.25,4,ipkondamageini,ipkon,ielmat,mi,
+                     lakon,dam,NULL,NULL,0,0,0,NULL,NULL);
+    topo_chki("collect finds both newly dead elements",c.count,2,&nbad);
+    topo_chki("  and not the one dead at the baseline",
+              (c.count==2)&&(c.elem[0]==1)&&(c.elem[1]==3),1,&nbad);
+    topo_chki("  worst integration point of element 1 is 2",
+              (c.count==2)&&(c.ip[0]==2),1,&nbad);
+    topo_chki("  worst integration point of element 3 is 1",
+              (c.count==2)&&(c.ip[1]==1),1,&nbad);
+    topo_chki("  and the stamp is the one it was given",
+              (c.step==3)&&(c.increment==42),1,&nbad);
+
+    /* the DE1.3 override - deal.II's prepare phase: the marked set is
+       adjusted before commit, because the DE1.3 path knows the value and
+       the point that triggered the deletion and the scan does not */
+    trig[2]=0.55; trigip[2]=2;
+    topo_txn_collect(&c,3,42,0.25,7.25,4,ipkondamageini,ipkon,ielmat,mi,
+                     lakon,dam,NULL,NULL,0,0,1,trig,trigip);
+    topo_chki("DE1.3 override replaces value and point",
+              (c.count==2)&&(c.ip[1]==2),1,&nbad);
+    topo_chki("  and leaves the element it did not flag alone",
+              (c.count==2)&&(c.ip[0]==2),1,&nbad);
+
+    /* collect replaces the marked set rather than appending to it: the
+       third call must not find four elements */
+    topo_txn_collect(&c,3,43,0.25,7.25,4,ipkondamageini,ipkon,ielmat,mi,
+                     lakon,dam,NULL,NULL,0,0,0,NULL,NULL);
+    topo_chki("collect replaces, it does not append",c.count,2,&nbad);
+    topo_txn_discard(&c);
+  }
 
   printf("[TOPOLOGY] self test %s (%" ITGFORMAT " failure(s))%s",
          nbad?"FAILED":"PASSED",nbad,"\n");

@@ -166,7 +166,6 @@ static void damage_aba_cmp(const char *name,const double *a,
   }
 }
 
-static ITG damage_history_nip(const char *lakonel,ITG mi0);
 
 /* Project f_hat (equation space) onto a nodal displacement difference.
    Only free dofs contribute, and j starts at 1 because j=0 is the thermal
@@ -693,7 +692,7 @@ static void damage_ray_census(ITG *cat,const double *xstate,
 {
   ITG i,j,nip;
   for(i=0;i<ne0;i++){
-    nip=damage_history_nip(&lakon[8*i],mi0);
+    nip=topo_element_nip(&lakon[8*i],mi0);
     if(nip<1) nip=1;
     if(nip>mi0) nip=mi0;
     for(j=0;j<mi0;j++) cat[mi0*i+j]=0;
@@ -718,7 +717,7 @@ static void damage_ray_tally(const double *xstate,const double *xstateini,
   ITG i,j,nip,c;
   *nplast=0;*nucomp=0;
   for(i=0;i<ne0;i++){
-    nip=damage_history_nip(&lakon[8*i],mi0);
+    nip=topo_element_nip(&lakon[8*i],mi0);
     if(nip<1) nip=1;
     if(nip>mi0) nip=mi0;
     if(ipkon[i]<0) continue;
@@ -790,7 +789,7 @@ static ITG damage_ray_census_diff(const ITG *cat,const double *xstate,
   *firste=-1;*firstip=-1;*firsta=0;*firstb=0;
   for(i=0;i<ne0;i++){
     if(ipkon[i]<0) continue;
-    nip=damage_history_nip(&lakon[8*i],mi0);
+    nip=topo_element_nip(&lakon[8*i],mi0);
     if(nip<1) nip=1;
     if(nip>mi0) nip=mi0;
     for(j=0;j<nip;j++){
@@ -969,7 +968,7 @@ static ITG damage_wall_setdiff(const ITG *cat,const double *xstate,
   for(k=0;k<8;k++) nb[k]=0;
   for(i=0;i<ne0;i++){
     if(ipkon[i]<0) continue;
-    nip=damage_history_nip(&lakon[8*i],mi0);
+    nip=topo_element_nip(&lakon[8*i],mi0);
     if(nip<1) nip=1;
     if(nip>mi0) nip=mi0;
     for(j=0;j<nip;j++){
@@ -984,29 +983,14 @@ static ITG damage_wall_setdiff(const ITG *cat,const double *xstate,
   return n;
 }
 
-static ITG damage_history_nip(const char *lakonel,ITG mi0)
-{
-  if((lakonel[6]=='L')&&(lakonel[7]=='C')) return mi0;
-  if(strncmp(lakonel,"C3D20RB",7)==0) return mi0;
-  if(strncmp(lakonel,"C3D8R",5)==0) return 1;
-  if(strncmp(lakonel,"C3D8I",5)==0) return 8;
-  if(strncmp(lakonel,"C3D20R",6)==0) return 8;
-  if(strncmp(lakonel,"C3D20",5)==0) return 27;
-  if(strncmp(lakonel,"C3D10",5)==0) return 4;
-  if(strncmp(lakonel,"C3D4",4)==0) return 1;
-  if(strncmp(lakonel,"C3D15",5)==0) return 9;
-  if(strncmp(lakonel,"C3D6",4)==0) return 2;
-  if(strncmp(lakonel,"C3D8",4)==0) return 8;
-  return mi0;
-}
 
 /* Progressive damage material classifier shared by DE1 and DM2.0.
    Rice-Tracey + Evolution=Displacement keeps the historical four-constant
    signature.  DM2.0 is identified by model type 3 and a variable-length
    constant count 3+2*NPOINTS (NPOINTS>=2). */
-static ITG damage_progressive_material(ITG imat,const ITG *ndmcon,
-                                       const double *dmcon,ITG ndmat,
-                                       ITG ntmat)
+ITG damage_progressive_material(ITG imat,const ITG *ndmcon,
+                                const double *dmcon,ITG ndmat,
+                                ITG ntmat)
 {
   ITG nconst,type,off;
 
@@ -1050,7 +1034,7 @@ static ITG damage_de12_trial_softening(const double *dam,
     if(!damage_progressive_material(imat,ndmcon,dmcon,ndmat,ntmat))
       continue;
 
-    nip=damage_history_nip(&lakon[8*i],mi0);
+    nip=topo_element_nip(&lakon[8*i],mi0);
     if(nip<1) nip=1;
     if(nip>mi0) nip=mi0;
     elementsoft=0;
@@ -1274,7 +1258,7 @@ static ITG damage_de13_mark_deadsole(const double *dam,const double *visc,
     if(nnew>=batchmax) break;
     if(ipkon[i]<0) continue;
     if(strcmp1(&lakon[8*i],"C3D4")!=0) continue;
-    nip=damage_history_nip(&lakon[8*i],mi0);
+    nip=topo_element_nip(&lakon[8*i],mi0);
     if(nip<1) nip=1;
     if(nip>mi0) nip=mi0;
     dmx=0.;
@@ -1386,7 +1370,7 @@ static ITG damage_de13_mark_deadall(const double *dam,const double *visc,
   for(i=0;i<ne0;i++){
     if(ipkon[i]<0) continue;
     if(strcmp1(&lakon[8*i],"C3D4")!=0) continue;
-    nip=damage_history_nip(&lakon[8*i],mi0);
+    nip=topo_element_nip(&lakon[8*i],mi0);
     if(nip<1) nip=1;
     if(nip>mi0) nip=mi0;
     dmx=0.;
@@ -1468,7 +1452,7 @@ static ITG damage_de13_mark_terminal(double *dam,ITG *ipkon,
     if(!damage_progressive_material(imat,ndmcon,dmcon,ndmat,ntmat)) continue;
     if(!damage_delete_allowed(imat,matname,delfilter)) continue;
 
-    nip=damage_history_nip(&lakon[8*i],mi0);
+    nip=topo_element_nip(&lakon[8*i],mi0);
     if(nip<1) nip=1;
     if(nip>mi0) nip=mi0;
 
@@ -1541,7 +1525,7 @@ static void damage_de1_stats(const double *dam,const double *damold,
     if(ipkon[i]<0) continue;
     if(lakon[8*i]!='C') continue;
 
-    nip=damage_history_nip(&lakon[8*i],mi0);
+    nip=topo_element_nip(&lakon[8*i],mi0);
     if(nip<1) nip=1;
     if(nip>mi0) nip=mi0;
 
@@ -13564,52 +13548,12 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 
         topo_txn_discard(&dtxn);
 
-        if(damage_scan_count>0){
-          NNEW(dtxn.elem,ITG,damage_scan_count);
-          NNEW(dtxn.mat,ITG,damage_scan_count);
-          NNEW(dtxn.ip,ITG,damage_scan_count);
-          NNEW(dtxn.value,double,damage_scan_count);
-
-          dtxn.step=*istep;
-          dtxn.increment=iinc;
-          dtxn.step_time=theta**tper;
-          dtxn.total_time=*ttime+dtxn.step_time;
-          dtxn.count=0;
-
-          for(i=0;i<ne0;i++){
-            if((ipkondamageini[i]>=0)&&(ipkon[i]<0)){
-              dtxn.elem[dtxn.count]=i+1;
-              dtxn.mat[dtxn.count]=ielmat[mi[2]*i];
-
-              damage_nip_local=damage_history_nip(&lakon[8*i],mi[0]);
-              if(damage_nip_local<1) damage_nip_local=1;
-              if(damage_nip_local>mi[0]) damage_nip_local=mi[0];
-
-              damage_dmax=dam[mi[0]*i];
-              dtxn.ip[dtxn.count]=1;
-              for(j=1;j<damage_nip_local;j++){
-                if(dam[mi[0]*i+j]>damage_dmax){
-                  damage_dmax=dam[mi[0]*i+j];
-                  dtxn.ip[dtxn.count]=j+1;
-                }
-              }
-              imat=dtxn.mat[dtxn.count];
-              if((imat>0)&&
-                 damage_progressive_material(imat,ndmcon,dmcon,*ndmat_,*ntmat_)&&
-                 (damage_dmax>1.)) damage_dmax-=1.;
-              if((damage_de13_transaction)&&(damage_de13_trigger_value!=NULL)&&
-                 (damage_de13_trigger_value[i]>=0.)){
-                dtxn.value[dtxn.count]=
-                    damage_de13_trigger_value[i];
-                dtxn.ip[dtxn.count]=
-                    damage_de13_trigger_ip[i];
-              }else{
-                dtxn.value[dtxn.count]=damage_dmax;
-              }
-              dtxn.count++;
-            }
-          }
-        }
+        /* [TOPOLOGY] the block that was written out three times. */
+        topo_txn_collect(&dtxn,*istep,iinc,theta**tper,*ttime+theta**tper,
+                         ne0,ipkondamageini,ipkon,ielmat,mi,lakon,dam,
+                         ndmcon,dmcon,*ndmat_,*ntmat_,
+                         damage_de13_transaction,damage_de13_trigger_value,
+                         damage_de13_trigger_ip);
 
         printf("[DAMAGE ACTIVESET] pass=%" ITGFORMAT
                " inc=%" ITGFORMAT " time=%.12e new_deleted=%" ITGFORMAT
@@ -13752,7 +13696,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
             for(pe=0;pe<dtxn.count;pe++){
               pel=dtxn.elem[pe]-1;
               if((pel<0)||(pel>=ne0)) continue;
-              pnip=damage_history_nip(&lakon[8*pel],mi[0]);
+              pnip=topo_element_nip(&lakon[8*pel],mi[0]);
               if(pnip<1) pnip=1;
               if(pnip>mi[0]) pnip=mi[0];
               pdmax=0.; pdvmax=0.;
@@ -14424,57 +14368,12 @@ damage_active_set_closed:
            commit. */
         topo_txn_discard(&dtxn);
 
-        if(damage_scan_count>0){
-          NNEW(dtxn.elem,ITG,damage_scan_count);
-          NNEW(dtxn.mat,ITG,damage_scan_count);
-          NNEW(dtxn.ip,ITG,damage_scan_count);
-          NNEW(dtxn.value,double,damage_scan_count);
-
-          dtxn.step=*istep;
-          dtxn.increment=iinc;
-          dtxn.step_time=theta**tper;
-          dtxn.total_time=*ttime+dtxn.step_time;
-          dtxn.count=0;
-
-          for(i=0;i<ne0;i++){
-            if((ipkondamageini[i]>=0)&&(ipkon[i]<0)){
-
-              dtxn.elem[dtxn.count]=i+1;
-
-              /* For the present non-composite Zr/ZrH C3D4 model this is
-                 exactly the same mapping as imat=ielmat(1,i) in
-                 calcdamage.f. */
-              dtxn.mat[dtxn.count]=ielmat[mi[2]*i];
-
-              damage_nip_local=damage_history_nip(&lakon[8*i],mi[0]);
-              if(damage_nip_local<1) damage_nip_local=1;
-              if(damage_nip_local>mi[0]) damage_nip_local=mi[0];
-
-              damage_dmax=dam[mi[0]*i];
-              dtxn.ip[dtxn.count]=1;
-              for(j=1;j<damage_nip_local;j++){
-                if(dam[mi[0]*i+j]>damage_dmax){
-                  damage_dmax=dam[mi[0]*i+j];
-                  dtxn.ip[dtxn.count]=j+1;
-                }
-              }
-              imat=dtxn.mat[dtxn.count];
-              if((imat>0)&&
-                 damage_progressive_material(imat,ndmcon,dmcon,*ndmat_,*ntmat_)&&
-                 (damage_dmax>1.)) damage_dmax-=1.;
-              if((damage_de13_transaction)&&(damage_de13_trigger_value!=NULL)&&
-                 (damage_de13_trigger_value[i]>=0.)){
-                dtxn.value[dtxn.count]=
-                    damage_de13_trigger_value[i];
-                dtxn.ip[dtxn.count]=
-                    damage_de13_trigger_ip[i];
-              }else{
-                dtxn.value[dtxn.count]=damage_dmax;
-              }
-              dtxn.count++;
-            }
-          }
-        }
+        /* [TOPOLOGY] the block that was written out three times. */
+        topo_txn_collect(&dtxn,*istep,iinc,theta**tper,*ttime+theta**tper,
+                         ne0,ipkondamageini,ipkon,ielmat,mi,lakon,dam,
+                         ndmcon,dmcon,*ndmat_,*ntmat_,
+                         damage_de13_transaction,damage_de13_trigger_value,
+                         damage_de13_trigger_ip);
 
         /* First topology change at this physical load level. */
         damage_active_pass=1;
@@ -14852,53 +14751,12 @@ damage_controller_done:
           if((ipkondamageini[i]>=0)&&(ipkon[i]<0)) damage_scan_count++;
         }
 
-        if(damage_scan_count>0){
-          NNEW(dtxn.elem,ITG,damage_scan_count);
-          NNEW(dtxn.mat,ITG,damage_scan_count);
-          NNEW(dtxn.ip,ITG,damage_scan_count);
-          NNEW(dtxn.value,double,damage_scan_count);
-
-          dtxn.step=*istep;
-          dtxn.increment=iinc;
-          dtxn.step_time=theta**tper;
-          dtxn.total_time=*ttime+dtxn.step_time;
-          dtxn.count=0;
-
-          for(i=0;i<ne0;i++){
-            if((ipkondamageini[i]>=0)&&(ipkon[i]<0)){
-              dtxn.elem[dtxn.count]=i+1;
-              dtxn.mat[dtxn.count]=ielmat[mi[2]*i];
-
-              damage_nip_local=damage_history_nip(&lakon[8*i],mi[0]);
-              if(damage_nip_local<1) damage_nip_local=1;
-              if(damage_nip_local>mi[0]) damage_nip_local=mi[0];
-
-              damage_dmax=dam[mi[0]*i];
-              dtxn.ip[dtxn.count]=1;
-              for(j=1;j<damage_nip_local;j++){
-                if(dam[mi[0]*i+j]>damage_dmax){
-                  damage_dmax=dam[mi[0]*i+j];
-                  dtxn.ip[dtxn.count]=j+1;
-                }
-              }
-
-              imat=dtxn.mat[dtxn.count];
-              if((imat>0)&&
-                 damage_progressive_material(imat,ndmcon,dmcon,*ndmat_,*ntmat_)&&
-                 (damage_dmax>1.)) damage_dmax-=1.;
-              if((damage_de13_transaction)&&(damage_de13_trigger_value!=NULL)&&
-                 (damage_de13_trigger_value[i]>=0.)){
-                dtxn.value[dtxn.count]=
-                    damage_de13_trigger_value[i];
-                dtxn.ip[dtxn.count]=
-                    damage_de13_trigger_ip[i];
-              }else{
-                dtxn.value[dtxn.count]=damage_dmax;
-              }
-              dtxn.count++;
-            }
-          }
-        }
+        /* [TOPOLOGY] the block that was written out three times. */
+        topo_txn_collect(&dtxn,*istep,iinc,theta**tper,*ttime+theta**tper,
+                         ne0,ipkondamageini,ipkon,ielmat,mi,lakon,dam,
+                         ndmcon,dmcon,*ndmat_,*ntmat_,
+                         damage_de13_transaction,damage_de13_trigger_value,
+                         damage_de13_trigger_ip);
 
         /* The batch as a SET: sorted, hashed and printed in full, next to
            the committed-state hash of the attempt that produced it.  Two
@@ -15014,7 +14872,7 @@ damage_controller_done:
             for(pe=0;pe<dtxn.count;pe++){
               pel=dtxn.elem[pe]-1;
               if((pel<0)||(pel>=ne0)) continue;
-              pnip=damage_history_nip(&lakon[8*pel],mi[0]);
+              pnip=topo_element_nip(&lakon[8*pel],mi[0]);
               if(pnip<1) pnip=1;
               if(pnip>mi[0]) pnip=mi[0];
               pdmax=0.; pdvmax=0.;

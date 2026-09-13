@@ -37,11 +37,19 @@ The invariant is stated here because it is the thing that makes the
 unification legitimate, and bit-identity on the gate and the deck is what
 confirms it empirically rather than by argument.
 
-**The "collect what was eroded" block appears twice** — 13556-13600 and
-14860-14904, forty-five lines each. They differ by one blank line and one
-closing brace. Forty-five lines of scanning `ipkondamageini` against
-`ipkon`, finding the worst integration point per element, applying the
-DE1.3 trigger override, written out twice.
+**The "collect what was eroded" block appears three times** — at 13472,
+14382 and 14850 in the pre-extraction file, about fifty lines each counting
+the sizing pass. Strip whitespace and comments and all three are the *same
+string*. Fifty lines of scanning `ipkondamageini` against `ipkon`, finding
+the worst integration point per element and applying the DE1.3 trigger
+override, written out three times.
+
+(The first survey said twice. Two of the three differ by a three-line
+comment, which a diff of the raw text reports as a difference and an eye
+skimming for duplicates accepts as "a different block". Normalising before
+comparing found the third. Both counts in this section were wrong on the
+first pass and in the same direction — undercounting duplication, because
+near-copies do not look like copies.)
 
 That is the entire argument for this object. Nobody chose to write the
 collection loop twice; it happened because there is nothing to call.
@@ -134,7 +142,11 @@ The questions it answers, in the order a batch lives through them:
 Step A is `topo_txn_discard()` and the state struct: four call sites
 collapse to one call, pure movement, bit-identity is the standard.
 
-Step B is `topo_txn_open` + `collect`, which removes the 45-line copy.
+Step B is `collect`, which removes the two redundant copies and takes
+`topo_element_nip` with it — the element-type-to-integration-point map was
+a `static` in nonlingeo.c shared by sixteen call sites and testable by
+nobody. It is a pure function of the element label, so it is the one part
+of this object that can be tested exhaustively rather than by example.
 
 Step C is `commit` and the observers, which is where the history write and
 `topodiag` go.

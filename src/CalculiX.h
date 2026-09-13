@@ -5080,7 +5080,23 @@ typedef struct{
 
 void topo_txn_init(topo_txn *t);
 void topo_txn_discard(topo_txn *t);
+ITG  topo_element_nip(const char *lakonel,ITG mi0);
+void topo_txn_collect(topo_txn *t,ITG step,ITG increment,
+                      double step_time,double total_time,
+                      ITG ne0,const ITG *ipkondamageini,const ITG *ipkon,
+                      const ITG *ielmat,const ITG *mi,const char *lakon,
+                      const double *dam,
+                      const ITG *ndmcon,const double *dmcon,
+                      ITG ndmat_,ITG ntmat_,
+                      ITG de13_transaction,const double *de13_trigger_value,
+                      const ITG *de13_trigger_ip);
 ITG  topo_selftest(void);
+
+/* Defined in nonlingeo.c.  Whether a material's damage is progressive is a
+   Material question and that object does not exist yet; topology.c calls
+   this directly rather than inventing a dependency on one that does. */
+ITG damage_progressive_material(ITG imat,const ITG *ndmcon,
+                                const double *dmcon,ITG ndmat,ITG ntmat);
 
 /* ---- what counts as converged (converge.c, step B of 10-CONVERGENCE) --
 
