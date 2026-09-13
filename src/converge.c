@@ -193,6 +193,90 @@ void converge_norms(converge *c,const double *b,const ITG *neq,
   }
 }
 
+/* Present the norms.  Separate from computing them, because "produce a
+ * diagnostic" and "present it" are two jobs and this file only does the
+ * second one here under protest: the printing belongs to Monitor, and this
+ * is a way-station so that nonlingeo() has two named calls where it had
+ * ninety lines of arithmetic interleaved with output.
+ *
+ * Byte-for-byte the text that was inline, including the two blank lines
+ * after the correction and the position of fflush.  The AUTOSPC-FORCE line
+ * is printed from the object's own excl_* state, which is the whole point:
+ * the declaration of that switch promises the excluded residual appears
+ * next to the criterion it was excluded from, and now one object both
+ * excludes and reports.
+ *
+ * ran is ctrl[18], the coefficient the force criterion uses, so the printed
+ * tolerance is the one the verdict will actually apply. */
+void converge_report(const converge *c,const ITG *nactdofinv,ITG mt,
+                     ITG ithermal,double ran,
+                     const double *qa,const double *qam,const double *ram,
+                     const double *cam,const double *uam)
+{
+  ITG inode,idir;
+
+  if(ithermal!=2){
+    printf(" average force= %f\n",qa[0]);
+    printf(" time avg. forc= %f\n",qam[0]);
+    if((c->mask_force!=0)&&(c->excl_count>0)){
+      /* Auditable by construction: the excluded peak is printed next to
+         the criterion it was excluded from, so a masked residual that
+         starts to grow is visible in the same place ram[0] is read. */
+      printf("[DAMAGE AUTOSPC-FORCE] excluded %" ITGFORMAT " dof(s) on "
+             "AUTOSPC-masked nodes from ram[0]; largest excluded "
+             "residual %.6e at node %" ITGFORMAT " (ram[0]=%.6e, "
+             "tolerance %.6e = %.4f x qam)%s",
+             c->excl_count,c->excl_max,c->excl_node,
+             ram[0],ran*qam[0],
+             (qam[0]>0.)?c->excl_max/qam[0]:0.,"\n");
+    }
+    if((ITG)((double)nactdofinv[(ITG)ram[2]]/mt)+1==0){
+      printf(" largest residual force= %f\n",
+             ram[0]);
+    }else{
+      inode=(ITG)((double)nactdofinv[(ITG)ram[2]]/mt)+1;
+      idir=nactdofinv[(ITG)ram[2]]-mt*(inode-1);
+      printf(" largest residual force= %f in node %" ITGFORMAT
+             " and dof %" ITGFORMAT "\n",
+             ram[0],inode,idir);
+    }
+    printf(" largest increment of disp= %e\n",uam[0]);
+    if((ITG)cam[3]==0){
+      printf(" largest correction to disp= %e\n\n",
+             cam[0]);
+    }else{
+      inode=(ITG)((double)nactdofinv[(ITG)cam[3]]/mt)+1;
+      idir=nactdofinv[(ITG)cam[3]]-mt*(inode-1);
+      printf(" largest correction to disp= %e in node %" ITGFORMAT
+             " and dof %" ITGFORMAT "\n\n",cam[0],inode,idir);
+    }
+  }
+  if(ithermal>1){
+    printf(" average flux= %f\n",qa[1]);
+    printf(" time avg. flux= %f\n",qam[1]);
+    if((ITG)((double)nactdofinv[(ITG)ram[3]]/mt)+1==0){
+      printf(" largest residual flux= %f\n",
+             ram[1]);
+    }else{
+      inode=(ITG)((double)nactdofinv[(ITG)ram[3]]/mt)+1;
+      idir=nactdofinv[(ITG)ram[3]]-mt*(inode-1);
+      printf(" largest residual flux= %f in node %" ITGFORMAT
+             " and dof %" ITGFORMAT "\n",ram[1],inode,idir);
+    }
+    printf(" largest increment of temp= %e\n",uam[1]);
+    if((ITG)cam[4]==0){
+      printf(" largest correction to temp= %e\n\n",
+             cam[1]);
+    }else{
+      inode=(ITG)((double)nactdofinv[(ITG)cam[4]]/mt)+1;
+      idir=nactdofinv[(ITG)cam[4]]-mt*(inode-1);
+      printf(" largest correction to temp= %e in node %" ITGFORMAT
+             " and dof %" ITGFORMAT "\n\n",cam[1],inode,idir);
+    }
+  }
+  fflush(stdout);
+}
+
 /* ---------------------------------------------------------------- tests */
 
 static ITG cvg_chk(const char *name,double got,double want,double tol,

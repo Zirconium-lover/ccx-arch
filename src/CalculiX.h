@@ -5058,6 +5058,10 @@ void converge_norms(converge *c,const double *b,const ITG *neq,
                     double qau,double ea,
                     double *ram,double *ram1,double *ram2,
                     const double *cam,double *uam,double *qam);
+void converge_report(const converge *c,const ITG *nactdofinv,ITG mt,
+                     ITG ithermal,double ran,
+                     const double *qa,const double *qam,const double *ram,
+                     const double *cam,const double *uam);
 ITG  converge_selftest(void);
 
 /* ---- the backtracking ladder of the damage line search (lsladder.c) --

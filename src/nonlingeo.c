@@ -2086,8 +2086,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_linesearch_dampednorm=0.,damage_linesearch_maxdd=0.,
     damage_wall_theta=-1.,*damage_wall_def=NULL;
   ITG damage_wall_maskstep=0;
-  ITG damage_spc_force=0,damage_spc_fnode=0,damage_spc_fcount=0;
-  double damage_spc_fmax=0.;
+  ITG damage_spc_force=0;
   double damage_nl_ell=0.;
   ITG damage_nl_mode=0;
   double damage_qam_floor=0.;
@@ -12539,74 +12538,16 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	converge_norms(&damage_cvg,b,neq,nactdofinv,mt,*ithermal,*mortar,
 	               *ne,ne0,neold,qa,qamold,jnz,qau,ea,
 	               ram,ram1,ram2,cam,uam,qam);
-	damage_spc_fmax=damage_cvg.excl_max;
-	damage_spc_fnode=damage_cvg.excl_node;
-	damage_spc_fcount=damage_cvg.excl_count;
+	/* [CONVERGE] and presenting them is the second call.  nonlingeo()
+	   now says "compute the norms" and "show them" where it had ninety
+	   lines of arithmetic interleaved with eleven printf.  The three
+	   file-scope variables that carried the excluded peak between the
+	   two are gone: the object that excludes is the object that
+	   reports. */
 
-	/* next line is inserted to cope with stress-less
-	   temperature calculations */
-	  
-	if(*ithermal!=2){
-	  printf(" average force= %f\n",qa[0]);
-	  printf(" time avg. forc= %f\n",qam[0]);
-	  if((damage_spc_force!=0)&&(damage_spc_fcount>0)){
-	    /* Auditable by construction: the excluded peak is printed next to
-	       the criterion it was excluded from, so a masked residual that
-	       starts to grow is visible in the same place ram[0] is read. */
-	    printf("[DAMAGE AUTOSPC-FORCE] excluded %" ITGFORMAT " dof(s) on "
-	           "AUTOSPC-masked nodes from ram[0]; largest excluded "
-	           "residual %.6e at node %" ITGFORMAT " (ram[0]=%.6e, "
-	           "tolerance %.6e = %.4f x qam)%s",
-	           damage_spc_fcount,damage_spc_fmax,damage_spc_fnode,
-	           ram[0],ctrl[18]*qam[0],
-	           (qam[0]>0.)?damage_spc_fmax/qam[0]:0.,"\n");
-	  }
-	  if((ITG)((double)nactdofinv[(ITG)ram[2]]/mt)+1==0){
-	    printf(" largest residual force= %f\n",
-		   ram[0]);
-	  }else{
-	    inode=(ITG)((double)nactdofinv[(ITG)ram[2]]/mt)+1;
-	    idir=nactdofinv[(ITG)ram[2]]-mt*(inode-1);
-	    printf(" largest residual force= %f in node %" ITGFORMAT
-		   " and dof %" ITGFORMAT "\n",
-		   ram[0],inode,idir);
-	  }
-	  printf(" largest increment of disp= %e\n",uam[0]);
-	  if((ITG)cam[3]==0){
-	    printf(" largest correction to disp= %e\n\n",
-		   cam[0]);
-	  }else{
-	    inode=(ITG)((double)nactdofinv[(ITG)cam[3]]/mt)+1;
-	    idir=nactdofinv[(ITG)cam[3]]-mt*(inode-1);
-	    printf(" largest correction to disp= %e in node %" ITGFORMAT
-		   " and dof %" ITGFORMAT "\n\n",cam[0],inode,idir);
-	  }
-	}
-	if(*ithermal>1){
-	  printf(" average flux= %f\n",qa[1]);
-	  printf(" time avg. flux= %f\n",qam[1]);
-	  if((ITG)((double)nactdofinv[(ITG)ram[3]]/mt)+1==0){
-	    printf(" largest residual flux= %f\n",
-		   ram[1]);
-	  }else{
-	    inode=(ITG)((double)nactdofinv[(ITG)ram[3]]/mt)+1;
-	    idir=nactdofinv[(ITG)ram[3]]-mt*(inode-1);
-	    printf(" largest residual flux= %f in node %" ITGFORMAT
-		   " and dof %" ITGFORMAT "\n",ram[1],inode,idir);
-	  }
-	  printf(" largest increment of temp= %e\n",uam[1]);
-	  if((ITG)cam[4]==0){
-	    printf(" largest correction to temp= %e\n\n",
-		   cam[1]);
-	  }else{
-	    inode=(ITG)((double)nactdofinv[(ITG)cam[4]]/mt)+1;
-	    idir=nactdofinv[(ITG)cam[4]]-mt*(inode-1);
-	    printf(" largest correction to temp= %e in node %" ITGFORMAT
-		   " and dof %" ITGFORMAT "\n\n",cam[1],inode,idir);
-	  }
-	}
-	fflush(stdout);
-	  
+	converge_report(&damage_cvg,nactdofinv,mt,*ithermal,ctrl[18],
+	                qa,qam,ram,cam,uam);
+
 	FORTRAN(writecvg,(istep,&iinc,&icutb,&iit,ne,&ne0,ram,qam,cam,uam,
 			  ithermal));
 
