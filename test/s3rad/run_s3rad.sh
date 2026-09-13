@@ -86,6 +86,11 @@ export CCX_FRACTURE_TERMINATION=${CCX_FRACTURE_TERMINATION:-FACE_X0_NSET:FACE_XL
 # "one face at the residual-stiffness floor" and fires at ratio 4.7e-05,
 # theta 0.2588, with the grip reaction at 1.46 percent of peak:
 # [FRACTURE COMPLETE] instead of rc=201 (research/14, 15, 17).
+#
+# CONFIRMED on this recipe with no overrides at all: the run ends
+# [FRACTURE COMPLETE] inc=667 step_time=2.587500e-01, cut=1.962064e-04
+# ratio=4.722478e-05, and its five output files are byte for byte the
+# measured arm's (wall clock excepted).  The default IS the measurement.
 export CCX_FRACTURE_CUT=${CCX_FRACTURE_CUT:-1e-4}
 export CCX_PARDISO_REUSE_SYMBOLIC=${CCX_PARDISO_REUSE_SYMBOLIC:-1}
 
