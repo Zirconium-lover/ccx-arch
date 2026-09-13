@@ -71,6 +71,22 @@ export CCX_DAMAGE_TOPOLOGY=${CCX_DAMAGE_TOPOLOGY:-DEFERRED}
 export CCX_DAMAGE_TR_DOGLEG=${CCX_DAMAGE_TR_DOGLEG:-1}
 export CCX_DAMAGE_VISCOSITY=${CCX_DAMAGE_VISCOSITY:-1.e-4}
 export CCX_FRACTURE_TERMINATION=${CCX_FRACTURE_TERMINATION:-FACE_X0_NSET:FACE_XL_NSET}
+# Stop when the load path between the termination sets has narrowed to this
+# fraction of its width at the first committed deletion batch.  The five
+# topological rules all say CONNECTED at the end of a run whose grips are
+# joined by one triangular face (research/09-SEVERANCE.md), so without a
+# WIDTH the deck has no ending of its own and reports rc=201 - the solver
+# giving up - as its result.
+#
+# 1e-4 is measured, not chosen.  At 1e-2 the criterion fires at theta
+# 0.2427, BEFORE the wall, so it would end the run early and hide
+# everything past it.  At the wall itself (theta 0.2550) the cut is 0.0031
+# against a reference of 4.1547, i.e. ratio 7.5e-4, so any threshold above
+# that also fires too early.  1e-4 is an order of magnitude tighter than
+# "one face at the residual-stiffness floor" and fires at ratio 4.7e-05,
+# theta 0.2588, with the grip reaction at 1.46 percent of peak:
+# [FRACTURE COMPLETE] instead of rc=201 (research/14, 15, 17).
+export CCX_FRACTURE_CUT=${CCX_FRACTURE_CUT:-1e-4}
 export CCX_PARDISO_REUSE_SYMBOLIC=${CCX_PARDISO_REUSE_SYMBOLIC:-1}
 
 
