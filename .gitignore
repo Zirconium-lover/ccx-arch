@@ -52,3 +52,5 @@ test/regress/_runs/
 
 # gcc -MMD dependency files
 *.d
+ccx_stepB
+ccx_step*

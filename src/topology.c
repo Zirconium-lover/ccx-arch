@@ -203,7 +203,13 @@ ITG topo_selftest(void)
       {"C3D20   ",27,27},{"C3D10   ",27,4},{"C3D4    ",27,1},
       {"C3D15   ",27,9},{"C3D6    ",27,2},{"C3D8    ",27,8},
       {"C3D20RB ",27,27},          /* the RB form defers to mi0 */
-      {"C3D8   LC",27,27},         /* composite layer: also mi0 */
+      {"C3D8  LC",27,27},          /* composite layer: also mi0.  lakon is
+                                      EXACTLY eight characters and the L/C
+                                      marker sits at 6 and 7, so a nine-
+                                      character label is not a composite -
+                                      which is what this expectation said
+                                      on the first attempt, and the test
+                                      caught its own author. */
       {"UNKNOWN ",13,13}};         /* fallback is mi0, not a guess */
     ITG k,allok=1;
     for(k=0;k<12;k++){
