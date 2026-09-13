@@ -1114,6 +1114,7 @@ crackcontrol.c \
 topodiag.c \
 lsladder.c \
 converge.c \
+topology.c \
 damstate.c \
 ccxopt.c \
 census.c \

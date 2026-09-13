@@ -5062,6 +5062,26 @@ void converge_report(const converge *c,const ITG *nactdofinv,ITG mt,
                      ITG ithermal,double ran,
                      const double *qa,const double *qam,const double *ram,
                      const double *cam,const double *uam);
+/* ---- the transaction that commits an erosion (topology.c) -------------
+
+   handover/11-TOPOLOGY.md.  The marked set is one object with one
+   lifetime, on the DMLabel pattern (PETSc include/petscdmlabel.h) rather
+   than nine locals whose freeing was copy-pasted to four places.  It
+   records a deletion the damage model has already decided; it decides
+   nothing and it is not a rollback.                                    */
+
+typedef struct{
+  ITG *elem,*mat,*ip;      /* one entry per element eroded in this batch */
+  double *value;
+  ITG count;
+  ITG step,increment;      /* when this batch happened                  */
+  double step_time,total_time;
+}topo_txn;
+
+void topo_txn_init(topo_txn *t);
+void topo_txn_discard(topo_txn *t);
+ITG  topo_selftest(void);
+
 /* ---- what counts as converged (converge.c, step B of 10-CONVERGENCE) --
 
    The mechanical criterion is eight clauses joined by && and ||, written

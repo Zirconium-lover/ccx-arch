@@ -1842,7 +1842,6 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     intpointvart,*jqbi=NULL,*irowbi=NULL,*jqib=NULL,*irowib=NULL,
     idispfrdonly,*inumcp=NULL,nmethodold=*nmethod,
     idamage=0,iitsav=0,idamagereeq=0,ilocalsubstep=0,*ipkondamageini=NULL,
-    *damage_tent_elem=NULL,*damage_tent_mat=NULL,*damage_tent_ip=NULL,
     *damage_de13_trigger_ip=NULL,*damage_ract=NULL,
     damage_ray_probe=0,damage_ray_shots=0,damage_ray_max=8,
     *damage_ray_cat=NULL,damage_bt_mode=0,damage_bt_ntrial=0,
@@ -1897,7 +1896,6 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_de13_term_only=0,damage_release_rebuild=0,
     damage_release_nterm=0,damage_release_nother=0,
     damage_release_nisl=0,damage_release_ncoh=0,damage_release_iforbou=0,
-    damage_tent_count=0,damage_tent_step=0,damage_tent_increment=0,
     damage_batch=0,damage_scan_count=0,damage_nip_local=0,
     damage_mode=0,damage_predict_count=0,damage_event_cut=0,
     damage_active_pass=0,damage_soft_reeq=0,damage_fast_retry=0,damage_fast_used=0,
@@ -2002,7 +2000,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     *qb=NULL,*aloc=NULL,dtmin,*fric=NULL,*aubi=NULL,*auib=NULL,
     *fullgmatrix=NULL,*fullr=NULL,*alglob=NULL,*damn=NULL,*errn=NULL,
     *damdamageini=NULL,*damde1prev=NULL,*veolddamageini=NULL,
-    *damage_tent_value=NULL,*damage_de13_trigger_value=NULL,*damagebase=NULL,
+    *damage_de13_trigger_value=NULL,*damagebase=NULL,
     *damage_damjac=NULL,damage_snap_ratio=0.,
     *damage_damvisc=NULL,*damage_damviscini=NULL,damage_visc_eta=0.,
     *damage_frel=NULL,*damage_ray_p=NULL,*damage_ray_res=NULL,
@@ -2073,7 +2071,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     *damage_free_g=NULL,damage_free_gm=0.,damage_free_dv=0.,
     damage_dump_dv=0.,
     damage_de13_delete_d=DAMAGE_DE13_DELETE_D,
-    damage_tent_step_time=0.,damage_tent_total_time=0.,damage_dmax=0.,
+    damage_dmax=0.,
     damage_alphaevent=2.,damage_event_dtheta=0.,
     damage_event_raw=0.,damage_event_floor=0.,
     damage_de1_dmax=0.,damage_de1_maxdelta=0.,
@@ -2087,6 +2085,12 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
     damage_wall_theta=-1.,*damage_wall_def=NULL;
   ITG damage_wall_maskstep=0;
   ITG damage_spc_force=0;
+
+  /* [TOPOLOGY] the erosion transaction.  Nine locals with no owner became
+     one object with one lifetime; handover/11-TOPOLOGY.md has the count
+     that argued for it.  Six copies of "discard the marked set", in three
+     different variants, are now one call. */
+  topo_txn dtxn;
   double damage_nl_ell=0.;
   ITG damage_nl_mode=0;
   double damage_qam_floor=0.;
@@ -4162,6 +4166,20 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
      and a failure stops the job rather than degrading it quietly.  There is
      no fallback to degrade to: a wrong ram[0] is a wrong answer that looks
      like a right one. */
+  /* [TOPOLOGY] the erosion transaction arms here, next to Convergence and
+     under the same rule: the self test runs on every run and a failure
+     stops the job.  A transaction whose discard leaks or double-frees
+     corrupts a run that still prints plausible numbers. */
+  topo_txn_init(&dtxn);
+  if(topo_selftest()!=0){
+    printf("[TOPOLOGY] *ERROR: the erosion-transaction self test failed.  "
+           "The object that records which elements were deleted, and when, "
+           "cannot be trusted, so the run stops here rather than committing "
+           "a batch it cannot account for.\n");
+    fflush(stdout);
+    FORTRAN(stop,());
+  }
+
   converge_init(&damage_cvg,damage_qam_floor,0,NULL,0);
   if(converge_selftest()!=0){
     printf("[CONVERGE] *ERROR: the convergence-norm self test failed.  The "
@@ -12586,7 +12604,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
              damage_de13_transaction and therefore remain stock. */
           if((idamagereeq==1)&&(damage_de13_transaction==1)){
             damage_slow_active=1;
-            damage_slow_nsoft=damage_tent_count;
+            damage_slow_nsoft=dtxn.count;
           }else{
             damage_slow_active=damage_de12_trial_softening(
                 dam,damdamageini,ipkon,lakon,ielmat,mi[2],ndmcon,dmcon,
@@ -13544,57 +13562,51 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
            value stored when they were removed because calcdamage skips
            ipkon<0 elements. */
 
-        if(damage_tent_elem!=NULL){
-          SFREE(damage_tent_elem); damage_tent_elem=NULL;
-          SFREE(damage_tent_mat); damage_tent_mat=NULL;
-          SFREE(damage_tent_ip); damage_tent_ip=NULL;
-          SFREE(damage_tent_value); damage_tent_value=NULL;
-          damage_tent_count=0;
-        }
+        topo_txn_discard(&dtxn);
 
         if(damage_scan_count>0){
-          NNEW(damage_tent_elem,ITG,damage_scan_count);
-          NNEW(damage_tent_mat,ITG,damage_scan_count);
-          NNEW(damage_tent_ip,ITG,damage_scan_count);
-          NNEW(damage_tent_value,double,damage_scan_count);
+          NNEW(dtxn.elem,ITG,damage_scan_count);
+          NNEW(dtxn.mat,ITG,damage_scan_count);
+          NNEW(dtxn.ip,ITG,damage_scan_count);
+          NNEW(dtxn.value,double,damage_scan_count);
 
-          damage_tent_step=*istep;
-          damage_tent_increment=iinc;
-          damage_tent_step_time=theta**tper;
-          damage_tent_total_time=*ttime+damage_tent_step_time;
-          damage_tent_count=0;
+          dtxn.step=*istep;
+          dtxn.increment=iinc;
+          dtxn.step_time=theta**tper;
+          dtxn.total_time=*ttime+dtxn.step_time;
+          dtxn.count=0;
 
           for(i=0;i<ne0;i++){
             if((ipkondamageini[i]>=0)&&(ipkon[i]<0)){
-              damage_tent_elem[damage_tent_count]=i+1;
-              damage_tent_mat[damage_tent_count]=ielmat[mi[2]*i];
+              dtxn.elem[dtxn.count]=i+1;
+              dtxn.mat[dtxn.count]=ielmat[mi[2]*i];
 
               damage_nip_local=damage_history_nip(&lakon[8*i],mi[0]);
               if(damage_nip_local<1) damage_nip_local=1;
               if(damage_nip_local>mi[0]) damage_nip_local=mi[0];
 
               damage_dmax=dam[mi[0]*i];
-              damage_tent_ip[damage_tent_count]=1;
+              dtxn.ip[dtxn.count]=1;
               for(j=1;j<damage_nip_local;j++){
                 if(dam[mi[0]*i+j]>damage_dmax){
                   damage_dmax=dam[mi[0]*i+j];
-                  damage_tent_ip[damage_tent_count]=j+1;
+                  dtxn.ip[dtxn.count]=j+1;
                 }
               }
-              imat=damage_tent_mat[damage_tent_count];
+              imat=dtxn.mat[dtxn.count];
               if((imat>0)&&
                  damage_progressive_material(imat,ndmcon,dmcon,*ndmat_,*ntmat_)&&
                  (damage_dmax>1.)) damage_dmax-=1.;
               if((damage_de13_transaction)&&(damage_de13_trigger_value!=NULL)&&
                  (damage_de13_trigger_value[i]>=0.)){
-                damage_tent_value[damage_tent_count]=
+                dtxn.value[dtxn.count]=
                     damage_de13_trigger_value[i];
-                damage_tent_ip[damage_tent_count]=
+                dtxn.ip[dtxn.count]=
                     damage_de13_trigger_ip[i];
               }else{
-                damage_tent_value[damage_tent_count]=damage_dmax;
+                dtxn.value[dtxn.count]=damage_dmax;
               }
-              damage_tent_count++;
+              dtxn.count++;
             }
           }
         }
@@ -13603,7 +13615,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                " inc=%" ITGFORMAT " time=%.12e new_deleted=%" ITGFORMAT
                " total_tentative=%" ITGFORMAT "\n",
                damage_active_pass,iinc,theta**tper,idamage,
-               damage_tent_count);
+               dtxn.count);
         fflush(stdout);
 
         /* Which elements are actually in the batch.  Four hypotheses for
@@ -13614,8 +13626,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         if(damage_batch_list==1){
           printf("[DAMAGE BATCH] pass=%" ITGFORMAT " inc=%" ITGFORMAT
                  " elements:",damage_active_pass,iinc);
-          for(k=0;k<damage_tent_count;k++){
-            printf(" %" ITGFORMAT,damage_tent_elem[k]);
+          for(k=0;k<dtxn.count;k++){
+            printf(" %" ITGFORMAT,dtxn.elem[k]);
           }
           printf("\n");
           fflush(stdout);
@@ -13626,14 +13638,14 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
            whatever order the scan produced them in. */
 
         if((td_armed!=0)&&(td_trace!=0)){
-          td_batch=topodiag_hash_batch(damage_tent_elem,damage_tent_count,
+          td_batch=topodiag_hash_batch(dtxn.elem,dtxn.count,
                                        td_sort,topodiag_hash_seed());
           printf("[BATCHTRACE] batch inc=%" ITGFORMAT " icutb=%" ITGFORMAT
                  " pass=%" ITGFORMAT " n=%" ITGFORMAT
                  " committed_state=%016llx batch=%016llx sorted:",
-                 iinc,icutb,damage_active_pass,damage_tent_count,
+                 iinc,icutb,damage_active_pass,dtxn.count,
                  td_state,td_batch);
-          for(k=0;k<damage_tent_count;k++)
+          for(k=0;k<dtxn.count;k++)
             printf(" %" ITGFORMAT,td_sort[k]);
           printf("\n");
           fflush(stdout);
@@ -13657,8 +13669,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           ITGMEMSET(damage_iponoel_trial,0,*nk,0);
           FORTRAN(nodebelongstoel,(damage_iponoel_trial,lakon,ipkon,kon,ne));
           NNEW(damage_orphan_seen,ITG,*nk);
-          for(k=0;k<damage_tent_count;k++){
-            i=damage_tent_elem[k]-1;
+          for(k=0;k<dtxn.count;k++){
+            i=dtxn.elem[k]-1;
             if((i<0)||(i>=ne0)||(ipkon[i]>=0)) continue;
             if(strncmp(&lakon[8*i],"C3D4",4)!=0) continue;
             damage_indexe=-ipkon[i]-2;
@@ -13689,7 +13701,7 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
         printf("[DAMAGE TOPOLOGY BK4] inc=%" ITGFORMAT
                " pass=%" ITGFORMAT " tentative=%" ITGFORMAT
                " orphan_nodes=%" ITGFORMAT " action=%s\n",
-               iinc,damage_active_pass,damage_tent_count,
+               iinc,damage_active_pass,dtxn.count,
                damage_topology_orphans,
                damage_topology_rebuild?"remastruct":"reuse-sparse-graph");
         fflush(stdout);
@@ -13737,8 +13749,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
           if(damage_release_probe>=2){
             ITG pe,pj,pnip,pel;
             double pd,pdv,pdmax,pdvmax,ptrig;
-            for(pe=0;pe<damage_tent_count;pe++){
-              pel=damage_tent_elem[pe]-1;
+            for(pe=0;pe<dtxn.count;pe++){
+              pel=dtxn.elem[pe]-1;
               if((pel<0)||(pel>=ne0)) continue;
               pnip=damage_history_nip(&lakon[8*pel],mi[0]);
               if(pnip<1) pnip=1;
@@ -13771,8 +13783,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                        " mat=%" ITGFORMAT " type=%.8s"
                        " D=n/a Dvis=n/a g_ref=n/a"
                        " note=non-bulk-element-damage-lives-in-xstate%s",
-                       iinc,damage_release_pass,damage_tent_elem[pe],
-                       damage_tent_mat[pe],&lakon[8*pel],
+                       iinc,damage_release_pass,dtxn.elem[pe],
+                       dtxn.mat[pe],&lakon[8*pel],
                        "\n");
                 continue;
               }
@@ -13781,8 +13793,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
                      " mat=%" ITGFORMAT " type=%.8s"
                      " D=%.6f Dvis=%.6f g_ref=%.4e"
                      " below_delete_d=%s%s",
-                     iinc,damage_release_pass,damage_tent_elem[pe],
-                     damage_tent_mat[pe],&lakon[8*pel],pdmax,pdvmax,1.-ptrig,
+                     iinc,damage_release_pass,dtxn.elem[pe],
+                     dtxn.mat[pe],&lakon[8*pel],pdmax,pdvmax,1.-ptrig,
                      (ptrig<damage_de13_delete_d)?"YES-not-terminal":"no",
                      "\n");
             }
@@ -13840,18 +13852,18 @@ damage_active_set_closed:
          is closed and the whole tentative deletion set may now be
          committed atomically to jobname.damage. */
 
-      if(damage_tent_count>0){
+      if(dtxn.count>0){
         damage_batch++;
 
-        for(i=0;i<damage_tent_count;i++){
+        for(i=0;i<dtxn.count;i++){
           fprintf(fdamage,
                   "%" ITGFORMAT " %" ITGFORMAT " %" ITGFORMAT
                   " %.15e %.15e %" ITGFORMAT " %.15e %" ITGFORMAT
                   " %" ITGFORMAT "\n",
-                  damage_tent_elem[i],damage_tent_step,
-                  damage_tent_increment,damage_tent_step_time,
-                  damage_tent_total_time,damage_tent_mat[i],
-                  damage_tent_value[i],damage_tent_ip[i],damage_batch);
+                  dtxn.elem[i],dtxn.step,
+                  dtxn.increment,dtxn.step_time,
+                  dtxn.total_time,dtxn.mat[i],
+                  dtxn.value[i],dtxn.ip[i],damage_batch);
         }
 
         fflush(fdamage);
@@ -13859,15 +13871,15 @@ damage_active_set_closed:
         printf("[DAMAGE COMMIT] batch=%" ITGFORMAT
                " inc=%" ITGFORMAT " time=%.12e deleted=%" ITGFORMAT
                " active_passes=%" ITGFORMAT "\n",
-               damage_batch,damage_tent_increment,
-               damage_tent_step_time,damage_tent_count,
+               damage_batch,dtxn.increment,
+               dtxn.step_time,dtxn.count,
                damage_active_pass);
         if(damage_de13_transaction){
           printf("[DAMAGE DE1.3 COMMIT] inc=%" ITGFORMAT
                  " time=%.12e terminal_deleted=%" ITGFORMAT
                  " active_passes=%" ITGFORMAT "\n",
-                 damage_tent_increment,damage_tent_step_time,
-                 damage_tent_count,damage_active_pass);
+                 dtxn.increment,dtxn.step_time,
+                 dtxn.count,damage_active_pass);
         }
         fflush(stdout);
 
@@ -13995,11 +14007,7 @@ damage_active_set_closed:
           SFREE(damage_ifacdead);
         }
 
-        SFREE(damage_tent_elem); damage_tent_elem=NULL;
-        SFREE(damage_tent_mat); damage_tent_mat=NULL;
-        SFREE(damage_tent_ip); damage_tent_ip=NULL;
-        SFREE(damage_tent_value); damage_tent_value=NULL;
-        damage_tent_count=0;
+        topo_txn_discard(&dtxn);
       }
 
       if(damage_soft_reeq==1){
@@ -14384,9 +14392,9 @@ damage_active_set_closed:
         if(damage_scan_count==0){
           damage_active_pass=1;
           damage_soft_reeq=1;
-          damage_tent_increment=iinc;
-          damage_tent_step_time=theta**tper;
-          damage_tent_total_time=*ttime+damage_tent_step_time;
+          dtxn.increment=iinc;
+          dtxn.step_time=theta**tper;
+          dtxn.total_time=*ttime+dtxn.step_time;
 
           printf("[DAMAGE DE1] pass=1 inc=%" ITGFORMAT
                  " time=%.12e changed=%" ITGFORMAT
@@ -14414,62 +14422,56 @@ damage_active_set_closed:
         /* A non-empty old buffer would indicate an internal logic error.
            Discard it rather than allowing trial data to leak into a later
            commit. */
-        if(damage_tent_elem!=NULL){
-          SFREE(damage_tent_elem); damage_tent_elem=NULL;
-          SFREE(damage_tent_mat); damage_tent_mat=NULL;
-          SFREE(damage_tent_ip); damage_tent_ip=NULL;
-          SFREE(damage_tent_value); damage_tent_value=NULL;
-          damage_tent_count=0;
-        }
+        topo_txn_discard(&dtxn);
 
         if(damage_scan_count>0){
-          NNEW(damage_tent_elem,ITG,damage_scan_count);
-          NNEW(damage_tent_mat,ITG,damage_scan_count);
-          NNEW(damage_tent_ip,ITG,damage_scan_count);
-          NNEW(damage_tent_value,double,damage_scan_count);
+          NNEW(dtxn.elem,ITG,damage_scan_count);
+          NNEW(dtxn.mat,ITG,damage_scan_count);
+          NNEW(dtxn.ip,ITG,damage_scan_count);
+          NNEW(dtxn.value,double,damage_scan_count);
 
-          damage_tent_step=*istep;
-          damage_tent_increment=iinc;
-          damage_tent_step_time=theta**tper;
-          damage_tent_total_time=*ttime+damage_tent_step_time;
-          damage_tent_count=0;
+          dtxn.step=*istep;
+          dtxn.increment=iinc;
+          dtxn.step_time=theta**tper;
+          dtxn.total_time=*ttime+dtxn.step_time;
+          dtxn.count=0;
 
           for(i=0;i<ne0;i++){
             if((ipkondamageini[i]>=0)&&(ipkon[i]<0)){
 
-              damage_tent_elem[damage_tent_count]=i+1;
+              dtxn.elem[dtxn.count]=i+1;
 
               /* For the present non-composite Zr/ZrH C3D4 model this is
                  exactly the same mapping as imat=ielmat(1,i) in
                  calcdamage.f. */
-              damage_tent_mat[damage_tent_count]=ielmat[mi[2]*i];
+              dtxn.mat[dtxn.count]=ielmat[mi[2]*i];
 
               damage_nip_local=damage_history_nip(&lakon[8*i],mi[0]);
               if(damage_nip_local<1) damage_nip_local=1;
               if(damage_nip_local>mi[0]) damage_nip_local=mi[0];
 
               damage_dmax=dam[mi[0]*i];
-              damage_tent_ip[damage_tent_count]=1;
+              dtxn.ip[dtxn.count]=1;
               for(j=1;j<damage_nip_local;j++){
                 if(dam[mi[0]*i+j]>damage_dmax){
                   damage_dmax=dam[mi[0]*i+j];
-                  damage_tent_ip[damage_tent_count]=j+1;
+                  dtxn.ip[dtxn.count]=j+1;
                 }
               }
-              imat=damage_tent_mat[damage_tent_count];
+              imat=dtxn.mat[dtxn.count];
               if((imat>0)&&
                  damage_progressive_material(imat,ndmcon,dmcon,*ndmat_,*ntmat_)&&
                  (damage_dmax>1.)) damage_dmax-=1.;
               if((damage_de13_transaction)&&(damage_de13_trigger_value!=NULL)&&
                  (damage_de13_trigger_value[i]>=0.)){
-                damage_tent_value[damage_tent_count]=
+                dtxn.value[dtxn.count]=
                     damage_de13_trigger_value[i];
-                damage_tent_ip[damage_tent_count]=
+                dtxn.ip[dtxn.count]=
                     damage_de13_trigger_ip[i];
               }else{
-                damage_tent_value[damage_tent_count]=damage_dmax;
+                dtxn.value[dtxn.count]=damage_dmax;
               }
-              damage_tent_count++;
+              dtxn.count++;
             }
           }
         }
@@ -14687,13 +14689,7 @@ damage_controller_done:
             damage_reeq_uam_ref[1]=damage_reeq_uam_floor*damage_reeq_uam_peak[1];
         }
 
-        if(damage_tent_elem!=NULL){
-          SFREE(damage_tent_elem); damage_tent_elem=NULL;
-          SFREE(damage_tent_mat); damage_tent_mat=NULL;
-          SFREE(damage_tent_ip); damage_tent_ip=NULL;
-          SFREE(damage_tent_value); damage_tent_value=NULL;
-          damage_tent_count=0;
-        }
+        topo_txn_discard(&dtxn);
 
         /* Detached-island sweep.  BK4 only asks whether the nodes of the
            elements just deleted lost all their elements; a region that is
@@ -14857,49 +14853,49 @@ damage_controller_done:
         }
 
         if(damage_scan_count>0){
-          NNEW(damage_tent_elem,ITG,damage_scan_count);
-          NNEW(damage_tent_mat,ITG,damage_scan_count);
-          NNEW(damage_tent_ip,ITG,damage_scan_count);
-          NNEW(damage_tent_value,double,damage_scan_count);
+          NNEW(dtxn.elem,ITG,damage_scan_count);
+          NNEW(dtxn.mat,ITG,damage_scan_count);
+          NNEW(dtxn.ip,ITG,damage_scan_count);
+          NNEW(dtxn.value,double,damage_scan_count);
 
-          damage_tent_step=*istep;
-          damage_tent_increment=iinc;
-          damage_tent_step_time=theta**tper;
-          damage_tent_total_time=*ttime+damage_tent_step_time;
-          damage_tent_count=0;
+          dtxn.step=*istep;
+          dtxn.increment=iinc;
+          dtxn.step_time=theta**tper;
+          dtxn.total_time=*ttime+dtxn.step_time;
+          dtxn.count=0;
 
           for(i=0;i<ne0;i++){
             if((ipkondamageini[i]>=0)&&(ipkon[i]<0)){
-              damage_tent_elem[damage_tent_count]=i+1;
-              damage_tent_mat[damage_tent_count]=ielmat[mi[2]*i];
+              dtxn.elem[dtxn.count]=i+1;
+              dtxn.mat[dtxn.count]=ielmat[mi[2]*i];
 
               damage_nip_local=damage_history_nip(&lakon[8*i],mi[0]);
               if(damage_nip_local<1) damage_nip_local=1;
               if(damage_nip_local>mi[0]) damage_nip_local=mi[0];
 
               damage_dmax=dam[mi[0]*i];
-              damage_tent_ip[damage_tent_count]=1;
+              dtxn.ip[dtxn.count]=1;
               for(j=1;j<damage_nip_local;j++){
                 if(dam[mi[0]*i+j]>damage_dmax){
                   damage_dmax=dam[mi[0]*i+j];
-                  damage_tent_ip[damage_tent_count]=j+1;
+                  dtxn.ip[dtxn.count]=j+1;
                 }
               }
 
-              imat=damage_tent_mat[damage_tent_count];
+              imat=dtxn.mat[dtxn.count];
               if((imat>0)&&
                  damage_progressive_material(imat,ndmcon,dmcon,*ndmat_,*ntmat_)&&
                  (damage_dmax>1.)) damage_dmax-=1.;
               if((damage_de13_transaction)&&(damage_de13_trigger_value!=NULL)&&
                  (damage_de13_trigger_value[i]>=0.)){
-                damage_tent_value[damage_tent_count]=
+                dtxn.value[dtxn.count]=
                     damage_de13_trigger_value[i];
-                damage_tent_ip[damage_tent_count]=
+                dtxn.ip[dtxn.count]=
                     damage_de13_trigger_ip[i];
               }else{
-                damage_tent_value[damage_tent_count]=damage_dmax;
+                dtxn.value[dtxn.count]=damage_dmax;
               }
-              damage_tent_count++;
+              dtxn.count++;
             }
           }
         }
@@ -14911,15 +14907,15 @@ damage_controller_done:
            (committed state, batch) is what would have to repeat for the
            batch/rollback loop to be real. */
 
-        if((td_armed!=0)&&(td_trace!=0)&&(damage_tent_count>0)){
-          td_batch=topodiag_hash_batch(damage_tent_elem,damage_tent_count,
+        if((td_armed!=0)&&(td_trace!=0)&&(dtxn.count>0)){
+          td_batch=topodiag_hash_batch(dtxn.elem,dtxn.count,
                                        td_sort,topodiag_hash_seed());
           printf("[BATCHTRACE] batch inc=%" ITGFORMAT " icutb=%" ITGFORMAT
                  " pass=%" ITGFORMAT " n=%" ITGFORMAT
                  " committed_state=%016llx batch=%016llx sorted:",
-                 iinc,icutb,damage_active_pass,damage_tent_count,
+                 iinc,icutb,damage_active_pass,dtxn.count,
                  td_state,td_batch);
-          for(k=0;k<damage_tent_count;k++)
+          for(k=0;k<dtxn.count;k++)
             printf(" %" ITGFORMAT,td_sort[k]);
           printf("\n");
           fflush(stdout);
@@ -14932,8 +14928,8 @@ damage_controller_done:
           ITGMEMSET(damage_iponoel_trial,0,*nk,0);
           FORTRAN(nodebelongstoel,(damage_iponoel_trial,lakon,ipkon,kon,ne));
           NNEW(damage_orphan_seen,ITG,*nk);
-          for(k=0;k<damage_tent_count;k++){
-            i=damage_tent_elem[k]-1;
+          for(k=0;k<dtxn.count;k++){
+            i=dtxn.elem[k]-1;
             if((i<0)||(i>=ne0)||(ipkon[i]>=0)) continue;
             if(strncmp(&lakon[8*i],"C3D4",4)!=0) continue;
             damage_indexe=-ipkon[i]-2;
@@ -14966,7 +14962,7 @@ damage_controller_done:
                " tentative=%" ITGFORMAT " batch_Dmax=%.6e "
                "batch_Dvis=%.6e "
                "orphan_nodes=%" ITGFORMAT " action=%s+same-load-Newton\n",
-               iinc,theta**tper,damage_de13_new,damage_tent_count,
+               iinc,theta**tper,damage_de13_new,dtxn.count,
                damage_de13_batch_dmax,damage_de13_batch_vmin,
                damage_topology_orphans,
                damage_topology_rebuild?"remastruct":"reuse-sparse-graph");
@@ -15015,8 +15011,8 @@ damage_controller_done:
           if(damage_release_probe>=2){
             ITG pe,pj,pnip,pel;
             double pd,pdv,pdmax,pdvmax,ptrig;
-            for(pe=0;pe<damage_tent_count;pe++){
-              pel=damage_tent_elem[pe]-1;
+            for(pe=0;pe<dtxn.count;pe++){
+              pel=dtxn.elem[pe]-1;
               if((pel<0)||(pel>=ne0)) continue;
               pnip=damage_history_nip(&lakon[8*pel],mi[0]);
               if(pnip<1) pnip=1;
@@ -15049,8 +15045,8 @@ damage_controller_done:
                        " mat=%" ITGFORMAT " type=%.8s"
                        " D=n/a Dvis=n/a g_ref=n/a"
                        " note=non-bulk-element-damage-lives-in-xstate%s",
-                       iinc,damage_release_pass,damage_tent_elem[pe],
-                       damage_tent_mat[pe],&lakon[8*pel],
+                       iinc,damage_release_pass,dtxn.elem[pe],
+                       dtxn.mat[pe],&lakon[8*pel],
                        "\n");
                 continue;
               }
@@ -15059,8 +15055,8 @@ damage_controller_done:
                      " mat=%" ITGFORMAT " type=%.8s"
                      " D=%.6f Dvis=%.6f g_ref=%.4e"
                      " below_delete_d=%s%s",
-                     iinc,damage_release_pass,damage_tent_elem[pe],
-                     damage_tent_mat[pe],&lakon[8*pel],pdmax,pdvmax,1.-ptrig,
+                     iinc,damage_release_pass,dtxn.elem[pe],
+                     dtxn.mat[pe],&lakon[8*pel],pdmax,pdvmax,1.-ptrig,
                      (ptrig<damage_de13_delete_d)?"YES-not-terminal":"no",
                      "\n");
             }
@@ -15336,24 +15332,18 @@ damage_controller_done:
           printf("[DAMAGE DE1.3 ROLLBACK] inc=%" ITGFORMAT
                  " time=%.12e tentative_terminal=%" ITGFORMAT
                  " -> restore topology and constitutive baseline\n",
-                 damage_tent_increment,damage_tent_step_time,
-                 damage_tent_count);
+                 dtxn.increment,dtxn.step_time,
+                 dtxn.count);
         }else{
           printf("[DAMAGE ROLLBACK] inc=%" ITGFORMAT
                  " time=%.12e tentative=%" ITGFORMAT "\n",
-                 damage_tent_increment,damage_tent_step_time,
-                 damage_tent_count);
+                 dtxn.increment,dtxn.step_time,
+                 dtxn.count);
         }
         fflush(stdout);
 
         /* Trial deletions must never enter jobname.damage. */
-        if(damage_tent_elem!=NULL){
-          SFREE(damage_tent_elem); damage_tent_elem=NULL;
-          SFREE(damage_tent_mat); damage_tent_mat=NULL;
-          SFREE(damage_tent_ip); damage_tent_ip=NULL;
-          SFREE(damage_tent_value); damage_tent_value=NULL;
-        }
-        damage_tent_count=0;
+        topo_txn_discard(&dtxn);
         if(damage_de13_transaction) damage_path_retry++;
         damage_de13_transaction=0;
         if(damage_de13_trigger_value!=NULL){
@@ -16059,13 +16049,7 @@ damage_controller_done:
        nonlingeo damage baselines so later steps/output calls cannot retain
        dangling pointers. */
     results_set_de12_context(0,0,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0.);
-    if(damage_tent_elem!=NULL){
-      SFREE(damage_tent_elem); damage_tent_elem=NULL;
-      SFREE(damage_tent_mat); damage_tent_mat=NULL;
-      SFREE(damage_tent_ip); damage_tent_ip=NULL;
-      SFREE(damage_tent_value); damage_tent_value=NULL;
-    }
-    damage_tent_count=0;
+    topo_txn_discard(&dtxn);
 
     if(fdamage!=NULL){
       fflush(fdamage);
