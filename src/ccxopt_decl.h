@@ -64,6 +64,37 @@ static const ccxopt_decl ccxopt_decl_table[]={
  "restrict terminal deletion to elements of these materials; ALL means every "
  "material",NULL},
 
+{"CCX_DAMAGE_DELETE_D",CCXOPT_REAL,"0.999",0.5,0.9999,NULL,
+ "the terminal deletion threshold: a live C3D4 of a progressive material "
+ "leaves the assembly when its worst integration point reaches this damage.  "
+ "Outside [0.5,0.9999] the value is refused with a warning and 0.999 kept.  "
+ "READ WITH CCX_DAMAGE_DELETE_VISC: by default the trigger is the VISCOUS "
+ "damage, not the instantaneous one, so an element at D=1.0000 whose Dvis is "
+ "0.998 stays.  MEASURED 2026-09-13 on the wrapped fast deck: the outcome is "
+ "not monotone in this number.  0.9990-0.9950 wall at theta 0.158; "
+ "0.9920-0.9850 run to theta 1.0; 0.9800-0.9600 wall again.  The band that "
+ "runs to the end is a PHANTOM - the exact minimum cut reaches 2.9e-04 of "
+ "its reference by increment 56 and stays there while the solver applies "
+ "load for 480 more increments.  Lowering this threshold does not make the "
+ "specimen break; it makes the solver stop noticing that it already has.  "
+ "Arm CCX_FRACTURE_CUT if you change it",NULL},
+
+{"CCX_DAMAGE_DELETE_VISC",CCXOPT_BOOL,"1 (on)",CCXOPT_UNBOUNDED,NULL,
+ "judge terminal deletion by the VISCOUS damage rather than the "
+ "instantaneous one.  On by default and the string 0 is the only value that "
+ "turns it off.  The reason it is on: resultsmech.f scales the stress by "
+ "1-Dvis whenever the viscosity is armed, so a trigger reading D removes an "
+ "element still carrying 1-Dvis of its effective stress and releases that "
+ "force in one increment at constant load - measured on DHC1, elements left "
+ "while carrying up to 41 percent (batch_Dvis down to 0.592), and correcting "
+ "it moved the run from lambda=0.3793 to 0.4651.  The cost is a lag that "
+ "GROWS as the step shrinks, beta=dt/(eta+dt): the s3rad trap strands "
+ "element 19535 at D=1.0000 with Dvis short of the threshold "
+ "(research/16-TRAP-ANATOMY.md).  Turning it off does not clear that wall "
+ "either - measured, the wrapped deck still stops at theta 0.1575.  With the "
+ "viscosity off damvisc is never allocated and the trigger falls back to D, "
+ "so this is a no-op there",NULL},
+
 {"CCX_DAMAGE_TOPOLOGY",CCXOPT_ENUM,"immediate",CCXOPT_UNBOUNDED,
  "DEFERRED|deferred|1",
  "DEFERRED batches topology changes into one transaction committed at the "
