@@ -1113,6 +1113,7 @@ pathfollow.c \
 crackcontrol.c \
 topodiag.c \
 lsladder.c \
+converge.c \
 damstate.c \
 ccxopt.c \
 census.c \

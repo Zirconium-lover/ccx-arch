@@ -5028,6 +5028,38 @@ ITG  damstate_facet_support(const ITG *ipkon,const char *lakon,const ITG *kon,
                             ITG ne,ITG nk,ITG *nfac);
 ITG  damstate_selftest(void);
 
+/* ---- the numbers the convergence judgement is made from (converge.c) --
+
+   Step A of handover/10-CONVERGENCE.md.  Owns the reduction of the solution
+   vector into ram/ram1/ram2, the uam high-water mark, the qam running
+   average and its floor, and which dofs are allowed to contribute.  It
+   decides nothing and prints nothing: checkconvergence.c still owns the
+   verdict.  What it EXCLUDED is part of its state, because the promise that
+   the excluded residual is reported next to the criterion belongs to the
+   thing that does the excluding. */
+
+typedef struct{
+  double qam_floor;  /* CCX_DAMAGE_QAM_FLOOR; 0 disables the floor        */
+  ITG mask_force;    /* CCX_DAMAGE_AUTOSPC_FORCE armed                    */
+  const ITG *mask;   /* per-node load-path judgement (damstate.dead)      */
+  ITG mask_nk;
+  double qam_peak;   /* largest qam ever seen, for the floor              */
+  double excl_max;   /* largest residual excluded by the mask, last call  */
+  ITG excl_node;     /* where it was, 1-based                             */
+  ITG excl_count;    /* how many dofs were excluded                       */
+}converge;
+
+void converge_init(converge *c,double qam_floor,ITG mask_force,
+                   const ITG *mask,ITG mask_nk);
+void converge_norms(converge *c,const double *b,const ITG *neq,
+                    const ITG *nactdofinv,ITG mt,ITG ithermal,ITG mortar,
+                    ITG ne,ITG ne0,ITG neold,
+                    const double *qa,const double *qamold,ITG jnz,
+                    double qau,double ea,
+                    double *ram,double *ram1,double *ram2,
+                    const double *cam,double *uam,double *qam);
+ITG  converge_selftest(void);
+
 /* ---- the backtracking ladder of the damage line search (lsladder.c) --
    Extracted from the Newton loop because it was wrong and the way it was
    wrong is worth a regression test.  See the block comment there. */

@@ -2090,7 +2090,8 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
   double damage_spc_fmax=0.;
   double damage_nl_ell=0.;
   ITG damage_nl_mode=0;
-  double damage_qam_floor=0.,damage_qam_peak=0.;
+  double damage_qam_floor=0.;
+  converge damage_cvg;
   double damage_stab_alpha=0.,damage_deadsole_g=0.,damage_deadall_g=0.,
     damage_spc_g=0.;
   char *damage_stab_env=NULL,*damage_deadsole_env=NULL,
@@ -4157,6 +4158,22 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
            " Diagnostic only - nothing on a solution path reads it.%s","\n");
     fflush(stdout);
   }
+  /* [CONVERGE] the reduction is not optional - every verdict in the run is
+     made from the numbers it produces - so its self test runs on every run
+     and a failure stops the job rather than degrading it quietly.  There is
+     no fallback to degrade to: a wrong ram[0] is a wrong answer that looks
+     like a right one. */
+  converge_init(&damage_cvg,damage_qam_floor,0,NULL,0);
+  if(converge_selftest()!=0){
+    printf("[CONVERGE] *ERROR: the convergence-norm self test failed.  The "
+           "numbers every convergence verdict is made from cannot be "
+           "trusted, and there is nothing to fall back to, so the run "
+           "stops here rather than reporting a result computed by a rule "
+           "that is not the one that was tested.\n");
+    fflush(stdout);
+    FORTRAN(stop,());
+  }
+
   if((td_trace!=0)||(td_from>0)){
     if(topodiag_selftest()!=0){
       printf("[TOPODIAG] *ERROR: self test failed; diagnostics disabled\n");
@@ -12507,106 +12524,29 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	  
 	/* store the residual forces for the next iteration */
 
-	if(*ithermal!=2){
-	  if(cam[0]>uam[0]){
-	    uam[0]=cam[0];}
-	  if(qau<1.e-10){
-	    if(qa[0]>ea*qam[0]){
-	      qam[0]=(qamold[0]*jnz+qa[0])/(jnz+1);}
-	    else {
-	      qam[0]=qamold[0];}
-	  }
-	  /* CCX_DAMAGE_QAM_FLOOR - DIAGNOSTIC, default off.
+	/* [CONVERGE] the numbers the judgement is made from now have an
+	   owner: converge.c, step A of handover/10-CONVERGENCE.md.  The
+	   AUTOSPC-FORCE exclusion used to be a `continue` in the middle of
+	   the loop that computes ram[0]; it is now a named property of the
+	   object that owns the reduction, and what it excluded is read back
+	   below rather than left in three file-scope variables.  Pure code
+	   movement: bit-identical, checked on the gate and on the deck. */
 
-	     The force criterion is RELATIVE: checkconvergence.c tests
-	     ram[0] against c1[0]*qam[0], and qam[0] is a running average of
-	     the internal force over increments.  On a specimen that is
-	     unloading as it breaks, qam[0] follows the load down and the
-	     absolute tolerance collapses with it.  Measured on
-	     run_s0_fine_grad14 at its wall: qa=0.001552, qam=0.001604,
-	     residual 0.005474 - a miss by 3.4x - while the specimen was
-	     still carrying 2.33 N, 22.7% of its peak, and the residual had
-	     just fallen 14x in one iteration.  The run died on a vanishing
-	     reference, not on a growing residual.
+	damage_cvg.qam_floor=damage_qam_floor;
+	damage_cvg.mask_force=damage_spc_force;
+	damage_cvg.mask=damage_spc_mask;
+	damage_cvg.mask_nk=damage_spc_nk;
+	converge_norms(&damage_cvg,b,neq,nactdofinv,mt,*ithermal,*mortar,
+	               *ne,ne0,neold,qa,qamold,jnz,qau,ea,
+	               ram,ram1,ram2,cam,uam,qam);
+	damage_spc_fmax=damage_cvg.excl_max;
+	damage_spc_fnode=damage_cvg.excl_node;
+	damage_spc_fcount=damage_cvg.excl_count;
 
-	     Flooring qam at a fraction of the largest value it ever reached
-	     keeps the tolerance tied to the load the specimen ONCE carried.
-
-	     THIS CHANGES THE CONVERGENCE CRITERION AND THEREFORE THE ANSWER.
-	     It is a diagnostic for whether a given wall is criterial or
-	     physical.  A run that goes further with it is NOT thereby a
-	     success - that has to be shown on the physics (E-108) - and
-	     adopting it needs the full verify + ladder gate. */
-	  if(damage_qam_floor>0.){
-	    if(qam[0]>damage_qam_peak){damage_qam_peak=qam[0];}
-	    if(qam[0]<damage_qam_floor*damage_qam_peak){
-	      qam[0]=damage_qam_floor*damage_qam_peak;}
-	  }
-	}
-	if(*ithermal>1){
-	  if(cam[1]>uam[1]){
-	    uam[1]=cam[1];}      
-	  if(qau<1.e-10){
-	    if(qa[1]>ea*qam[1]){
-	      qam[1]=(qamold[1]*jnz+qa[1])/(jnz+1);}
-	    else {
-	      qam[1]=qamold[1];}
-	  }
-	}
-      
-	/* calculating the maximum residual */
-
-	for(k=0;k<2;++k){
-	  ram2[k]=ram1[k];
-	  ram1[k]=ram[k];
-	  ram[k]=0.;
-	}
-	if(*ithermal!=2){
-	  damage_spc_fmax=0.;damage_spc_fnode=0;damage_spc_fcount=0;
-	  for(k=0;k<neq[0];++k){
-	    err=fabs(b[k]);
-	    if((damage_spc_force!=0)&&(damage_spc_mask!=NULL)&&
-	       (nactdofinv!=NULL)){
-	      ITG spcnd=nactdofinv[k]/mt;
-	      if((spcnd>=0)&&(spcnd<damage_spc_nk)&&
-	         (damage_spc_mask[spcnd]!=0)){
-	        damage_spc_fcount++;
-	        if(err>damage_spc_fmax){
-	          damage_spc_fmax=err;damage_spc_fnode=spcnd+1;}
-	        continue;
-	      }
-	    }
-	    if(err>ram[0]){
-	      ram[0]=err;
-	      ram[2]=k+0.5;}
-	  }
-	}
-	if(*ithermal>1){
-	  for(k=neq[0];k<neq[1];++k){
-	    err=fabs(b[k]);
-	    if(err>ram[1]){
-	      ram[1]=err;
-	      ram[3]=k+0.5;}
-	  }
-	}
-	  
-	/*   Divergence criteria for face-to-face penalty is different */
-	  
-	if(*mortar==1){
-	  for(k=4;k<6;++k){
-	    ram2[k]=ram1[k];
-	    ram1[k]=ram[k];
-	  } 
-	  ram[4]=ram[0]+ram1[0];
-	  ram[5]=(*ne-ne0)-(neold-ne0)+0.5;
-	}
-	  
 	/* next line is inserted to cope with stress-less
 	   temperature calculations */
 	  
 	if(*ithermal!=2){
-	  if(ram[0]<1.e-6){
-	    ram[0]=0.;} 
 	  printf(" average force= %f\n",qa[0]);
 	  printf(" time avg. forc= %f\n",qam[0]);
 	  if((damage_spc_force!=0)&&(damage_spc_fcount>0)){
@@ -12643,8 +12583,6 @@ void nonlingeo(double **cop,ITG *nk,ITG **konp,ITG **ipkonp,char **lakonp,
 	  }
 	}
 	if(*ithermal>1){
-	  if(ram[1]<1.e-6){
-	    ram[1]=0.;}      
 	  printf(" average flux= %f\n",qa[1]);
 	  printf(" time avg. flux= %f\n",qam[1]);
 	  if((ITG)((double)nactdofinv[(ITG)ram[3]]/mt)+1==0){
@@ -15427,8 +15365,9 @@ damage_controller_done:
       /* the rollback restores qam from before the failed attempt, which can
          be under the floor again; re-apply it so the criterion the retry
          faces is the same one the attempt faced (CCX_DAMAGE_QAM_FLOOR) */
-      if((damage_qam_floor>0.)&&(qam[0]<damage_qam_floor*damage_qam_peak)){
-        qam[0]=damage_qam_floor*damage_qam_peak;
+      if((damage_qam_floor>0.)&&
+         (qam[0]<damage_qam_floor*damage_cvg.qam_peak)){
+        qam[0]=damage_qam_floor*damage_cvg.qam_peak;
       }
 
       if(*mortar>1){
